@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2 } from 'lucide-react';
+import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore, storage } from '../config/firebase';
@@ -354,7 +354,7 @@ const NiagaGo = () => {
   const [withdrawData, setWithdrawData] = useState({ bank: '', number: '', name: '', amount: '' });
 
   // State Registration Driver
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [viewMode, setViewMode] = useState('main'); // 'main' | 'register'
   const [regForm, setRegForm] = useState({ name: '', email: '', phone: '' });
   const [ktmFile, setKtmFile] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -918,7 +918,7 @@ const NiagaGo = () => {
         icon: 'success',
         confirmButtonColor: '#0ea5e9'
       });
-      setShowRegisterModal(false);
+      setViewMode('main');
       setKtmFile(null);
     } catch (error) {
       console.error("Error Register Driver:", error);
@@ -1017,6 +1017,68 @@ const NiagaGo = () => {
     return isFinished && (isDriverMode ? o.driverId === userProfile.uid : true);
   });
 
+  // --- RENDER REGISTRATION PAGE (FULL PAGE) ---
+  if (viewMode === 'register') {
+    return (
+      <div className={`min-h-screen p-4 pb-24 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
+        <div className="max-w-md mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <button onClick={() => setViewMode('main')} className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-gray-100'} shadow-sm`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className="text-xl font-bold">Pendaftaran Driver</h1>
+          </div>
+
+          <div className={`rounded-2xl shadow-lg overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <div className="bg-gradient-to-r from-sky-600 to-blue-700 p-6 text-white">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Bike size={28} /> Gabung NiagaGo
+              </h2>
+              <p className="text-sky-100 text-sm mt-1">Nambah uang jajan sambil kuliah!</p>
+            </div>
+
+            <div className="p-6">
+              <form onSubmit={handleRegisterDriver} className="space-y-4">
+                <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Nama Lengkap</label>
+                  <input type="text" value={regForm.name} onChange={(e) => setRegForm({...regForm, name: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="Nama sesuai KTM" required />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email Kampus/Pribadi</label>
+                  <input type="email" value={regForm.email} onChange={(e) => setRegForm({...regForm, email: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="email@student.ac.id" required />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Nomor WhatsApp</label>
+                  <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="08xxxxxxxxxx" required />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Foto KTM</label>
+                  <div className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${isDarkMode ? 'border-slate-600 hover:border-sky-500 bg-slate-700/50' : 'border-sky-200 hover:border-sky-500 bg-sky-50'}`}>
+                    <input type="file" accept="image/*" onChange={(e) => setKtmFile(e.target.files[0])} className="hidden" id="ktm-upload" />
+                    <label htmlFor="ktm-upload" className="cursor-pointer w-full flex flex-col items-center">
+                      {ktmFile ? (
+                        <div className="flex items-center gap-2 text-sky-600 font-bold"><CheckSquare size={24} /> {ktmFile.name}</div>
+                      ) : (
+                        <><ImageIcon size={32} className="text-sky-500 mb-2" /><span className="text-sm text-gray-500">Klik untuk upload foto KTM</span></>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                <button type="submit" disabled={isRegistering} className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 transition-all mt-4 flex justify-center items-center gap-2">
+                  {isRegistering ? 'Mengirim Data...' : 'Kirim Pendaftaran 🚀'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen p-4 pb-24 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
       <div className="max-w-md mx-auto">
@@ -1048,7 +1110,7 @@ const NiagaGo = () => {
             <button 
               onClick={() => {
                 if (latestReg?.status === 'rejected') Swal.fire('Pendaftaran Ditolak', `Alasan: ${latestReg.rejectionReason}. Silakan perbaiki data.`, 'info');
-                setShowRegisterModal(true);
+                setViewMode('register');
               }}
               className="text-xs px-4 py-2 rounded-full font-bold border border-sky-500 text-sky-600 hover:bg-sky-50 transition-all"
             >
@@ -1092,21 +1154,21 @@ const NiagaGo = () => {
 
         {/* --- TAMPILAN USER: FORM ORDER --- */}
         {!isDriverMode && (
-          <div className={`p-5 rounded-2xl shadow-lg mb-8 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+          <div className={`p-4 rounded-2xl shadow-lg mb-8 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
             <h2 className="font-bold text-lg mb-4 flex items-center gap-2"><Navigation size={20} className="text-sky-500"/> Mau kemana hari ini?</h2>
             <form onSubmit={handleCreateOrder} className="space-y-4">
               <div className="relative">
-                <MapPin className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                <input type="text" placeholder="Lokasi Jemput (cth: Gerbang Depan)" value={pickup} onChange={(e) => setPickup(e.target.value)} className={`w-full pl-10 pr-10 p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-                <button type="button" onClick={() => setMapPickerMode('pickup')} className="absolute right-2 top-2 p-1.5 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
-                  <LocateFixed size={18} />
+                <MapPin className="absolute left-3 top-3 text-gray-400" size={16} />
+                <input type="text" placeholder="Lokasi Jemput (cth: Gerbang Depan)" value={pickup} onChange={(e) => setPickup(e.target.value)} className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <button type="button" onClick={() => setMapPickerMode('pickup')} className="absolute right-2 top-1.5 p-1 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
+                  <LocateFixed size={16} />
                 </button>
               </div>
               <div className="relative">
-                <Navigation className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                <input type="text" placeholder="Tujuan (cth: Kost Putri)" value={destination} onChange={(e) => setDestination(e.target.value)} className={`w-full pl-10 pr-10 p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-                <button type="button" onClick={() => setMapPickerMode('destination')} className="absolute right-2 top-2 p-1.5 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
-                  <LocateFixed size={18} />
+                <Navigation className="absolute left-3 top-3 text-gray-400" size={16} />
+                <input type="text" placeholder="Tujuan (cth: Kost Putri)" value={destination} onChange={(e) => setDestination(e.target.value)} className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <button type="button" onClick={() => setMapPickerMode('destination')} className="absolute right-2 top-1.5 p-1 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
+                  <LocateFixed size={16} />
                 </button>
               </div>
               
@@ -1115,17 +1177,17 @@ const NiagaGo = () => {
                 <button
                   type="button"
                   onClick={() => setVehicleType('motor')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${vehicleType === 'motor' ? 'bg-sky-50 border-sky-500 text-sky-600 ring-1 ring-sky-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                  className={`p-2 rounded-xl border flex flex-row justify-center items-center gap-2 transition-all ${vehicleType === 'motor' ? 'bg-sky-50 border-sky-500 text-sky-600 ring-1 ring-sky-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
                 >
-                  <Bike size={24} />
+                  <Bike size={20} />
                   <span className="text-xs font-bold">Motor</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setVehicleType('mobil')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${vehicleType === 'mobil' ? 'bg-sky-50 border-sky-500 text-sky-600 ring-1 ring-sky-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                  className={`p-2 rounded-xl border flex flex-row justify-center items-center gap-2 transition-all ${vehicleType === 'mobil' ? 'bg-sky-50 border-sky-500 text-sky-600 ring-1 ring-sky-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
                 >
-                  <Car size={24} />
+                  <Car size={20} />
                   <span className="text-xs font-bold">Mobil</span>
                 </button>
               </div>
@@ -1145,8 +1207,8 @@ const NiagaGo = () => {
               )}
 
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="Harga (Rp)" value={price} onChange={(e) => setPrice(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-                <input type="text" placeholder="Catatan (Opsional)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <input type="number" placeholder="Harga (Rp)" value={price} onChange={(e) => setPrice(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <input type="text" placeholder="Catatan (Opsional)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
               </div>
               <button type="submit" disabled={isLoading} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">
                 {isLoading ? 'Memproses...' : 'Cari Driver Sekarang 🚀'}
@@ -1375,63 +1437,6 @@ const NiagaGo = () => {
           )}
         </div>
       </div>
-
-      {/* --- MODAL PENDAFTARAN DRIVER --- */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            
-            {/* Header Modal */}
-            <div className="bg-gradient-to-r from-sky-600 to-blue-700 p-6 text-white relative shrink-0">
-              <button onClick={() => setShowRegisterModal(false)} className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-full transition-colors">
-                <X size={24} />
-              </button>
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <Bike size={28} /> Daftar Driver
-              </h2>
-              <p className="text-sky-100 text-sm mt-1">Gabung NiagaGo, nambah uang jajan sambil kuliah!</p>
-            </div>
-
-            {/* Form Body */}
-            <div className="p-6 overflow-y-auto">
-              <form onSubmit={handleRegisterDriver} className="space-y-4">
-                <div className="space-y-1">
-                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Nama Lengkap</label>
-                  <input type="text" value={regForm.name} onChange={(e) => setRegForm({...regForm, name: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="Nama sesuai KTM" required />
-                </div>
-
-                <div className="space-y-1">
-                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email Kampus/Pribadi</label>
-                  <input type="email" value={regForm.email} onChange={(e) => setRegForm({...regForm, email: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="email@student.ac.id" required />
-                </div>
-
-                <div className="space-y-1">
-                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Nomor WhatsApp</label>
-                  <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="08xxxxxxxxxx" required />
-                </div>
-
-                <div className="space-y-1">
-                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Foto KTM</label>
-                  <div className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${isDarkMode ? 'border-slate-600 hover:border-sky-500 bg-slate-700/50' : 'border-sky-200 hover:border-sky-500 bg-sky-50'}`}>
-                    <input type="file" accept="image/*" onChange={(e) => setKtmFile(e.target.files[0])} className="hidden" id="ktm-upload" />
-                    <label htmlFor="ktm-upload" className="cursor-pointer w-full flex flex-col items-center">
-                      {ktmFile ? (
-                        <div className="flex items-center gap-2 text-sky-600 font-bold"><CheckSquare size={24} /> {ktmFile.name}</div>
-                      ) : (
-                        <><ImageIcon size={32} className="text-sky-500 mb-2" /><span className="text-sm text-gray-500">Klik untuk upload foto KTM</span></>
-                      )}
-                    </label>
-                  </div>
-                </div>
-
-                <button type="submit" disabled={isRegistering} className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 transition-all mt-4 flex justify-center items-center gap-2">
-                  {isRegistering ? 'Mengirim Data...' : 'Kirim Pendaftaran 🚀'}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* --- MODAL MAP PICKER (PENUMPANG) --- */}
       {mapPickerMode && (

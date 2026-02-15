@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -28,7 +28,7 @@ import SearchResults from './SearchResults'; // Import halaman hasil pencarian
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
 import { ChatWidget } from '../components/ChatWidget'; // Import Chat Widget
 import { auth, db } from '../config/firebase';
-import { ref, onValue, push, update, remove, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, onValue, push, update, remove, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
@@ -114,14 +114,14 @@ const Home = () => {
 
   // Kategori Navigasi Baru (Sticky)
   const navCategories = [
-    { name: 'Populer', color: 'shadow-orange-500/50' },
-    { name: 'Isi Pulsa', color: 'shadow-blue-500/50' },
-    { name: 'Makan', color: 'shadow-red-500/50' },
-    { name: 'Skin Care', color: 'shadow-pink-500/50' },
-    { name: 'Fashion', color: 'shadow-purple-500/50' },
-    { name: 'Jasa', color: 'shadow-indigo-500/50' },
-    { name: 'Top Up Game', color: 'shadow-green-500/50' },
-    { name: 'NiagaGo', color: 'shadow-emerald-500/50' },
+    { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50' },
+    { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50' },
+    { name: 'Makan', icon: <Utensils size={20} />, color: 'shadow-red-500/50' },
+    { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50' },
+    { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50' },
+    { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50' },
+    { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50' },
+    { name: 'NiagaGo', icon: <Bike size={20} />, color: 'shadow-emerald-500/50' },
   ];
 
   // Fetch Real Products from Firebase
@@ -547,11 +547,96 @@ const Home = () => {
       case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
       case 'help': return renderStaticPage('help', 'Pusat Bantuan');
       case 'niagago': return <NiagaGo user={user} onBack={() => setCurrentView('home')} />;
+      
+      // --- HALAMAN LIVE CHAT INTERNAL ---
+      case 'chat': return (
+        <div className={`flex flex-col h-[calc(100vh-64px)] pb-16 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+           {/* Chat Header */}
+           <div className={`p-4 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} flex items-center gap-3 sticky top-0 z-10`}>
+              <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center">
+                 <MessageCircle className="text-sky-600" size={20} />
+              </div>
+              <div>
+                 <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Live Chat Admin</h3>
+                 <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Biasanya membalas dalam 5 menit</p>
+              </div>
+           </div>
+
+           {/* Messages Area */}
+           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {!user ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                  <User size={48} className="mb-2 opacity-50" />
+                  <p>Silakan login untuk memulai chat.</p>
+                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-bold">Login</button>
+                </div>
+              ) : (
+                <ChatComponent user={user} isDarkMode={isDarkMode} />
+              )}
+           </div>
+        </div>
+      );
+      
+      // --- HALAMAN MENU PROFIL (MOBILE) ---
+      case 'account-menu': return (
+        <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+          {/* Header Profil */}
+          <div className={`p-6 mb-4 ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white border-b border-gray-100'}`}>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-gray-200 overflow-hidden border-2 border-sky-500 p-0.5">
+                <img src={user?.photoURL || 'https://via.placeholder.com/150'} alt="Profile" className="w-full h-full object-cover rounded-full" />
+              </div>
+              <div>
+                <h2 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{user?.displayName || 'Pengguna'}</h2>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user?.email}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full">Member</span>
+                  {user?.role === 'driver' && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">Driver</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu List */}
+          <div className={`mx-4 rounded-2xl overflow-hidden shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+            {[
+              { label: 'Profil Saya', icon: <User size={20} />, action: () => setCurrentView('profile') },
+              { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => setCurrentView('history') },
+              { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => setCurrentView('address') },
+              { label: 'Dashboard Seller', icon: <Store size={20} />, action: () => setCurrentView('dashboard-seller') },
+              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => setCurrentView('admin-dashboard'), hidden: user?.role !== 'admin' },
+              { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => setCurrentView('help') },
+            ].map((item, idx) => (
+              !item.hidden && (
+                <button 
+                  key={idx} 
+                  onClick={item.action}
+                  className={`w-full flex items-center justify-between p-4 border-b last:border-0 transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-gray-200' : 'border-gray-50 hover:bg-gray-50 text-gray-700'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{item.icon}</div>
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-400" />
+                </button>
+              )
+            ))}
+          </div>
+
+          {/* Logout Button */}
+          <div className="mx-4 mt-6">
+            <button onClick={() => signOut(auth)} className="w-full py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
+              <LogOut size={18} /> Keluar Akun
+            </button>
+          </div>
+        </div>
+      );
+
       default: return (
         <>
       {/* 1. Hero Section (Coverflow Effect) */}
       <div 
-        className="relative w-full overflow-hidden bg-cover bg-center pt-8 pb-24"
+        className="relative w-full overflow-hidden bg-cover bg-center pt-2 pb-4 md:pt-8 md:pb-24"
         style={{ backgroundImage: homeBgStatic ? `url(${homeBgStatic})` : undefined }}
       >
         {/* Overlay Gelap biar konten tetap terbaca di atas background */}
@@ -576,10 +661,10 @@ const Home = () => {
               slideShadows: false,
             }}
             pagination={{ clickable: true, dynamicBullets: true }}
-            className="w-full py-8"
+          className="w-full py-1 md:py-8"
           >
             {banners.map((banner) => (
-              <SwiperSlide key={banner.id} className="!w-[95%] md:!w-[700px] lg:!w-[900px] aspect-[16/9] md:aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
+            <SwiperSlide key={banner.id} className="!w-[75%] md:!w-[700px] lg:!w-[900px] aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
                 {banner.link ? (
                   banner.link.startsWith('http') ? (
                     <a 
@@ -623,7 +708,7 @@ const Home = () => {
           <svg 
             viewBox="0 0 1200 120" 
             preserveAspectRatio="none" 
-            className="relative block w-full h-[70px] md:h-[100px]"
+            className="relative block w-full h-[20px] md:h-[100px]"
           >
             {/* LAYER 1 (HIJAU): Tetap di atas sebagai frame belakang */}
             <path 
@@ -640,8 +725,54 @@ const Home = () => {
         </div>
       </div>
 
-      {/* 2. Sticky Category Nav (Vocagame Style) */}
-      <div className="sticky top-[68px] z-40 py-2 mt-10 mb-6">
+      {/* 2. NiagaGo Banner (Moved Here - Slim Landscape) */}
+      <div ref={niagaGoRef} className="scroll-mt-40 px-4 mt-4 md:mt-8 max-w-7xl mx-auto">
+        <div className={`w-full rounded-xl md:rounded-2xl p-3 md:p-6 flex flex-row items-center justify-between gap-3 md:gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+          <div className="relative z-10 text-left flex-1">
+            <div className="flex items-center gap-2 mb-0 md:mb-2">
+              <Bike className={`w-5 h-5 md:w-6 md:h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-base md:text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+            </div>
+            <p className={`text-[10px] md:text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+              <span className="md:hidden">Ojek mahasiswa hemat & aman!</span>
+              <span className="hidden md:inline">Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.</span>
+            </p>
+          </div>
+          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-4 py-2 md:px-6 md:py-3 bg-white text-emerald-600 font-bold text-xs md:text-base rounded-lg md:rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+            Buka NiagaGo
+          </button>
+          {/* Decor */}
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2 md:translate-x-10 md:translate-y-10">
+            <Bike className="w-20 h-20 md:w-48 md:h-48" />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
+      
+      {/* MOBILE: Grid Menu (4 Columns) */}
+      <div className="md:hidden px-4 mt-6 mb-6">
+        <div className="grid grid-cols-4 gap-4">
+          {navCategories.map((cat, index) => (
+            <button
+              key={cat.name}
+              onClick={() => {
+                setActiveCategoryIndex(index);
+                scrollToSection(cat.name);
+              }}
+              className="flex flex-col items-center gap-2 group"
+            >
+              <div className={`p-3 rounded-2xl shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
+                {cat.icon}
+              </div>
+              <span className={`text-[10px] font-medium text-center leading-tight ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{cat.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* DESKTOP: Sticky Horizontal Nav */}
+      <div className="hidden md:block sticky top-[68px] z-40 py-2 mt-6 mb-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className={`p-2 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-sky-50 border-sky-100 shadow-sm'}`}>
             <div 
@@ -772,32 +903,10 @@ const Home = () => {
       {/* 3. Content Sections */}
       <div className="max-w-7xl mx-auto px-4 space-y-10 pb-10 mt-6 text-left">
         
-        {/* SECTION: NiagaGo (New Feature) */}
-        <div ref={niagaGoRef} className="scroll-mt-40">
-          <div className={`w-full rounded-2xl p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
-            <div className="relative z-10 text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <Bike size={24} className={isDarkMode ? 'text-emerald-400' : 'text-white'} />
-                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
-              </div>
-              <p className={`text-sm max-w-md ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
-                Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
-              </p>
-            </div>
-            <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
-              Buka NiagaGo
-            </button>
-            {/* Decor */}
-            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-4 translate-y-4 md:translate-x-10 md:translate-y-10">
-              <Bike className="w-32 h-32 md:w-48 md:h-48" />
-            </div>
-          </div>
-        </div>
-
         {/* SECTION: Populer */}
         <div ref={populerRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.slice(0, 12).map((product) => (
@@ -817,7 +926,7 @@ const Home = () => {
         {/* SECTION: Isi Pulsa */}
         <div ref={pulsaRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Isi Pulsa & Paket Data</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Isi Pulsa & Paket Data</h2>
             <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -833,7 +942,7 @@ const Home = () => {
         {/* SECTION: Makan */}
         <div ref={makanRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Makan Hemat</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Makan Hemat</h2>
             <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -849,7 +958,7 @@ const Home = () => {
         {/* SECTION: Skin Care */}
         <div ref={skincareRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Skin Care Glowing</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Skin Care Glowing</h2>
             <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -865,7 +974,7 @@ const Home = () => {
         {/* SECTION: Fashion */}
         <div ref={fashionRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Fashion Terkini</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Fashion Terkini</h2>
             <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -881,7 +990,7 @@ const Home = () => {
         {/* SECTION: Jasa */}
         <div ref={jasaRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Jasa Mahasiswa</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Jasa Mahasiswa</h2>
             <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -897,7 +1006,7 @@ const Home = () => {
         {/* SECTION: Top Up Game */}
         <div ref={gameRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Top Up Game</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Top Up Game</h2>
             <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -955,7 +1064,7 @@ const Home = () => {
             </div>
 
             {/* Kolom 2: Layanan */}
-            <div>
+            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Layanan Kami</h4>
               <ul className="space-y-3 text-sm text-slate-200 font-medium">
                 <li><button onClick={() => { setCurrentView('digital-center'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Top Up Game</button></li>
@@ -966,7 +1075,7 @@ const Home = () => {
             </div>
 
             {/* Kolom 3: Informasi */}
-            <div>
+            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Informasi</h4>
               <ul className="space-y-3 text-sm text-slate-200 font-medium">
                 <li><button onClick={() => { setCurrentView('about'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Tentang Kami</button></li>
@@ -977,7 +1086,7 @@ const Home = () => {
             </div>
 
             {/* Kolom 4: Sosmed */}
-            <div>
+            <div className="pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Ikuti Kami</h4>
               <div className="flex gap-4">
                 <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-sky-600 hover:border-sky-600 transition-all shadow-lg">
@@ -1172,7 +1281,98 @@ const Home = () => {
 
       {/* Customer Service Chat Widget */}
       {ChatWidget && <ChatWidget user={user} customIcon={chatIcon} />}
+
+      {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
+      <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
+        <div className="flex justify-around items-center h-16">
+          <button onClick={() => setCurrentView('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <HomeIcon size={24} strokeWidth={currentView === 'home' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Home</span>
+          </button>
+          
+          <button onClick={() => setCurrentView('chat')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <MessageCircle size={24} />
+            <span className="text-[10px] font-medium">Chat</span>
+          </button>
+
+          <button onClick={() => setCurrentView('dashboard-seller')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'dashboard-seller' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <Store size={24} strokeWidth={currentView === 'dashboard-seller' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Seller</span>
+          </button>
+
+          <button onClick={() => setCurrentView('account-menu')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Profil</span>
+          </button>
+        </div>
+      </div>
     </div>
+  );
+};
+
+// --- INTERNAL CHAT COMPONENT ---
+const ChatComponent = ({ user, isDarkMode }) => {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const chatRef = ref(db, `chats/${user.uid}/messages`);
+    const unsubscribe = onValue(chatRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const msgs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setMessages(msgs.sort((a, b) => a.timestamp - b.timestamp));
+      }
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    const text = input;
+    setInput('');
+    await push(ref(db, `chats/${user.uid}/messages`), {
+      text,
+      sender: 'user',
+      timestamp: serverTimestamp()
+    });
+    await update(ref(db, `chats/${user.uid}`), {
+      userName: user.displayName,
+      hasUnreadAdmin: true,
+      lastMessageTime: serverTimestamp()
+    });
+  };
+
+  return (
+    <>
+      {messages.map(m => (
+         <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800 border') + ' rounded-tl-none'}`}>
+               {m.text}
+               <p className={`text-[10px] mt-1 text-right opacity-70`}>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+            </div>
+         </div>
+      ))}
+      <div ref={bottomRef} />
+      
+      <div className={`fixed bottom-[64px] left-0 right-0 p-3 border-t ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto">
+             <input 
+                value={input} 
+                onChange={e => setInput(e.target.value)} 
+                placeholder="Tulis pesan..." 
+                className={`flex-1 p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+             />
+             <button type="submit" className="p-3 bg-sky-600 text-white rounded-xl hover:bg-sky-700"><Send size={20}/></button>
+          </form>
+       </div>
+    </>
   );
 };
 
