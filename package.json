@@ -1,0 +1,46 @@
+{
+  "name": "sobat-niaga",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.6.7",
+    "canvas-confetti": "^1.9.4",
+    "chart.js": "^4.5.1",
+    "cloudinary-react": "^1.8.1",
+    "cropperjs": "^2.1.0",
+    "firebase": "^10.8.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.330.0",
+    "quill-image-resize-module-react": "^3.0.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-cropper": "^2.3.3",
+    "react-dom": "^18.2.0",
+    "react-easy-crop": "^5.5.6",
+    "react-leaflet": "^4.2.1",
+    "react-quill": "^2.0.0",
+    "react-router-dom": "^6.22.0",
+    "react-scripts": "5.0.1",
+    "sweetalert2": "^11.26.18",
+    "swiper": "^11.0.6",
+    "tailwindcss": "3.4.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

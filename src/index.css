@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* --- LIGHT MODE (Default) --- */
+  --bg-main: #f8fafc;       /* Gray-50 */
+  --text-main: #1f2937;     /* Gray-800 */
+  --text-muted: #64748b;    /* Gray-500 */
+  --card-bg: #ffffff;       /* Putih Bersih */
+  --border-color: #f1f5f9;  /* Gray-100 */
+  --nav-bg: #ffffff;
+  --input-bg: #ffffff;
+}
+
+[data-theme='dark'] {
+  /* --- DARK MODE (Navy Gelap) --- */
+  --bg-main: #0f172a;       /* Slate-900 (Navy Gelap) */
+  --text-main: #f1f5f9;     /* Slate-100 (Putih) */
+  --text-muted: #94a3b8;    /* Slate-400 */
+  --card-bg: #1e293b;       /* Slate-800 (Abu Gelap) */
+  --border-color: #334155;  /* Slate-700 */
+  --nav-bg: #1e293b;
+  --input-bg: #334155;
+  
+  /* Analisis Tampilan Khusus */
+  --home-card-bg: #1e1e1e;  /* Abu-abu gelap khusus Card Produk Home */
+}
+
+/* Global Styles Application */
+body {
+  background-color: #f8fafc; /* Fallback Color (Light Mode Default) */
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Utility Classes buat dipake di Component React */
+.theme-card {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+}
+
+.theme-text {
+  color: var(--text-main);
+}
+
+.theme-text-muted {
+  color: var(--text-muted);
+}
+
+.theme-nav {
+  background-color: var(--nav-bg);
+  border-color: var(--border-color);
+}
+
+/* Khusus Card Produk di Home (Biar gambar pop-up) */
+[data-theme='dark'] .product-card-home {
+  background-color: var(--home-card-bg) !important;
+  border-color: #333 !important;
+}
+
+/* Custom Font: Azonix */
+@font-face {
+  font-family: 'Azonix';
+  src: url('./assets/fonts/Azonix.otf');
+}
+
+.font-azonix {
+  font-family: 'Azonix', sans-serif;
+}
+
+/* React Quill Dark Mode Customization */
+.quill-dark .ql-toolbar {
+  background-color: #1e293b; /* slate-800 */
+  border-color: #334155 !important; /* slate-700 */
+}
+.quill-dark .ql-container {
+  background-color: #0f172a; /* slate-900 */
+  border-color: #334155 !important; /* slate-700 */
+  color: #f1f5f9; /* slate-100 */
+}
+.quill-dark .ql-editor {
+  color: #f1f5f9; /* slate-100 */
+}
+.quill-dark .ql-toolbar .ql-stroke {
+  stroke: #94a3b8; /* slate-400 */
+}
+.quill-dark .ql-toolbar .ql-fill {
+  fill: #94a3b8; /* slate-400 */
+}
+.quill-dark .ql-toolbar .ql-picker-label {
+  color: #94a3b8; /* slate-400 */
+}
+.quill-dark .ql-toolbar button:hover .ql-stroke,
+.quill-dark .ql-toolbar button:focus .ql-stroke,
+.quill-dark .ql-toolbar button.ql-active .ql-stroke {
+  stroke: #38bdf8; /* sky-400 */
+}
+.quill-dark .ql-toolbar .ql-picker-item.ql-selected {
+  color: #38bdf8; /* sky-400 */
+}
+.quill-dark .ql-picker-options {
+  background-color: #1e293b; /* slate-800 */
+  border-color: #334155 !important; /* slate-700 */
+}
+
+/* Quill Alignment & Sizing Classes for Frontend Rendering */
+.ql-align-center { text-align: center; }
+.ql-align-right { text-align: right; }
+.ql-align-justify { text-align: justify; }
+
+.ql-size-small { font-size: 0.75em; }
+.ql-size-large { font-size: 1.5em; }
+.ql-size-huge { font-size: 2.5em; }
+
+/* React Quill Layout Fixes for Scrollable Editor */
+.quill {
+  overflow: hidden; /* Prevent outer scroll */
+}
+.ql-container {
+  flex: 1;
+  overflow-y: auto; /* Allow scrolling inside container */
+  height: auto !important; /* Override default height */
+}
