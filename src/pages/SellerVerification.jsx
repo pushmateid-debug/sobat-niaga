@@ -67,30 +67,30 @@ const SellerVerification = ({ user, onVerificationSuccess }) => {
   };
 
   return (
-    <div className={`rounded-2xl shadow-sm border p-6 space-y-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-      <h2 className={`text-xl font-bold mb-4 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Verifikasi Data Seller</h2>
-      <form onSubmit={handleVerificationSubmit} className="space-y-4">
+    <div className={`rounded-2xl shadow-sm border p-4 space-y-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+      <h2 className={`text-lg font-bold mb-2 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Verifikasi Data Seller</h2>
+      <form onSubmit={handleVerificationSubmit} className="space-y-3">
         <div>
-          <label className={`block text-sm font-bold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Nama Toko</label>
-          <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nama brand kamu" required />
+          <label className={`block text-xs font-bold mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Nama Toko</label>
+          <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nama brand kamu" required />
         </div>
         <div>
-          <label className={`block text-sm font-bold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Alamat Toko</label>
-          <textarea value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Alamat lengkap toko" rows="3" required></textarea>
+          <label className={`block text-xs font-bold mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Alamat Toko</label>
+          <textarea value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Alamat lengkap toko" rows="2" required></textarea>
         </div>
         <div>
-          <label className={`block text-sm font-bold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Nomor Rekening</label>
+          <label className={`block text-xs font-bold mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Nomor Rekening</label>
           <div className="flex gap-4">
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className={`flex-1 px-4 py-3 rounded-xl border outline-none transition-all appearance-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} required>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all appearance-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} required>
               <option value="">Pilih Bank</option>
               <option value="BCA">BCA</option>
               <option value="Mandiri">Mandiri</option>
               <option value="BRI">BRI</option>
             </select>
-            <input type="number" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={`flex-1 px-4 py-3 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nomor rekening" required />
+            <input type="number" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nomor rekening" required />
           </div>
         </div>
-        <button type="submit" disabled={isLoading} className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>
+        <button type="submit" disabled={isLoading} className={`w-full py-2.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>
           {isLoading ? <><Loader2 size={20} className="animate-spin" /> Mendaftar...</> : 'Daftar Jadi Seller Sekarang'}
         </button>
       </form>

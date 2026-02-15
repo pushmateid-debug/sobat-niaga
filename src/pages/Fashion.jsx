@@ -59,7 +59,7 @@ const Fashion = ({ onBack, products, onProductClick }) => {
             modules={[Autoplay, Pagination]}
             spaceBetween={16}
             slidesPerView={1}
-            loop={true}
+            loop={banners.length > 1}
             speed={1000}
             autoplay={{ delay: 3500, disableOnInteraction: false }}
             grabCursor={true}

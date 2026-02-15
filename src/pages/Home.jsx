@@ -26,7 +26,6 @@ import DigitalCenter from './DigitalCenter'; // Import halaman baru
 import NiagaGo from './NiagaGo'; // Import NiagaGo
 import SearchResults from './SearchResults'; // Import halaman hasil pencarian
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
-import { ChatWidget } from '../components/ChatWidget'; // Import Chat Widget
 import { auth, db } from '../config/firebase';
 import { ref, onValue, push, update, remove, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -65,6 +64,7 @@ const Home = () => {
   const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 });
   const [isExpired, setIsExpired] = useState(true); // Default true biar gak flicker
   const [pagesContent, setPagesContent] = useState({}); // Konten Halaman Statis
+  const [chatTab, setChatTab] = useState('admin'); // 'admin' | 'seller'
 
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
@@ -546,32 +546,57 @@ const Home = () => {
       case 'terms': return renderStaticPage('terms', 'Syarat & Ketentuan');
       case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
       case 'help': return renderStaticPage('help', 'Pusat Bantuan');
-      case 'niagago': return <NiagaGo user={user} onBack={() => setCurrentView('home')} />;
+      case 'niagago': return <NiagaGo user={user} onBack={() => setCurrentView('home')} onOpenProfile={() => setCurrentView('profile')} />;
       
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat': return (
-        <div className={`flex flex-col h-[calc(100vh-64px)] pb-16 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-           {/* Chat Header */}
-           <div className={`p-4 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} flex items-center gap-3 sticky top-0 z-10`}>
-              <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center">
-                 <MessageCircle className="text-sky-600" size={20} />
+        <div className={`flex flex-col h-[calc(100vh-64px)] ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+           {/* Chat Header with Tabs */}
+           <div className={`flex-none bg-white dark:bg-slate-800 border-b dark:border-slate-700 sticky top-0 z-20`}>
+              <div className="p-3 flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center">
+                    <MessageCircle className="text-sky-600" size={18} />
+                 </div>
+                 <div>
+                    <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Pusat Pesan</h3>
+                    <p className={`text-[10px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Bantuan & Diskusi</p>
+                 </div>
               </div>
-              <div>
-                 <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Live Chat Admin</h3>
-                 <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Biasanya membalas dalam 5 menit</p>
+              
+              <div className="flex border-t dark:border-slate-700">
+                 <button 
+                    onClick={() => setChatTab('admin')}
+                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'admin' ? 'border-sky-600 text-sky-600 bg-sky-50/50 dark:bg-sky-900/20' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                 >
+                    Chat Admin
+                 </button>
+                 <button 
+                    onClick={() => setChatTab('seller')}
+                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'seller' ? 'border-sky-600 text-sky-600 bg-sky-50/50 dark:bg-sky-900/20' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                 >
+                    Chat Seller
+                 </button>
               </div>
            </div>
 
            {/* Messages Area */}
-           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+           <div className="flex-1 overflow-y-auto relative">
               {!user ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                  <User size={48} className="mb-2 opacity-50" />
-                  <p>Silakan login untuk memulai chat.</p>
-                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-bold">Login</button>
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
+                  <User size={40} className="mb-2 opacity-50" />
+                  <p className="text-sm">Silakan login untuk memulai chat.</p>
+                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold">Login</button>
                 </div>
               ) : (
-                <ChatComponent user={user} isDarkMode={isDarkMode} />
+                chatTab === 'admin' ? (
+                    <ChatComponent user={user} isDarkMode={isDarkMode} />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center p-6">
+                        <Store size={40} className="mb-3 opacity-50" />
+                        <p className="text-sm font-bold">Fitur Chat Seller</p>
+                        <p className="text-xs mt-1 max-w-xs">Tanya produk langsung ke penjual? Fitur ini segera hadir! Sementara gunakan WhatsApp di halaman produk.</p>
+                    </div>
+                )
               )}
            </div>
         </div>
@@ -648,7 +673,7 @@ const Home = () => {
             modules={[Autoplay, Pagination, EffectCoverflow]}
             grabCursor={true}
             centeredSlides={true}
-            loop={banners.length > 1}
+            loop={banners.length > 2}
             slidesPerView={'auto'}
             speed={800}
             autoplay={{ delay: 3000, disableOnInteraction: false }}
@@ -725,31 +750,29 @@ const Home = () => {
         </div>
       </div>
 
-      {/* 2. NiagaGo Banner (Moved Here - Slim Landscape) */}
-      <div ref={niagaGoRef} className="scroll-mt-40 px-4 mt-4 md:mt-8 max-w-7xl mx-auto">
-        <div className={`w-full rounded-xl md:rounded-2xl p-3 md:p-6 flex flex-row items-center justify-between gap-3 md:gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+      {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
+      
+      {/* MOBILE: NiagaGo Banner (Tetap di Atas Kategori) */}
+      <div className="md:hidden px-4 mt-8 mb-6 max-w-7xl mx-auto">
+        <div className={`w-full rounded-xl p-3 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
           <div className="relative z-10 text-left flex-1">
-            <div className="flex items-center gap-2 mb-0 md:mb-2">
-              <Bike className={`w-5 h-5 md:w-6 md:h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
-              <h2 className={`text-base md:text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+            <div className="flex items-center gap-2 mb-0">
+              <Bike className={`w-5 h-5 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-base font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
             </div>
-            <p className={`text-[10px] md:text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
-              <span className="md:hidden">Ojek mahasiswa hemat & aman!</span>
-              <span className="hidden md:inline">Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.</span>
+            <p className={`text-[10px] max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+              Ojek mahasiswa hemat & aman!
             </p>
           </div>
-          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-4 py-2 md:px-6 md:py-3 bg-white text-emerald-600 font-bold text-xs md:text-base rounded-lg md:rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-4 py-2 bg-white text-emerald-600 font-bold text-xs rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
             Buka NiagaGo
           </button>
-          {/* Decor */}
-          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2 md:translate-x-10 md:translate-y-10">
-            <Bike className="w-20 h-20 md:w-48 md:h-48" />
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
+            <Bike className="w-20 h-20" />
           </div>
         </div>
       </div>
 
-      {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
-      
       {/* MOBILE: Grid Menu (4 Columns) */}
       <div className="md:hidden px-4 mt-6 mb-6">
         <div className="grid grid-cols-4 gap-4">
@@ -813,6 +836,28 @@ const Home = () => {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* DESKTOP: NiagaGo Banner (Pindah ke Bawah Kategori & Full Width) */}
+      <div ref={niagaGoRef} className="hidden md:block scroll-mt-40 px-4 mt-8 max-w-7xl mx-auto">
+        <div className={`w-full rounded-2xl p-6 flex flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+          <div className="relative z-10 text-left flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Bike className={`w-6 h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+            </div>
+            <p className={`text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+              Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
+            </p>
+          </div>
+          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold text-base rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+            Buka NiagaGo
+          </button>
+          {/* Decor */}
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
+            <Bike className="w-48 h-48" />
           </div>
         </div>
       </div>
@@ -1280,7 +1325,7 @@ const Home = () => {
       )}
 
       {/* Customer Service Chat Widget */}
-      {ChatWidget && <ChatWidget user={user} customIcon={chatIcon} />}
+      {currentView !== 'chat' && <DraggableChatWidget onClick={() => setCurrentView('chat')} icon={chatIcon} />}
 
       {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
       <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
@@ -1306,6 +1351,47 @@ const Home = () => {
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+// --- DRAGGABLE CHAT WIDGET ---
+const DraggableChatWidget = ({ onClick, icon }) => {
+  const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 160 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef(null);
+  const offset = useRef({ x: 0, y: 0 });
+
+  const handleStart = (clientX, clientY) => {
+    setIsDragging(false);
+    if (dragRef.current) {
+        const rect = dragRef.current.getBoundingClientRect();
+        offset.current = { x: clientX - rect.left, y: clientY - rect.top };
+    }
+  };
+
+  const handleMove = (clientX, clientY) => {
+    setIsDragging(true);
+    setPosition({
+        x: clientX - offset.current.x,
+        y: clientY - offset.current.y
+    });
+  };
+
+  return (
+    <div
+        ref={dragRef}
+        style={{ left: position.x, top: position.y, touchAction: 'none' }}
+        className="fixed z-[999] cursor-move"
+        onTouchStart={(e) => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
+        onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
+        onMouseMove={(e) => { if(e.buttons === 1) handleMove(e.clientX, e.clientY); }}
+        onClick={() => { if (!isDragging) onClick(); }}
+    >
+        <div className="w-14 h-14 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg hover:bg-sky-700 transition-colors border-2 border-white overflow-hidden">
+            {icon ? <img src={icon} className="w-full h-full object-cover" alt="Chat" /> : <MessageCircle size={28} />}
+        </div>
     </div>
   );
 };
@@ -1351,25 +1437,27 @@ const ChatComponent = ({ user, isDarkMode }) => {
 
   return (
     <>
-      {messages.map(m => (
-         <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800 border') + ' rounded-tl-none'}`}>
-               {m.text}
-               <p className={`text-[10px] mt-1 text-right opacity-70`}>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-            </div>
-         </div>
-      ))}
-      <div ref={bottomRef} />
+      <div className="p-3 space-y-3 pb-20">
+          {messages.map(m => (
+             <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800 border') + ' rounded-tl-none'}`}>
+                   {m.text}
+                   <p className={`text-[9px] mt-1 text-right opacity-70`}>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                </div>
+             </div>
+          ))}
+          <div ref={bottomRef} />
+      </div>
       
-      <div className={`fixed bottom-[64px] left-0 right-0 p-3 border-t ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto">
+      <div className={`fixed bottom-[64px] left-0 right-0 p-2 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto items-center">
              <input 
                 value={input} 
                 onChange={e => setInput(e.target.value)} 
                 placeholder="Tulis pesan..." 
-                className={`flex-1 p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+                className={`flex-1 py-2 px-3 rounded-full border text-xs outline-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
              />
-             <button type="submit" className="p-3 bg-sky-600 text-white rounded-xl hover:bg-sky-700"><Send size={20}/></button>
+             <button type="submit" className="p-2 bg-sky-600 text-white rounded-full hover:bg-sky-700 shadow-sm flex-shrink-0"><Send size={16}/></button>
           </form>
        </div>
     </>

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft } from 'lucide-react';
+import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore, storage } from '../config/firebase';
 import { ref, onValue, update } from 'firebase/database';
-import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+
+// --- KONSTANTA ZONA (RADIUS) ---
+const ZONE_RADIUS = 5000; // 5000 meter (5 KM). Ubah ke 50 jika ingin sangat dekat.
 
 // --- KONFIGURASI PETA & ICON ---
 
@@ -133,11 +136,12 @@ const MapSearchControl = () => {
     if (!query) return;
     setIsSearching(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=id`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=id&addressdetails=1`);
+      if (!response.ok) throw new Error("Gagal mengambil data lokasi");
       const data = await response.json();
       setResults(data);
     } catch (err) {
-      console.error(err);
+      console.debug("Search Error (Nominatim):", err.message);
     } finally {
       setIsSearching(false);
     }
@@ -220,34 +224,27 @@ const AutoLocate = () => {
 };
 
 // Helper: Nearby Drivers Layer (Live Standby Drivers)
-const NearbyDrivers = () => {
-  const [drivers, setDrivers] = useState([]);
+const NearbyDrivers = ({ driversLocations, center }) => {
+  if (!driversLocations || !center) return null;
 
-  useEffect(() => {
-    const driversRef = ref(realDb, 'drivers_locations');
-    const unsubscribe = onValue(driversRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const driverList = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        }));
-        // Filter drivers updated recently (e.g., last 15 mins) to ensure they are active
-        const activeDrivers = driverList.filter(d => {
-            const lastUpdate = d.updatedAt || 0;
-            return (Date.now() - lastUpdate) < 15 * 60 * 1000; 
-        });
-        setDrivers(activeDrivers);
-      } else {
-        setDrivers([]);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+  const activeDrivers = Object.keys(driversLocations).map(key => ({
+    id: key,
+    ...driversLocations[key]
+  })).filter(d => {
+      // 1. Cek Driver Aktif (Update < 15 menit lalu)
+      const lastUpdate = d.updatedAt || 0;
+      const isActive = (Date.now() - lastUpdate) < 15 * 60 * 1000; 
+      if (!isActive) return false;
+
+      // 2. Cek Jarak (Zona)
+      // Pastikan icon motor hanya muncul jika dalam radius ZONE_RADIUS
+      const dist = L.latLng(d.lat, d.lng).distanceTo(L.latLng(center[0], center[1]));
+      return dist <= ZONE_RADIUS;
+  });
 
   return (
     <>
-      {drivers.map(driver => (
+      {activeDrivers.map(driver => (
         <Marker 
             key={driver.id} 
             position={[driver.lat, driver.lng]} 
@@ -261,16 +258,21 @@ const NearbyDrivers = () => {
 };
 
 // --- KOMPONEN LIVE TRACKING MAP ---
-const TrackingMap = ({ driverId, pickupCoords, status }) => {
+const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
   const [driverPos, setDriverPos] = useState(null);
   const [userPos, setUserPos] = useState(null);
+  const [showNearby, setShowNearby] = useState(false);
 
   useEffect(() => {
     // 1. Ambil Lokasi User (Sekali aja buat patokan)
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
-        (err) => console.error("Gagal ambil lokasi user", err)
+        (err) => {
+            // Suppress common errors (1: Denied, 2: Unavailable, 3: Timeout)
+            if (err.code !== 1 && err.code !== 2 && err.code !== 3) console.debug("Gagal ambil lokasi user:", err.message);
+        },
+        { enableHighAccuracy: false, timeout: 10000 }
       );
     }
 
@@ -299,15 +301,15 @@ const TrackingMap = ({ driverId, pickupCoords, status }) => {
         {(pickupCoords || userPos) && <Marker position={pickupCoords || userPos}><Popup>Titik Jemput</Popup></Marker>}
 
         {/* Radar & Nearby Drivers for Pending Status */}
-        {status === 'pending' && (pickupCoords || userPos) && (
+        {((status === 'pending' && (pickupCoords || userPos)) || showNearby) && (
             <>
-                <Marker position={pickupCoords || userPos} icon={radarIcon} />
-                <Circle 
-                    center={pickupCoords || userPos} 
-                    radius={2000} 
-                    pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.1, weight: 1 }} 
-                />
-                <NearbyDrivers />
+                {status === 'pending' && (
+                  <>
+                    <Marker position={pickupCoords || userPos} icon={radarIcon} />
+                    <Circle center={pickupCoords || userPos} radius={2000} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.1, weight: 1 }} />
+                  </>
+                )}
+                <NearbyDrivers driversLocations={driversLocations} center={pickupCoords || userPos} />
             </>
         )}
 
@@ -316,11 +318,81 @@ const TrackingMap = ({ driverId, pickupCoords, status }) => {
         
         <RecenterMap center={driverPos || (status === 'pending' ? (pickupCoords || userPos) : null)} />
       </MapContainer>
+
+      {/* Tombol Lihat Driver Sekitar (Fitur Baru) */}
+      <button 
+        onClick={() => setShowNearby(!showNearby)}
+        className="absolute top-4 right-4 z-[400] bg-white/90 backdrop-blur-sm p-2 rounded-lg shadow-md text-xs font-bold text-gray-700 flex items-center gap-1 hover:bg-white border border-gray-200"
+      >
+        <Eye size={14} className={showNearby ? "text-sky-500" : "text-gray-500"} />
+        {showNearby ? 'Sembunyikan Driver' : 'Lihat Driver Sekitar'}
+      </button>
     </div>
   );
 };
 
-const NiagaGo = () => {
+// --- KOMPONEN KARTU PENAWARAN DRIVER (InDrive Style) ---
+const OfferCard = ({ offer, onAccept, onTimeout }) => {
+  const [progress, setProgress] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const { theme } = useTheme();
+  const isDarkMode = theme === 'dark';
+
+  useEffect(() => {
+    const duration = 15000; // 15 Detik
+    const interval = 100; // Update tiap 100ms biar smooth
+    const steps = duration / interval;
+    let currentStep = 0;
+
+    const timer = setInterval(() => {
+      currentStep++;
+      const pct = (currentStep / steps) * 100;
+      setProgress(pct);
+      if (pct >= 100) {
+        clearInterval(timer);
+        setVisible(false); // Hilangkan kartu jika waktu habis
+        if (onTimeout) onTimeout();
+      }
+    }, interval);
+
+    return () => clearInterval(timer);
+  }, [onTimeout]);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`p-3 rounded-xl border shadow-sm mb-2 relative overflow-hidden animate-in slide-in-from-bottom-2 ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-100'}`}>
+      <div className="flex items-center gap-3 relative z-10">
+        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
+           <img src={offer.driverPhoto || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="Driver" />
+        </div>
+        <div className="flex-1">
+           <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{offer.driverName}</h4>
+           <div className="flex items-center gap-1 text-xs text-yellow-500">
+              <Star size={10} fill="currentColor" /> 5.0 <span className="text-gray-400">• {offer.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</span>
+           </div>
+        </div>
+        <div className="text-right">
+           <p className="font-bold text-sky-600">Rp {offer.price.toLocaleString()}</p>
+        </div>
+      </div>
+      
+      <button 
+        onClick={onAccept}
+        className="mt-3 w-full relative h-9 bg-gray-100 dark:bg-slate-800 rounded-lg overflow-hidden group"
+      >
+        {/* Progress Bar Animation */}
+        <div 
+            className="absolute top-0 left-0 h-full bg-sky-500/20 dark:bg-sky-500/40 transition-all ease-linear"
+            style={{ width: `${progress}%`, transitionDuration: '100ms' }}
+        ></div>
+        <span className="relative z-10 text-xs font-bold text-sky-600 dark:text-sky-400 group-hover:text-sky-700">Terima Tawaran</span>
+      </button>
+    </div>
+  );
+};
+
+const NiagaGo = ({ onOpenProfile }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const navigate = useNavigate();
@@ -348,6 +420,7 @@ const NiagaGo = () => {
 
   // State Data
   const [orders, setOrders] = useState([]);
+  const [driversLocations, setDriversLocations] = useState({});
 
   // State Withdrawal
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -422,9 +495,22 @@ const NiagaGo = () => {
     return () => unsubscribeAuth();
   }, []);
 
+  // --- FETCH DRIVERS LOCATIONS (GLOBAL) ---
+  useEffect(() => {
+    const driversRef = ref(realDb, 'drivers_locations');
+    const unsubscribe = onValue(driversRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setDriversLocations(snapshot.val());
+      } else {
+        setDriversLocations({});
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
-    if (!dbFirestore || !userProfile) {
+    if (!dbFirestore || !userProfile?.uid) {
       return;
     }
 
@@ -470,7 +556,7 @@ const NiagaGo = () => {
     });
 
     return () => unsubscribe();
-  }, [isDriverMode, userProfile]);
+  }, [isDriverMode, userProfile?.uid]);
 
   // --- DRIVER GPS BROADCASTER (Kirim Lokasi ke DB) ---
   useEffect(() => {
@@ -495,8 +581,10 @@ const NiagaGo = () => {
               updatedAt: Date.now()
             });
           }, 
-          (err) => console.error("GPS Error:", err), 
-          { enableHighAccuracy: true }
+          (err) => { 
+            if (err.code !== 1 && err.code !== 2 && err.code !== 3) console.debug("GPS Error:", err.message); 
+          }, 
+          { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
         );
       }
     }
@@ -659,7 +747,9 @@ const NiagaGo = () => {
         confirmButtonText: 'Isi Profil Sekarang',
         cancelButtonText: 'Nanti'
       }).then((res) => {
-        if (res.isConfirmed) navigate('/profile');
+        if (res.isConfirmed) {
+            if (onOpenProfile) onOpenProfile();
+        }
       });
       return;
     }
@@ -706,14 +796,14 @@ const NiagaGo = () => {
     }
   };
 
-  // 2. Driver Mengambil Order
+  // 2. Driver Mengirim Penawaran (Offer)
   const handleTakeOrder = async (order) => {
     const result = await Swal.fire({
-      title: 'Ambil Orderan?',
-      text: `Antar dari ${order.pickup} ke ${order.destination} seharga Rp ${order.price.toLocaleString()}`,
+      title: 'Tawarkan Jasa?',
+      text: `Kirim penawaran ke user untuk rute ini? Harga: Rp ${order.price.toLocaleString()}`,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Gas, Ambil!',
+      confirmButtonText: 'Gas, Tawarkan!',
       cancelButtonText: 'Batal'
     });
 
@@ -724,20 +814,45 @@ const NiagaGo = () => {
           return;
         }
 
+        // Tambahkan Driver ke List Penawaran (Offers)
+        const offerData = {
+            driverId: userProfile.uid,
+            driverName: userProfile.displayName || 'Driver NiagaGo',
+            driverPhone: userProfile.phoneNumber,
+            driverPhoto: userProfile.photoURL || null,
+            vehicleType: 'motor', // Bisa diambil dari profil driver nanti
+            price: order.price,
+            createdAt: Date.now()
+        };
+
         const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
         await updateDoc(orderRef, {
-          status: 'accepted',
-          driverId: userProfile.uid,
-          driverName: userProfile.displayName || 'Driver NiagaGo',
-          driverPhone: userProfile.phoneNumber
+          offers: arrayUnion(offerData)
         });
 
-        Swal.fire('Berhasil', 'Segera hubungi penumpang setelah pembayaran dikonfirmasi.', 'success');
+        Swal.fire('Terkirim!', 'Penawaran dikirim ke user. Tunggu konfirmasi ya!', 'success');
 
       } catch (error) {
-        Swal.fire('Gagal', 'Order sudah diambil driver lain atau terjadi kesalahan.', 'error');
+        Swal.fire('Gagal', 'Terjadi kesalahan saat mengirim penawaran.', 'error');
       }
     }
+  };
+
+  // 2.5 User Menerima Tawaran Driver
+  const handleAcceptOffer = async (order, offer) => {
+      try {
+        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
+            status: 'accepted',
+            driverId: offer.driverId,
+            driverName: offer.driverName,
+            driverPhone: offer.driverPhone,
+            // offers: [] // Opsional: Bersihkan offers lain
+        });
+        Swal.fire('Driver Dipilih!', `${offer.driverName} akan segera menjemputmu.`, 'success');
+      } catch (error) {
+        console.error(error);
+        Swal.fire('Error', 'Gagal memilih driver.', 'error');
+      }
   };
 
   // Handle Open Payment Modal
@@ -1287,10 +1402,36 @@ const NiagaGo = () => {
                 {/* 0. STATUS PENDING: User Cari Driver */}
                 {!isDriverMode && order.status === 'pending' && (
                     <div className="flex flex-col gap-3 w-full mb-3">
-                        <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" />
+                        <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" driversLocations={driversLocations} />
                         <p className="text-xs text-center text-gray-500 animate-pulse">Sedang mencari driver di sekitarmu...</p>
                     </div>
                 )}
+
+                {/* 0.5 STATUS PENDING: List Penawaran Driver (Fitur Killer) */}
+                {(() => {
+                  const filteredOffers = !isDriverMode && order.status === 'pending' && order.offers 
+                    ? order.offers.filter(offer => {
+                        const driverLoc = driversLocations[offer.driverId];
+                        if (!driverLoc) return false;
+                        const pickupLat = order.pickupCoords?.lat;
+                        const pickupLng = order.pickupCoords?.lng;
+                        if (!pickupLat || !pickupLng) return true;
+                        const dist = L.latLng(driverLoc.lat, driverLoc.lng).distanceTo(L.latLng(pickupLat, pickupLng));
+                        return dist <= ZONE_RADIUS;
+                      })
+                    : [];
+
+                  return filteredOffers.length > 0 && (
+                    <div className="mt-3 border-t pt-3 border-dashed border-gray-200 dark:border-slate-700">
+                      <p className="text-xs font-bold mb-2 text-sky-600 animate-pulse">⚡ {filteredOffers.length} Driver Menawarkan Jasa:</p>
+                      <div className="space-y-2">
+                        {filteredOffers.slice(0, 5).map((offer, idx) => (
+                          <OfferCard key={idx} offer={offer} onAccept={() => handleAcceptOffer(order, offer)} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* User Cancel Button */}
                 {!isDriverMode && ['pending', 'accepted'].includes(order.status) && (
@@ -1359,7 +1500,7 @@ const NiagaGo = () => {
                   {order.status === 'verified' && (
                     <div className="flex flex-col gap-3 w-full">
                       {/* Tampilkan Peta Live Tracking (User & Driver) */}
-                      <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} />
+                      <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
                       
                       <div className="flex gap-2 justify-end">
                       <a 
@@ -1386,7 +1527,7 @@ const NiagaGo = () => {
                   {order.status === 'ongoing' && (
                     <div className="flex flex-col gap-3 w-full">
                       {/* Tampilkan Peta Live Tracking (User & Driver) */}
-                      <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} />
+                      <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
                       
                       <div className="flex justify-end">
                         {isDriverMode ? (

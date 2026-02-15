@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2 } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle } from 'lucide-react';
 import { db } from '../config/firebase';
 import { useTheme } from '../context/ThemeContext';
 import { ref, get, set, push, remove, onValue, query, orderByChild, equalTo, update } from 'firebase/database';
@@ -94,6 +94,9 @@ const DashboardSeller = ({ user, onBack }) => {
   const [qrisPreview, setQrisPreview] = useState(null);
   const [editingProductId, setEditingProductId] = useState(null); // State Mode Edit
   const [selectedWithdrawalProof, setSelectedWithdrawalProof] = useState(null); // State Modal Bukti Transfer
+  const [mobileView, setMobileView] = useState('menu'); // 'menu', 'add_product', 'product_list', 'finance', 'stats', 'orders'
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isChartExpanded, setIsChartExpanded] = useState(false); // Default collapsed di HP
 
   // Load data seller saat komponen di-mount
   useEffect(() => {
@@ -866,22 +869,39 @@ const DashboardSeller = ({ user, onBack }) => {
     }
   };
 
+  // Handle Back Button di Mobile
+  const handleMobileBack = () => {
+    if (mobileView !== 'menu') {
+      setMobileView('menu');
+    } else {
+      onBack();
+    }
+  };
+
   return (
     <div className={`min-h-screen pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
       {/* Header Biru Muda - Konsisten */}
       <div className={`shadow-sm sticky top-0 z-50 border-b transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-100 border-sky-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-          <button onClick={onBack} className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-sky-600'}`}>
-            <ArrowLeft size={24} />
-          </button>
-          <div className="flex items-center gap-2 flex-1">
-            <h1 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Dasbor Seller - {sellerInfo?.storeName || 'Toko Anda'}</h1>
-            {sellerInfo?.isTrustedSeller && <CheckCircle size={20} className="text-blue-500 fill-blue-100" />}
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <button onClick={window.innerWidth < 768 ? handleMobileBack : onBack} className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-sky-600'}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <div className="flex items-center gap-2 flex-1">
+              <h1 className={`text-lg md:text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                {mobileView === 'menu' ? (sellerInfo?.storeName || 'Toko Anda') : 
+                 mobileView === 'add_product' ? 'Tambah Produk' :
+                 mobileView === 'product_list' ? 'Produk Saya' :
+                 mobileView === 'finance' ? 'Keuangan' :
+                 mobileView === 'stats' ? 'Statistik' : 'Pesanan'}
+              </h1>
+              {sellerInfo?.isTrustedSeller && <CheckCircle size={20} className="text-blue-500 fill-blue-100" />}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 lg:p-6 space-y-6">
+      <div className="max-w-7xl mx-auto p-4 lg:p-6 space-y-4 md:space-y-6">
         {/* Kondisi: Belum Verifikasi */}
         {!isVerifiedSeller && (
           <SellerVerification user={user} onVerificationSuccess={handleVerificationSuccess} />
@@ -960,20 +980,83 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
             )}
 
+            {/* --- MOBILE DASHBOARD MENU (Shopee Style) --- */}
+            <div className={`md:hidden ${mobileView === 'menu' ? 'block' : 'hidden'}`}>
+                {/* 1. Header Card */}
+                <div className="bg-gradient-to-r from-sky-600 to-blue-600 rounded-xl p-4 text-white mb-4 shadow-lg relative overflow-hidden">
+                    <div className="flex items-center gap-3 relative z-10">
+                        <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
+                            <Store size={24} className="text-white" />
+                        </div>
+                        <div>
+                            <h2 className="font-bold text-lg leading-tight">{sellerInfo?.storeName}</h2>
+                            <p className="text-xs text-sky-100 flex items-center gap-1"><Users size={10}/> {points} Pengikut</p>
+                        </div>
+                    </div>
+                    <div className="absolute right-0 top-0 bottom-0 w-24 bg-white/5 skew-x-12 transform translate-x-8"></div>
+                </div>
+
+                {/* 2. Order Status Row */}
+                <div className={`rounded-xl p-4 shadow-sm border mb-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="flex justify-between items-center mb-3">
+                        <h3 className={`text-xs font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Status Pesanan</h3>
+                        <button onClick={() => setMobileView('orders')} className="text-[10px] text-gray-500 flex items-center gap-1">Riwayat <ChevronRight size={12}/></button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                        <div onClick={() => setMobileView('orders')} className="flex flex-col items-center gap-1 cursor-pointer">
+                            <div className="relative p-2 bg-blue-50 dark:bg-blue-900/20 rounded-full text-blue-600 dark:text-blue-400">
+                                <Package size={18} />
+                                {incomingOrdersCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">{incomingOrdersCount}</span>}
+                            </div>
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Perlu Dikirim</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-full text-red-600 dark:text-red-400"><XCircle size={18} /></div>
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Dibatalkan</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-full text-orange-600 dark:text-orange-400"><RotateCcw size={18} /></div>
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Pengembalian</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-full text-green-600 dark:text-green-400"><CheckCircle size={18} /></div>
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Selesai</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Main Menu Grid */}
+                <div className={`rounded-xl p-4 shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h3 className={`text-xs font-bold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Menu Toko</h3>
+                    <div className="grid grid-cols-4 gap-y-6 gap-x-2">
+                        <button onClick={() => setMobileView('add_product')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><PlusSquare size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Tambah Produk</span></button>
+                        <button onClick={() => setMobileView('product_list')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Package size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Produk Saya</span></button>
+                        <button onClick={() => setMobileView('finance')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Wallet size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Keuangan</span></button>
+                        <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><BarChart2 size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Statistik</span></button>
+                        <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Award size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Poin Seller</span></button>
+                        <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><Megaphone size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Promosi</span></button>
+                        <button onClick={() => setIsPaymentModalOpen(true)} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Settings size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Pengaturan</span></button>
+                        <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><HelpCircle size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Bantuan</span></button>
+                    </div>
+                </div>
+            </div>
+
             {/* 1. Header Stats (Grid 2x2) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Tampil di Mobile jika view='overview', Tampil Selalu di Desktop */}
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mobileView === 'finance' ? 'block' : 'hidden md:grid'}`}>
               {/* Card 1: Total Pendapatan */}
-              <div className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                 <div>
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo Virtual (Rekber)</p>
-                  <div className="flex items-baseline gap-1 mt-1">
-                    <span className="text-sm font-bold text-gray-400">Tertahan:</span>
-                    <span className="font-price text-lg font-bold text-orange-500 tracking-wide">Rp {saldoTertahan.toLocaleString('id-ID')}</span>
-                    <p className="text-[10px] text-gray-400 mt-1 leading-tight">Uang aman di rekber, akan cair setelah pesanan diterima pembeli.</p>
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-sm font-bold text-gray-400">Siap Cair:</span>
-                    <span className="font-price text-2xl font-bold text-green-600 tracking-wide">Rp {saldoSiapCair.toLocaleString('id-ID')}</span>
+                  <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Saldo Virtual (Rekber)</p>
+                  <div className="flex flex-col mt-3 space-y-3">
+                    <div className="flex justify-between items-center border-b border-dashed border-gray-100 dark:border-slate-700 pb-2">
+                        <span className="text-xs font-bold text-gray-400">Tertahan</span>
+                        <span className="font-price text-sm md:text-lg font-bold text-orange-500 tracking-wide whitespace-nowrap">Rp {saldoTertahan.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-gray-400">Siap Cair</span>
+                        <span className="font-price text-lg md:text-2xl font-bold text-green-600 tracking-wide whitespace-nowrap">Rp {saldoSiapCair.toLocaleString('id-ID')}</span>
+                    </div>
                   </div>
                 </div>
                 <button 
@@ -985,29 +1068,29 @@ const DashboardSeller = ({ user, onBack }) => {
               </div>
 
               {/* Card 2: Pesanan Masuk */}
-              <div className={`p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
                 <div>
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Pesanan Masuk</p>
-                  <h3 className={`text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{incomingOrdersCount} <span className="text-sm font-medium text-gray-400">Perlu Dikirim</span></h3>
+                  <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Pesanan Masuk</p>
+                  <h3 className={`text-xl md:text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{incomingOrdersCount} <span className="text-xs md:text-sm font-medium text-gray-400">Perlu Dikirim</span></h3>
                 </div>
                 <div className="p-3 bg-orange-50 text-orange-600 rounded-xl"><Package size={24} /></div>
               </div>
 
               {/* Card 3: Pengunjung Toko (Slot Kosong Diisi) */}
-              <div className={`p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
                 <div>
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Pengunjung Toko</p>
-                  <h3 className={`text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>0 <span className="text-sm font-medium text-gray-400">Orang</span></h3>
+                  <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Pengunjung Toko</p>
+                  <h3 className={`text-xl md:text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>0 <span className="text-xs md:text-sm font-medium text-gray-400">Orang</span></h3>
                 </div>
                 <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Users size={24} /></div>
               </div>
 
               {/* Card 4: Poin Seller */}
-              <div className={`p-5 rounded-2xl shadow-md border-2 flex flex-col justify-between relative overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-sky-900' : 'bg-white border-sky-100'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-md border-2 flex flex-col justify-between relative overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-sky-900' : 'bg-white border-sky-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
                 <div className="flex justify-between items-start w-full mb-3">
                   <div>
-                    <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Poin Seller</p>
-                    <h3 className="font-price text-3xl font-extrabold text-sky-600 mt-1">{points} <span className="text-sm font-medium text-gray-400">Poin</span></h3>
+                    <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Poin Seller</p>
+                    <h3 className="font-price text-xl md:text-3xl font-extrabold text-sky-600 mt-1">{points} <span className="text-xs md:text-sm font-medium text-gray-400">Poin</span></h3>
                   </div>
                   <div className="p-3 bg-sky-50 text-sky-600 rounded-xl"><Award size={24} /></div>
                 </div>
@@ -1064,13 +1147,13 @@ const DashboardSeller = ({ user, onBack }) => {
               </div>
 
               {/* Card 5: Informasi Pembayaran Toko (New) */}
-              <div className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden md:flex'}`}>
                 <div>
                   <div className="flex justify-between items-start">
-                    <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Rekening Pencairan</p>
+                    <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Rekening Pencairan</p>
                     <div className="p-2 bg-green-50 text-green-600 rounded-lg"><CreditCard size={20} /></div>
                   </div>
-                  <h3 className={`font-bold mt-2 text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                  <h3 className={`font-bold mt-2 text-base md:text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
                     {sellerInfo?.paymentDetails?.bankName ? `${sellerInfo.paymentDetails.bankName} & QRIS` : 'Belum Diatur'}
                   </h3>
                   <p className="text-xs text-gray-400 mt-1">Rekening tujuan transfer dana dari Admin.</p>
@@ -1082,12 +1165,13 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
 
             {/* 2. Grafik Penjualan (Bar Chart + Filter) */}
-            <div className={`p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-              <div className="flex items-center justify-between mb-6">
+            {/* Collapsible on Mobile */}
+            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:block'}`}>
+              <div className="flex items-center justify-between mb-4 md:mb-6 cursor-pointer md:cursor-auto" onClick={() => setIsChartExpanded(!isChartExpanded)}>
                 <div className="flex items-center gap-2">
                   <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-sky-900 text-sky-300' : 'bg-sky-50 text-sky-600'}`}><TrendingUp size={20} /></div>
                   <div>
-                    <h3 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h3>
+                    <h3 className={`font-bold text-base md:text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h3>
                     <p className="text-[10px] text-gray-400 flex items-center gap-1"><Info size={10}/> Grafik menampilkan Total Transaksi Masuk (Gross)</p>
                   </div>
                 </div>
@@ -1103,19 +1187,20 @@ const DashboardSeller = ({ user, onBack }) => {
                     <span className="text-gray-400">-</span>
                     <input type="date" value={dateRange.endDate} onChange={e => setDateRange({...dateRange, endDate: e.target.value})} className={`text-xs font-bold outline-none bg-transparent ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
                   </div>
+                  <div className="md:hidden text-gray-400">{isChartExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}</div>
                 </div>
               </div>
               
-              <div className="h-72 w-full">
+              <div className={`h-64 md:h-72 w-full ${isChartExpanded ? 'block' : 'hidden md:block'}`}>
                 <Line options={chartOptions} data={chartData} />
               </div>
             </div>
 
             {/* 3. Split Screen: Input Produk & List Produk */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6`}>
               
               {/* Kolom Kiri: Tambah Produk */}
-              <div className={`p-6 rounded-2xl shadow-sm border h-fit transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-6 rounded-2xl shadow-sm border h-fit transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'add_product' ? 'block' : 'hidden md:block'}`}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className={`font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
                         {editingProductId ? <Edit size={18} className="text-orange-500" /> : <Plus size={18} />} 
@@ -1365,7 +1450,7 @@ const DashboardSeller = ({ user, onBack }) => {
               </div>
 
               {/* Kolom Kanan: Produk Anda */}
-              <div className={`p-6 rounded-2xl shadow-sm border h-[600px] overflow-y-auto transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <div className={`p-4 md:p-6 rounded-2xl shadow-sm border h-[600px] overflow-y-auto transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'product_list' ? 'block' : 'hidden md:block'}`}>
                 <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Produk Anda ({products.length})</h3>
                 <div className="space-y-3">
                   {products.map((prod) => (
@@ -1390,8 +1475,8 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
 
             {/* 4. Row Bawah: Daftar Pesanan Masuk */}
-            <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-              <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+            <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'orders' ? 'block' : 'hidden md:block'}`}>
+              <div className={`p-4 md:p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
                 <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Pesanan Masuk Terbaru</h3>
                 <button className="text-sm text-sky-600 font-bold hover:underline">Lihat Semua</button>
               </div>
@@ -1473,8 +1558,8 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
 
             {/* 5. Riwayat Penarikan Dana (Withdrawal History) */}
-            <div className={`rounded-2xl shadow-sm border overflow-hidden mt-6 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-              <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+            <div className={`rounded-2xl shadow-sm border overflow-hidden mt-6 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden md:block'}`}>
+              <div className={`p-4 md:p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
                 <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Riwayat Penarikan Dana</h3>
               </div> 
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
