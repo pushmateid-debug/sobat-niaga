@@ -579,7 +579,7 @@ const Home = () => {
             className="w-full py-8"
           >
             {banners.map((banner) => (
-              <SwiperSlide key={banner.id} className="!w-[85%] md:!w-[700px] lg:!w-[900px] aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
+              <SwiperSlide key={banner.id} className="!w-[95%] md:!w-[700px] lg:!w-[900px] aspect-[16/9] md:aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
                 {banner.link ? (
                   banner.link.startsWith('http') ? (
                     <a 
@@ -672,7 +672,7 @@ const Home = () => {
                     setActiveCategoryIndex(index);
                     scrollToSection(cat.name);
                   }}
-                  className={`relative z-10 px-6 py-3 rounded-full text-base font-bold whitespace-nowrap transition-colors uppercase tracking-wider font-azonix ${
+                  className={`relative z-10 px-4 py-2 md:px-6 md:py-3 text-xs md:text-base font-bold whitespace-nowrap transition-colors uppercase tracking-wider font-azonix ${
                     activeCategoryIndex === index
                       ? (isDarkMode ? 'text-white' : 'text-sky-600')
                       : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
@@ -774,8 +774,8 @@ const Home = () => {
         
         {/* SECTION: NiagaGo (New Feature) */}
         <div ref={niagaGoRef} className="scroll-mt-40">
-          <div className={`rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
-            <div className="relative z-10">
+          <div className={`w-full rounded-2xl p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+            <div className="relative z-10 text-left">
               <div className="flex items-center gap-2 mb-2">
                 <Bike size={24} className={isDarkMode ? 'text-emerald-400' : 'text-white'} />
                 <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
@@ -788,8 +788,8 @@ const Home = () => {
               Buka NiagaGo
             </button>
             {/* Decor */}
-            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
-              <Bike size={200} />
+            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-4 translate-y-4 md:translate-x-10 md:translate-y-10">
+              <Bike className="w-32 h-32 md:w-48 md:h-48" />
             </div>
           </div>
         </div>
@@ -1010,22 +1010,22 @@ const Home = () => {
     <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Global Header (Sticky) */}
       <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-8">
+        <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
-          <div className="flex-shrink-0 flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => setCurrentView('home')}>
+          <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
+            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => setCurrentView('home')}>
               SobatNiaga
             </h1>
           </div>
 
           {/* Center: Search Bar (Hidden on mobile if needed, or simplified) */}
           <div className="flex-1 relative" ref={searchRef}>
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search size={18} className="text-gray-400" />
+            <div className="absolute inset-y-0 left-0 pl-2 md:pl-3 flex items-center pointer-events-none">
+              <Search size={16} className="text-gray-400 md:w-[18px] md:h-[18px]" />
             </div>
             <input
               type="text"
-              className="block w-full pl-10 pr-3 py-2 border rounded-full text-sm focus:ring-2 focus:ring-sky-500 transition-all theme-card theme-text placeholder:text-gray-400"
+              className="block w-full pl-8 md:pl-10 pr-2 md:pr-3 py-1.5 md:py-2 border rounded-full text-xs md:text-sm focus:ring-2 focus:ring-sky-500 transition-all theme-card theme-text placeholder:text-gray-400"
               placeholder="Cari di SobatNiaga..."
               value={searchQuery}
               onChange={handleSearchInput}
@@ -1051,7 +1051,7 @@ const Home = () => {
           </div>
 
           {/* Right: Icons */}
-          <div className="flex items-center gap-3 theme-text">
+          <div className="flex items-center gap-1.5 md:gap-3 theme-text">
             {/* Notifikasi Dropdown */}
             <div className="relative">
               <button 
@@ -1059,9 +1059,9 @@ const Home = () => {
                   setIsNotificationOpen(!isNotificationOpen);
                   setIsProfileOpen(false);
                 }}
-                className="hover:text-sky-600 relative flex items-center p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+                className="hover:text-sky-600 relative flex items-center p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
               >
-                <Bell size={22} />
+                <Bell size={20} className="md:w-[22px] md:h-[22px]" />
                 {unreadCount > 0 && (
                   <span className="absolute top-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-white bg-red-500"></span>
                 )}
@@ -1115,9 +1115,9 @@ const Home = () => {
             {/* Cart Icon with Badge */}
             <button 
               onClick={() => setCurrentView('cart')}
-              className="hover:text-sky-600 relative p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+              className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
             >
-              <ShoppingCart size={22} />
+              <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
               {cartCount > 0 && (
                 <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white">
                   {cartCount}
@@ -1129,12 +1129,12 @@ const Home = () => {
             <div className="relative">
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="hover:text-sky-600 flex items-center focus:outline-none p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+                className="hover:text-sky-600 flex items-center focus:outline-none p-0.5 md:p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
               >
                 {user?.photoURL ? (
-                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-gray-200 object-cover" />
+                  <img src={user.photoURL} alt="Profile" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-gray-200 object-cover" />
                 ) : (
-                  <User size={22} />
+                  <User size={20} className="md:w-[22px] md:h-[22px]" />
                 )}
               </button>
 
