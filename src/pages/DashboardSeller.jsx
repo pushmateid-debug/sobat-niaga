@@ -97,6 +97,14 @@ const DashboardSeller = ({ user, onBack }) => {
   const [mobileView, setMobileView] = useState('menu'); // 'menu', 'add_product', 'product_list', 'finance', 'stats', 'orders'
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false); // Default collapsed di HP
+  const [chartFilter, setChartFilter] = useState('1W'); // '1D', '1W', '1M', 'ALL'
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load data seller saat komponen di-mount
   useEffect(() => {
@@ -707,51 +715,71 @@ const DashboardSeller = ({ user, onBack }) => {
 
   // Logic Grafik Real-time (Zeroing Data + Smart Date Filter)
   const chartData = useMemo(() => {
+    const labels = [];
+    const dataPoints = [];
+    
+    // Gunakan dateRange sebagai sumber kebenaran (Single Source of Truth)
     const start = new Date(dateRange.startDate);
     const end = new Date(dateRange.endDate);
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
 
-    const labels = [];
-    const dataPoints = [];
-    const current = new Date(start);
-    
-    // Generate Labels & Data Harian
-    while (current <= end) {
-        const label = current.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-        labels.push(label);
-        
-        // Filter order untuk hari ini
-        const dayStart = new Date(current);
-        dayStart.setHours(0,0,0,0);
-        const dayEnd = new Date(current);
-        dayEnd.setHours(23,59,59,999);
+    // Cek apakah rentang waktu cuma 1 hari (Mode Harian/1D)
+    const isSingleDay = start.getTime() >= new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
 
-        const dailyRevenue = sellerOrders
-            .filter(order => {
-                const orderDate = new Date(order.createdAt);
-                return orderDate >= dayStart && orderDate <= dayEnd && ['processed', 'shipped', 'completed'].includes(order.status);
-            })
-            .reduce((acc, order) => {
+    if (isSingleDay) {
+        // Hourly Loop
+        for(let i=0; i<24; i++) {
+            labels.push(`${i}:00`);
+            const hStart = new Date(start); hStart.setHours(i);
+            const hEnd = new Date(start); hEnd.setHours(i, 59, 59, 999);
+            
+            const hourlyRevenue = sellerOrders.filter(o => {
+                const d = new Date(o.createdAt);
+                return d >= hStart && d <= hEnd && ['processed', 'shipped', 'completed'].includes(o.status);
+            }).reduce((acc, order) => {
                 const items = Array.isArray(order.items) ? order.items : Object.values(order.items || {});
-                const orderRevenue = items
-                    .filter(i => i.sellerId === user.uid)
-                    .reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                return acc + orderRevenue;
+                const rev = items.filter(item => item.sellerId === user.uid).reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                return acc + rev;
             }, 0);
+            dataPoints.push(hourlyRevenue);
+        }
+    } else {
+        // Daily Loop
+        const current = new Date(start);
+    
+        while (current <= end) {
+            // Format Label Sumbu X (Mobile Optimized)
+            let label = current.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+            if (isMobile && chartFilter === '1W') {
+                label = current.toLocaleDateString('id-ID', { weekday: 'short' }); // Sen, Sel, Rab
+            }
+            labels.push(label);
 
-        dataPoints.push(dailyRevenue);
-        current.setDate(current.getDate() + 1);
+            const dayStart = new Date(current); dayStart.setHours(0,0,0,0);
+            const dayEnd = new Date(current); dayEnd.setHours(23,59,59,999);
+
+            const dailyRevenue = sellerOrders.filter(o => {
+                const d = new Date(o.createdAt);
+                return d >= dayStart && d <= dayEnd && ['processed', 'shipped', 'completed'].includes(o.status);
+            }).reduce((acc, order) => {
+                const items = Array.isArray(order.items) ? order.items : Object.values(order.items || {});
+                const rev = items.filter(item => item.sellerId === user.uid).reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                return acc + rev;
+            }, 0);
+            dataPoints.push(dailyRevenue);
+            current.setDate(current.getDate() + 1);
+        }
     }
 
     // Tentukan Warna Tren (Hari Ini vs Kemarin)
     const lastValue = dataPoints[dataPoints.length - 1];
     const prevValue = dataPoints[dataPoints.length - 2] || 0;
     const isUp = lastValue >= prevValue;
-    
-    const mainColor = isUp ? '#10b981' : '#ef4444'; // Emerald-500 (Hijau) vs Red-500 (Merah)
-    const gradientStart = isUp ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
-    const gradientEnd = isUp ? 'rgba(16, 185, 129, 0)' : 'rgba(239, 68, 68, 0)';
+    // Warna Hijau (Cuan) Default
+    const mainColor = isMobile ? '#10b981' : '#0ea5e9'; // Hijau di HP, Biru di Web
+    const gradientStart = isMobile ? 'rgba(16, 185, 129, 0.2)' : 'rgba(14, 165, 233, 0.2)';
+    const gradientEnd = isMobile ? 'rgba(16, 185, 129, 0)' : 'rgba(14, 165, 233, 0)';
 
     return {
       labels,
@@ -768,33 +796,64 @@ const DashboardSeller = ({ user, onBack }) => {
         },
         borderColor: mainColor,
         borderWidth: 2,
-        tension: 0.4, // Smooth curve (Stockbit style)
-        pointRadius: 0, // Sembunyikan titik biar clean
-        pointHoverRadius: 6,
+        tension: 0.3, // Smooth curve (Stockbit style)
+        pointRadius: 3, // Tampilkan titik data sesuai request
+        pointHoverRadius: 5,
         pointBackgroundColor: mainColor,
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
       }],
     };
-  }, [sellerOrders, dateRange, user.uid]);
+  }, [sellerOrders, dateRange, user.uid, isMobile, chartFilter]);
 
+  // Handle Filter Desktop (Minggu Ini / Bulan Ini)
   const handleDatePreset = (type) => {
     const now = new Date();
     let start = new Date();
     let end = new Date();
-    const toLocalISO = (d) => new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const toLocalISO = (d) => {
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
 
     if (type === 'week') {
         const day = now.getDay();
         const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Senin
         start.setDate(diff);
-        end.setDate(start.getDate() + 6); // Minggu
     } else if (type === 'month') {
         start = new Date(now.getFullYear(), now.getMonth(), 1);
-        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+    setDateRange({ startDate: toLocalISO(start), endDate: toLocalISO(end) });
+    setChartFilter(type === 'week' ? '1W' : '1M'); // Sync visual mobile filter
+  };
+
+  // Handle Filter Mobile (1D, 1W, 1M, ALL)
+  const handleMobileFilter = (f) => {
+    setChartFilter(f);
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+    const toLocalISO = (d) => {
+         const offset = d.getTimezoneOffset() * 60000;
+         return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    if (f === '1D') {
+        // Start = End = Today
+    } else if (f === '1W') {
+        start.setDate(now.getDate() - 6);
+    } else if (f === '1M') {
+        start.setDate(now.getDate() - 29);
+    } else if (f === 'ALL') {
+        start.setFullYear(now.getFullYear() - 1);
     }
     setDateRange({ startDate: toLocalISO(start), endDate: toLocalISO(end) });
   };
+
+  const totalRevenueForPeriod = useMemo(() => {
+      if (!chartData?.datasets?.[0]?.data) return 0;
+      return chartData.datasets[0].data.reduce((a, b) => a + b, 0);
+  }, [chartData]);
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -816,11 +875,12 @@ const DashboardSeller = ({ user, onBack }) => {
     },
     scales: {
       x: {
-        grid: { display: false },
-        ticks: { font: { size: 10 }, color: isDarkMode ? '#9ca3af' : '#9ca3af' }
+        grid: { display: false, drawBorder: false },
+        ticks: { font: { size: 10 }, color: isDarkMode ? '#9ca3af' : '#9ca3af', maxTicksLimit: 6, maxRotation: 0 }
       },
       y: {
-        grid: { color: isDarkMode ? '#374151' : '#f3f4f6', borderDash: [4, 4] },
+        display: true, // Tampilkan Sumbu Y di Desktop & Mobile
+        grid: { display: !isMobile, drawBorder: false, color: isDarkMode ? '#334155' : '#f1f5f9', borderDash: [4, 4] },
         ticks: { 
           font: { size: 10 }, 
           color: isDarkMode ? '#9ca3af' : '#9ca3af',
@@ -834,7 +894,25 @@ const DashboardSeller = ({ user, onBack }) => {
       axis: 'x',
       intersect: false
     }
-  }), [isDarkMode]);
+  }), [isDarkMode, isMobile]);
+
+  // Helper untuk format tanggal di HP
+  const getMobileDateDisplay = () => {
+    const now = new Date();
+    const options = { day: 'numeric', month: 'long', year: 'numeric' };
+    
+    if (chartFilter === '1D') {
+        return now.toLocaleDateString('id-ID', options);
+    } else if (chartFilter === '1W') {
+        const start = new Date();
+        start.setDate(now.getDate() - 6);
+        return `${start.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${now.toLocaleDateString('id-ID', options)}`;
+    } else if (chartFilter === '1M') {
+        return now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    } else {
+        return now.getFullYear();
+    }
+  };
 
   const points = sellerInfo?.points_loyalty || 0; // Poin Seller (Loyalitas)
 
@@ -881,6 +959,7 @@ const DashboardSeller = ({ user, onBack }) => {
   return (
     <div className={`min-h-screen pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
       {/* Header Biru Muda - Konsisten */}
+      {mobileView !== 'stats' && (
       <div className={`shadow-sm sticky top-0 z-50 border-b transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-100 border-sky-200'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -900,6 +979,7 @@ const DashboardSeller = ({ user, onBack }) => {
           </div>
         </div>
       </div>
+      )}
 
       <div className="max-w-7xl mx-auto p-4 lg:p-6 space-y-4 md:space-y-6">
         {/* Kondisi: Belum Verifikasi */}
@@ -1167,17 +1247,29 @@ const DashboardSeller = ({ user, onBack }) => {
             {/* 2. Grafik Penjualan (Bar Chart + Filter) */}
             {/* Collapsible on Mobile */}
             <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:block'}`}>
-              <div className="flex items-center justify-between mb-4 md:mb-6 cursor-pointer md:cursor-auto" onClick={() => setIsChartExpanded(!isChartExpanded)}>
+              
+              {/* Mobile Header for Stats (Visible only on Mobile) */}
+              {mobileView === 'stats' && (
+                <div className="flex items-center gap-3 mb-6 md:hidden">
+                    <button onClick={handleMobileBack} className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h2 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h2>
+                </div>
+              )}
+
+              {/* Desktop Header (Visible only on Desktop) */}
+              <div className="hidden md:flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                   <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-sky-900 text-sky-300' : 'bg-sky-50 text-sky-600'}`}><TrendingUp size={20} /></div>
                   <div>
-                    <h3 className={`font-bold text-base md:text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h3>
+                    <h3 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h3>
                     <p className="text-[10px] text-gray-400 flex items-center gap-1"><Info size={10}/> Grafik menampilkan Total Transaksi Masuk (Gross)</p>
                   </div>
                 </div>
                 
-                {/* Smart Date Filter */}
-                <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+                {/* Desktop Date Filter */}
+                <div className="flex items-center gap-3">
                   <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
                     <button onClick={() => handleDatePreset('week')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${isDarkMode ? 'text-gray-300 hover:bg-slate-600' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>Minggu Ini</button>
                     <button onClick={() => handleDatePreset('month')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${isDarkMode ? 'text-gray-300 hover:bg-slate-600' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>Bulan Ini</button>
@@ -1187,11 +1279,38 @@ const DashboardSeller = ({ user, onBack }) => {
                     <span className="text-gray-400">-</span>
                     <input type="date" value={dateRange.endDate} onChange={e => setDateRange({...dateRange, endDate: e.target.value})} className={`text-xs font-bold outline-none bg-transparent ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
                   </div>
-                  <div className="md:hidden text-gray-400">{isChartExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}</div>
                 </div>
               </div>
+
+              {/* Total Sales Info */}
+              {totalRevenueForPeriod > 0 && (
+              <div className="mb-6 text-center md:text-left">
+                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Total Pendapatan</p>
+                <h3 className={`text-3xl md:text-4xl font-extrabold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {totalRevenueForPeriod.toLocaleString('id-ID')}</h3>
+              </div>
+              )}
+
+              {/* Mobile Date Display */}
+              <div className="md:hidden text-center mb-4">
+                  <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {getMobileDateDisplay()}
+                  </p>
+              </div>
+
+              {/* Stockbit Style Filter (Mobile Only) */}
+              <div className="flex justify-center gap-2 mb-6 md:hidden">
+                {['1D', '1W', '1M', 'ALL'].map(f => (
+                    <button 
+                        key={f} 
+                        onClick={() => handleMobileFilter(f)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${chartFilter === f ? 'bg-sky-600 text-white shadow-md shadow-sky-200' : (isDarkMode ? 'bg-slate-700 text-gray-400 hover:bg-slate-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}`}
+                    >
+                        {f}
+                    </button>
+                ))}
+              </div>
               
-              <div className={`h-64 md:h-72 w-full ${isChartExpanded ? 'block' : 'hidden md:block'}`}>
+              <div className={`h-64 md:h-80 w-full`}>
                 <Line options={chartOptions} data={chartData} />
               </div>
             </div>

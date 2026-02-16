@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
-import { ref, update, onValue, push, serverTimestamp, get } from 'firebase/database';
+import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import Cropper from 'react-cropper';
@@ -98,6 +98,9 @@ const AdminDashboard = ({ onBack }) => {
   const [selectedDriverRequest, setSelectedDriverRequest] = useState(null); // Modal Detail Driver
   const [payoutModal, setPayoutModal] = useState(null); // State Modal Payout
   const [payoutAmount, setPayoutAmount] = useState('');
+
+  const [topUpForm, setTopUpForm] = useState({ email: '', amount: '' }); // State Top Up Saldo
+  const [topUpProof, setTopUpProof] = useState(null); // State Bukti Transfer Top Up
 
   // State Banners & Flash Deal
   const [banners, setBanners] = useState({});
@@ -733,6 +736,70 @@ const AdminDashboard = ({ onBack }) => {
     }
   };
 
+  // Fungsi Manual Top Up Saldo User
+  const handleManualTopUp = async (e) => {
+    e.preventDefault();
+    if (!topUpForm.email || !topUpForm.amount) return;
+    
+    if (!topUpProof) {
+        Swal.fire('Bukti Wajib', 'Harap upload bukti transfer/mutasi untuk dokumentasi admin.', 'warning');
+        return;
+    }
+
+    try {
+        Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
+        
+        const proofUrl = await uploadToCloudinary(topUpProof); // Upload bukti dulu
+
+        // Cari User by Email di Realtime DB
+        const usersRef = ref(realDb, 'users');
+        const q = realQuery(usersRef, orderByChild('email'), equalTo(topUpForm.email));
+        const snapshot = await get(q);
+
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            const uid = Object.keys(data)[0];
+            const userData = data[uid];
+            const currentSaldo = parseInt(userData.saldo || 0);
+            const amount = parseInt(topUpForm.amount);
+
+            await update(ref(realDb, `users/${uid}`), {
+                saldo: currentSaldo + amount
+            });
+
+            // Log Transaksi (Arsip Admin)
+            await push(ref(realDb, 'admin/topup_logs'), {
+                userId: uid,
+                userEmail: topUpForm.email,
+                amount: amount,
+                proofUrl: proofUrl,
+                adminId: 'admin',
+                createdAt: serverTimestamp()
+            });
+
+            // Kirim Notifikasi ke User (In-App)
+            await push(ref(realDb, 'notifications'), {
+                userId: uid,
+                title: 'Top Up Berhasil',
+                message: `Top Up Berhasil! Saldo sebesar Rp ${amount.toLocaleString('id-ID')} telah ditambahkan oleh Admin.`,
+                type: 'success',
+                image: proofUrl,
+                createdAt: serverTimestamp(),
+                isRead: false
+            });
+
+            Swal.fire('Berhasil', `Saldo masuk & Email notifikasi terkirim ke ${topUpForm.email}`, 'success');
+            setTopUpForm({ email: '', amount: '' });
+            setTopUpProof(null);
+        } else {
+            Swal.fire('Gagal', 'User dengan email tersebut tidak ditemukan.', 'error');
+        }
+    } catch (error) {
+        console.error(error);
+        Swal.fire('Error', error.message, 'error');
+    }
+  };
+
   // Fungsi Handle File Select (Buka Editor)
   const handleFileSelect = (file, key, type = 'banners') => {
     const url = URL.createObjectURL(file);
@@ -1314,6 +1381,33 @@ const AdminDashboard = ({ onBack }) => {
                     <button onClick={() => setSellerTabMode('sellers')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${sellerTabMode === 'sellers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>Seller Barang</button>
                     <button onClick={() => setSellerTabMode('drivers')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${sellerTabMode === 'drivers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>Driver NiagaGo</button>
                 </div>
+              </div>
+
+              {/* Form Manual Top Up (Inject Saldo) */}
+              <div className={`p-6 rounded-2xl border mb-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><DollarSign className="text-green-500"/> Inject Saldo User (Manual Top Up)</h3>
+                <form onSubmit={handleManualTopUp} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="w-full">
+                        <label className={labelClass}>Email User</label>
+                        <input type="email" placeholder="user@example.com" value={topUpForm.email} onChange={e => setTopUpForm({...topUpForm, email: e.target.value})} className={inputClass} required />
+                    </div>
+                    <div className="w-full">
+                        <label className={labelClass}>Jumlah Saldo (Rp)</label>
+                        <input type="number" placeholder="50000" value={topUpForm.amount} onChange={e => setTopUpForm({...topUpForm, amount: e.target.value})} className={inputClass} required />
+                    </div>
+                    <div className="w-full">
+                        <label className={labelClass}>Bukti Transfer (Admin)</label>
+                        <div className={`relative w-full border rounded-xl overflow-hidden ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200'}`}>
+                            <input type="file" accept="image/*" onChange={e => setTopUpProof(e.target.files[0])} className="w-full text-xs p-2 cursor-pointer" required />
+                        </div>
+                    </div>
+                    <button 
+                        type="submit" 
+                        className="w-full md:w-auto py-3 px-6 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors h-[46px]"
+                    >
+                        + Tambah Saldo
+                    </button>
+                </form>
               </div>
 
               <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>

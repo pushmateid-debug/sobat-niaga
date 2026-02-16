@@ -3,11 +3,11 @@ import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Uplo
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore, storage } from '../config/firebase';
-import { ref, onValue, update } from 'firebase/database';
+import { ref, onValue, update, get } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -26,7 +26,14 @@ L.Icon.Default.mergeOptions({
 
 // Custom Icon Motor (Biar Keren!)
 const motorIcon = new L.Icon({
-  iconUrl: 'https://cdn-icons-png.flaticon.com/512/171/171250.png', 
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png', 
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  popupAnchor: [0, -20]
+});
+
+const carIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png', 
   iconSize: [40, 40],
   iconAnchor: [20, 20],
   popupAnchor: [0, -20]
@@ -93,6 +100,7 @@ const RecenterMap = ({ center }) => {
 const MapPickerCenter = ({ onChange }) => {
   const map = useMap();
   useEffect(() => {
+    onChange(map.getCenter()); // Init center saat map dibuka
     const onMove = () => onChange(map.getCenter());
     map.on('move', onMove);
     return () => map.off('move', onMove);
@@ -236,9 +244,12 @@ const NearbyDrivers = ({ driversLocations, center }) => {
       const isActive = (Date.now() - lastUpdate) < 15 * 60 * 1000; 
       if (!isActive) return false;
 
+      // Check valid coordinates
+      if (!d.lat || !d.lng) return false;
+
       // 2. Cek Jarak (Zona)
       // Pastikan icon motor hanya muncul jika dalam radius ZONE_RADIUS
-      const dist = L.latLng(d.lat, d.lng).distanceTo(L.latLng(center[0], center[1]));
+      const dist = L.latLng(d.lat, d.lng).distanceTo(L.latLng(center));
       return dist <= ZONE_RADIUS;
   });
 
@@ -248,8 +259,11 @@ const NearbyDrivers = ({ driversLocations, center }) => {
         <Marker 
             key={driver.id} 
             position={[driver.lat, driver.lng]} 
-            icon={motorIcon}
+            icon={driver.vehicleType === 'mobil' ? carIcon : motorIcon}
         >
+            <Tooltip direction="top" offset={[0, -30]} opacity={1} permanent>
+               <span className="font-bold text-xs">{driver.name || 'Driver'}</span>
+            </Tooltip>
             <Popup>{driver.status === 'busy' ? 'Driver Sedang Mengantar' : 'Driver Siap (Standby)'}</Popup>
         </Marker>
       ))}
@@ -260,6 +274,7 @@ const NearbyDrivers = ({ driversLocations, center }) => {
 // --- KOMPONEN LIVE TRACKING MAP ---
 const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
   const [driverPos, setDriverPos] = useState(null);
+  const [driverInfo, setDriverInfo] = useState(null);
   const [userPos, setUserPos] = useState(null);
   const [showNearby, setShowNearby] = useState(false);
 
@@ -282,6 +297,7 @@ const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
       const data = snapshot.val();
       if (data && data.lat && data.lng) {
         setDriverPos([data.lat, data.lng]);
+        setDriverInfo(data);
       }
     });
     return () => unsubscribe();
@@ -314,7 +330,14 @@ const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
         )}
 
         {/* Assigned Driver */}
-        {driverPos && <Marker position={driverPos} icon={motorIcon}><Popup>Driver NiagaGo</Popup></Marker>}
+        {driverPos && (
+          <Marker position={driverPos} icon={driverInfo?.vehicleType === 'mobil' ? carIcon : motorIcon}>
+             <Tooltip direction="top" offset={[0, -30]} opacity={1} permanent>
+                <span className="font-bold text-xs">{driverInfo?.name || 'Driver Anda'}</span>
+             </Tooltip>
+             <Popup>Driver NiagaGo</Popup>
+          </Marker>
+        )}
         
         <RecenterMap center={driverPos || (status === 'pending' ? (pickupCoords || userPos) : null)} />
       </MapContainer>
@@ -400,6 +423,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // State User & Role
   const [userProfile, setUserProfile] = useState(null);
   const [isDriverMode, setIsDriverMode] = useState(false);
+  const [userLocation, setUserLocation] = useState(null); // Lokasi GPS User (Untuk proteksi order jauh)
 
   // State Form Order
   const [pickup, setPickup] = useState('');
@@ -472,6 +496,16 @@ const NiagaGo = ({ onOpenProfile }) => {
     onValue(infoRef, (snap) => {
         if(snap.exists()) setAdminPaymentInfo(snap.val());
     });
+  }, []);
+
+  // --- GET USER LOCATION (GPS) ---
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.debug("GPS User Error:", err.message)
+      );
+    }
   }, []);
 
   // --- 1. FETCH USER DATA (REALTIME DB) ---
@@ -578,7 +612,9 @@ const NiagaGo = ({ onOpenProfile }) => {
               lat: latitude,
               lng: longitude,
               status: isBusy ? 'busy' : 'standby', // Kirim status driver
-              updatedAt: Date.now()
+              updatedAt: Date.now(),
+              name: userProfile.displayName || 'Driver',
+              vehicleType: 'motor' // Default
             });
           }, 
           (err) => { 
@@ -754,6 +790,40 @@ const NiagaGo = ({ onOpenProfile }) => {
       return;
     }
 
+    // Proteksi Order Jauh (Pesan buat orang lain)
+    if (pickupCoords && userLocation) {
+      const dist = L.latLng(userLocation.lat, userLocation.lng).distanceTo(L.latLng(pickupCoords.lat, pickupCoords.lng));
+      if (dist > 10000) { // > 10 KM
+        const confirm = await Swal.fire({
+          title: 'Pesan untuk Orang Lain?',
+          text: 'Lokasi jemput jauh dari posisimu (>10km). Pastikan titik jemput sudah sesuai dengan lokasi orang yang akan dijemput.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Ya, Lanjut',
+          cancelButtonText: 'Cek Lagi',
+          confirmButtonColor: '#0ea5e9'
+        });
+        if (!confirm.isConfirmed) return;
+      }
+    }
+
+    // Cek Saldo (Proteksi Cekak)
+    if ((userProfile?.saldo || 0) < parseInt(price)) {
+      Swal.fire({
+        title: 'Saldo Tidak Cukup',
+        text: `Saldo Anda kurang dari Rp ${parseInt(price).toLocaleString('id-ID')}. Silakan isi saldo dulu.`,
+        icon: 'warning',
+        confirmButtonText: 'Isi Saldo Sekarang',
+        cancelButtonText: 'Nanti Saja',
+        showCancelButton: true
+      }).then((result) => {
+        if (result.isConfirmed) {
+           if (onOpenProfile) onOpenProfile(); // Arahkan ke profil/topup
+        }
+      });
+      return;
+    }
+
     if (!dbFirestore) {
       Swal.fire('System Error', 'Database belum terhubung. Cek console untuk detail.', 'error');
       return;
@@ -841,14 +911,45 @@ const NiagaGo = ({ onOpenProfile }) => {
   // 2.5 User Menerima Tawaran Driver
   const handleAcceptOffer = async (order, offer) => {
       try {
+        // 1. Potong Saldo User (Escrow / Locking)
+        const currentSaldo = userProfile?.saldo || 0;
+        let useSaldo = false;
+
+        // Cek Cukup Saldo atau Tidak
+        if (currentSaldo >= order.price) {
+            useSaldo = true;
+        } else {
+            // Fallback ke Manual jika saldo kurang
+            const confirm = await Swal.fire({
+                title: 'Saldo Tidak Cukup',
+                text: 'Saldo Anda kurang. Lanjutkan dengan pembayaran manual (Transfer/QRIS)?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, Bayar Manual',
+                cancelButtonText: 'Batal'
+            });
+            if (!confirm.isConfirmed) return;
+        }
+
+        if (useSaldo) {
+            await update(ref(realDb, `users/${userProfile.uid}`), { saldo: currentSaldo - order.price });
+        }
+
+        // 2. Update Status Order
         await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
-            status: 'accepted',
+            status: useSaldo ? 'verified' : 'accepted', // Verified = Langsung jalan (Saldo), Accepted = Bayar dulu (Manual)
             driverId: offer.driverId,
             driverName: offer.driverName,
             driverPhone: offer.driverPhone,
-            // offers: [] // Opsional: Bersihkan offers lain
+            isPaid: useSaldo, // Tandai sudah dibayar jika pakai saldo
+            paymentMethod: useSaldo ? 'saldo' : 'manual'
         });
-        Swal.fire('Driver Dipilih!', `${offer.driverName} akan segera menjemputmu.`, 'success');
+        
+        Swal.fire(
+            useSaldo ? 'Pembayaran Berhasil!' : 'Driver Dipilih!', 
+            useSaldo ? `Saldo terpotong. ${offer.driverName} akan segera menjemputmu.` : 'Silakan selesaikan pembayaran agar driver menjemput.', 
+            useSaldo ? 'success' : 'info'
+        );
       } catch (error) {
         console.error(error);
         Swal.fire('Error', 'Gagal memilih driver.', 'error');
@@ -922,27 +1023,24 @@ const NiagaGo = ({ onOpenProfile }) => {
           completedAt: serverTimestamp()
         });
 
-        // Tambah Saldo Driver (Simulasi Transaksi Atomik)
+        // Tambah Saldo Driver (Final Transfer)
         const driverRef = ref(realDb, `users/${order.driverId}`);
-        // Note: Di production sebaiknya pakai transaction, ini simplifikasi
-        // Kita baca saldo driver dulu (karena kita user, kita gak punya data driver realtime, tapi kita bisa update blind)
-        // Tapi demi keamanan data di client side, idealnya ini Cloud Function.
-        // Untuk prototype ini, kita asumsikan kita bisa update.
         
-        // Fetch current driver data first to be safe
-        // (Skip fetch for brevity, assume increment works via backend or simple update)
-        // Simulasi: Kita update saldo driver di DB Realtime
-        // WARNING: Ini tidak aman untuk production tanpa Security Rules yang ketat.
-        // Solusi aman: Cloud Function trigger onUpdate Firestore.
-        
-        // Kita pakai cara manual update saldo driver (hanya jika rules mengizinkan)
-        // Karena kita tidak bisa baca saldo orang lain dengan mudah, kita skip update saldo REAL di sini
-        // dan hanya update status order. Nanti Driver lihat saldonya bertambah (Simulasi UI).
-        
-        // SIMULASI: Update saldo driver (hanya jalan jika user punya akses write ke users/driverId)
-        // await update(driverRef, { saldo: (currentSaldo + order.price) }); 
-        
-        // GANTINYA: Kita update field 'driverEarnings' di order doc, nanti driver yang klaim/admin yang rekap.
+        // Ambil saldo driver saat ini
+        const driverSnap = await get(driverRef);
+        if (driverSnap.exists()) {
+            const driverData = driverSnap.val();
+            const currentDriverSaldo = parseInt(driverData.saldo || 0);
+            
+            // Hitung Pendapatan Bersih (Potong Fee Admin jika ada)
+            const appFee = adminPaymentInfo?.appFee ? parseInt(adminPaymentInfo.appFee) : 2000;
+            const netIncome = Math.max(0, order.price - appFee);
+
+            // Update Saldo Driver
+            await update(driverRef, {
+                saldo: currentDriverSaldo + netIncome
+            });
+        }
         
         Swal.fire('Terima kasih!', 'Perjalanan selesai. Jangan lupa kasih bintang 5!', 'success');
       } catch (error) {
@@ -1270,6 +1368,19 @@ const NiagaGo = ({ onOpenProfile }) => {
         {/* --- TAMPILAN USER: FORM ORDER --- */}
         {!isDriverMode && (
           <div className={`p-4 rounded-2xl shadow-lg mb-8 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            {/* Balance Display (Saldo Anda) */}
+            <div className={`flex justify-between items-center mb-4 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-sky-50 border-sky-100'}`}>
+               <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-600' : 'bg-white'}`}>
+                    <Wallet className="text-sky-500" size={20} />
+                  </div>
+                  <div>
+                     <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo Anda</p>
+                     <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {(userProfile?.saldo || 0).toLocaleString('id-ID')}</p>
+                  </div>
+               </div>
+            </div>
+
             <h2 className="font-bold text-lg mb-4 flex items-center gap-2"><Navigation size={20} className="text-sky-500"/> Mau kemana hari ini?</h2>
             <form onSubmit={handleCreateOrder} className="space-y-4">
               <div className="relative">
@@ -1323,7 +1434,7 @@ const NiagaGo = ({ onOpenProfile }) => {
 
               <div className="grid grid-cols-2 gap-4">
                 <input type="number" placeholder="Harga (Rp)" value={price} onChange={(e) => setPrice(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-                <input type="text" placeholder="Catatan (Opsional)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <input type="text" placeholder="Catatan (Cth: Jemput Ibu saya, baju kuning...)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
               </div>
               <button type="submit" disabled={isLoading} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">
                 {isLoading ? 'Memproses...' : 'Cari Driver Sekarang 🚀'}
@@ -1365,7 +1476,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   {order.status === 'pending' ? 'Mencari Driver...' : 
                    order.status === 'accepted' ? 'Menunggu Pembayaran' :
                    order.status === 'paid' ? 'Verifikasi Admin' :
-                   order.status === 'verified' ? 'Siap Jemput' :
+                   order.status === 'verified' ? (order.paymentMethod === 'saldo' ? 'Sudah Terbayar via Saldo' : 'Siap Jemput') :
                    order.status === 'ongoing' ? 'Dalam Perjalanan' :
                    'Selesai'}
                 </div>
@@ -1397,6 +1508,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 
                 <div className="flex items-center gap-2 mb-3 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-slate-700 w-fit px-2 py-1 rounded-lg">
                   <Shield size={12} className="text-green-500" /> Rekber Aman (Admin)
+                  {order.paymentMethod === 'saldo' && <span className="text-sky-600 font-bold">• Lunas via Saldo</span>}
                 </div>
 
                 {/* 0. STATUS PENDING: User Cari Driver */}
@@ -1589,6 +1701,8 @@ const NiagaGo = ({ onOpenProfile }) => {
               <AutoLocate />
               <MapSearchControl />
               <MyLocationControl />
+              {/* Scan Driver di Lokasi Pilihan (Visual Feedback) */}
+              {tempPickerCenter && <NearbyDrivers driversLocations={driversLocations} center={tempPickerCenter} />}
             </MapContainer>
             
             {/* Center Pin Icon (Overlay) */}

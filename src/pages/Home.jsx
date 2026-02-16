@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp, ChevronLeft, MoreVertical } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -65,6 +65,7 @@ const Home = () => {
   const [isExpired, setIsExpired] = useState(true); // Default true biar gak flicker
   const [pagesContent, setPagesContent] = useState({}); // Konten Halaman Statis
   const [chatTab, setChatTab] = useState('admin'); // 'admin' | 'seller'
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
 
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
@@ -552,27 +553,53 @@ const Home = () => {
       case 'chat': return (
         <div className={`flex flex-col h-[calc(100vh-64px)] ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
            {/* Chat Header with Tabs */}
-           <div className={`flex-none bg-white dark:bg-slate-800 border-b dark:border-slate-700 sticky top-0 z-20`}>
-              <div className="p-3 flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center">
-                    <MessageCircle className="text-sky-600" size={18} />
+           <div className={`flex-none border-b sticky top-0 z-20 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+              <div className="px-4 py-2 flex items-center justify-between">
+                 <div className="flex items-center gap-1">
+                    <button onClick={() => setCurrentView('home')} className={`p-1 rounded-full transition-colors ${isDarkMode ? 'text-white hover:bg-slate-700' : 'text-sky-600 hover:bg-sky-50'}`}>
+                        <ChevronLeft size={26} />
+                    </button>
+                    <div className="flex items-center gap-3 ml-1">
+                        <div className="relative">
+                            <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center border border-sky-50 overflow-hidden">
+                                <img src="https://via.placeholder.com/150?text=Admin" alt="Admin" className="w-full h-full object-cover" />
+                            </div>
+                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full"></div>
+                        </div>
+                        <div>
+                            <h3 className={`font-bold text-sm leading-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Admin SobatNiaga</h3>
+                            <p className="text-[10px] text-green-500 font-bold">Online</p>
+                        </div>
+                    </div>
                  </div>
-                 <div>
-                    <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Pusat Pesan</h3>
-                    <p className={`text-[10px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Bantuan & Diskusi</p>
+                 
+                 <div className="relative">
+                 <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
+                    <MoreVertical size={20} />
+                 </button>
+                 {isChatMenuOpen && (
+                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-30 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                            <User size={14} /> Lihat Profil
+                        </button>
+                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}>
+                            <Trash2 size={14} /> Bersihkan Chat
+                        </button>
+                    </div>
+                 )}
                  </div>
               </div>
               
               <div className="flex border-t dark:border-slate-700">
                  <button 
                     onClick={() => setChatTab('admin')}
-                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'admin' ? 'border-sky-600 text-sky-600 bg-sky-50/50 dark:bg-sky-900/20' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'admin' ? 'border-sky-600 text-sky-600 bg-gray-50 dark:bg-slate-900' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                  >
                     Chat Admin
                  </button>
                  <button 
                     onClick={() => setChatTab('seller')}
-                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'seller' ? 'border-sky-600 text-sky-600 bg-sky-50/50 dark:bg-sky-900/20' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'seller' ? 'border-sky-600 text-sky-600 bg-gray-50 dark:bg-slate-900' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                  >
                     Chat Seller
                  </button>
@@ -580,7 +607,7 @@ const Home = () => {
            </div>
 
            {/* Messages Area */}
-           <div className="flex-1 overflow-y-auto relative">
+           <div className={`flex-1 overflow-y-auto relative ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
               {!user ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
                   <User size={40} className="mb-2 opacity-50" />
@@ -1163,6 +1190,7 @@ const Home = () => {
   return (
     <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Global Header (Sticky) */}
+      {currentView !== 'store-profile' && (
       <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
@@ -1310,6 +1338,7 @@ const Home = () => {
           </div>
         </div>
       </nav>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col w-full">
@@ -1328,6 +1357,7 @@ const Home = () => {
       {currentView !== 'chat' && <DraggableChatWidget onClick={() => setCurrentView('chat')} icon={chatIcon} />}
 
       {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
+      {!['product-detail', 'cart', 'payment', 'niagago'].includes(currentView) && (
       <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="flex justify-around items-center h-16">
           <button onClick={() => setCurrentView('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
@@ -1351,6 +1381,7 @@ const Home = () => {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 };
@@ -1361,9 +1392,10 @@ const DraggableChatWidget = ({ onClick, icon }) => {
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef(null);
   const offset = useRef({ x: 0, y: 0 });
+  const isMouseDown = useRef(false); // Track mouse state
 
   const handleStart = (clientX, clientY) => {
-    setIsDragging(false);
+    isMouseDown.current = true;
     if (dragRef.current) {
         const rect = dragRef.current.getBoundingClientRect();
         offset.current = { x: clientX - rect.left, y: clientY - rect.top };
@@ -1371,6 +1403,7 @@ const DraggableChatWidget = ({ onClick, icon }) => {
   };
 
   const handleMove = (clientX, clientY) => {
+    if (!isMouseDown.current) return;
     setIsDragging(true);
     setPosition({
         x: clientX - offset.current.x,
@@ -1378,15 +1411,43 @@ const DraggableChatWidget = ({ onClick, icon }) => {
     });
   };
 
+  const handleEnd = () => {
+    isMouseDown.current = false;
+    // Delay reset biar onClick ke-trigger duluan (kalau cuma klik) atau ke-block (kalau abis drag)
+    setTimeout(() => setIsDragging(false), 100);
+  };
+
+  // Global Event Listeners untuk Mouse (Desktop)
+  useEffect(() => {
+    const onMouseMove = (e) => {
+        if (isMouseDown.current) {
+            e.preventDefault(); // Prevent text selection
+            handleMove(e.clientX, e.clientY);
+        }
+    };
+    const onMouseUp = () => {
+        if (isMouseDown.current) {
+            handleEnd();
+        }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
   return (
     <div
         ref={dragRef}
         style={{ left: position.x, top: position.y, touchAction: 'none' }}
-        className="fixed z-[999] cursor-move"
+        className="hidden md:block fixed z-[999] cursor-move"
         onTouchStart={(e) => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
         onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchEnd={handleEnd}
         onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
-        onMouseMove={(e) => { if(e.buttons === 1) handleMove(e.clientX, e.clientY); }}
         onClick={() => { if (!isDragging) onClick(); }}
     >
         <div className="w-14 h-14 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg hover:bg-sky-700 transition-colors border-2 border-white overflow-hidden">
@@ -1437,27 +1498,27 @@ const ChatComponent = ({ user, isDarkMode }) => {
 
   return (
     <>
-      <div className="p-3 space-y-3 pb-20">
+      <div className="p-3 space-y-3 pb-32">
           {messages.map(m => (
              <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800 border') + ' rounded-tl-none'}`}>
+                <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-900 border border-gray-100') + ' rounded-tl-none'}`}>
                    {m.text}
-                   <p className={`text-[9px] mt-1 text-right opacity-70`}>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                   <p className={`text-[9px] mt-1 text-right ${m.sender === 'user' ? 'text-sky-100' : 'text-gray-400'}`}>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                 </div>
              </div>
           ))}
           <div ref={bottomRef} />
       </div>
       
-      <div className={`fixed bottom-[64px] left-0 right-0 p-2 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+      <div className={`fixed bottom-[64px] md:bottom-0 left-0 right-0 p-3 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
           <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto items-center">
              <input 
                 value={input} 
                 onChange={e => setInput(e.target.value)} 
                 placeholder="Tulis pesan..." 
-                className={`flex-1 py-2 px-3 rounded-full border text-xs outline-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+                className={`flex-1 py-2.5 px-4 rounded-full border text-sm outline-none transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white placeholder-gray-500' : 'bg-gray-100 border-gray-300 text-gray-900 placeholder-gray-500'}`}
              />
-             <button type="submit" className="p-2 bg-sky-600 text-white rounded-full hover:bg-sky-700 shadow-sm flex-shrink-0"><Send size={16}/></button>
+             <button type="submit" className="p-2.5 bg-sky-600 text-white rounded-full hover:bg-sky-700 shadow-sm flex-shrink-0 transition-transform active:scale-95"><Send size={18}/></button>
           </form>
        </div>
     </>
