@@ -80,14 +80,14 @@ const SellerVerification = ({ user, onVerificationSuccess }) => {
         </div>
         <div>
           <label className={`block text-xs font-bold mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Nomor Rekening</label>
-          <div className="flex gap-4">
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all appearance-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} required>
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4">
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className={`w-full md:flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all appearance-none ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} required>
               <option value="">Pilih Bank</option>
               <option value="BCA">BCA</option>
               <option value="Mandiri">Mandiri</option>
               <option value="BRI">BRI</option>
             </select>
-            <input type="number" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nomor rekening" required />
+            <input type="number" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={`w-full md:flex-1 px-3 py-2 rounded-lg border text-sm outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-500 focus:ring-2 focus:ring-sky-900/50' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="Nomor rekening" required />
           </div>
         </div>
         <button type="submit" disabled={isLoading} className={`w-full py-2.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>

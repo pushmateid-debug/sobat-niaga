@@ -39,6 +39,7 @@ const Home = () => {
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
   const searchRef = useRef(null);
+  const chatMenuRef = useRef(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
@@ -248,6 +249,9 @@ const Home = () => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setShowSuggestions(false);
       }
+      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target)) {
+        setIsChatMenuOpen(false);
+      }
     };
 
     const handleEscapeKey = (event) => {
@@ -255,6 +259,7 @@ const Home = () => {
         setIsProfileOpen(false);
         setIsNotificationOpen(false);
         setShowSuggestions(false);
+        setIsChatMenuOpen(false);
       }
     };
 
@@ -573,7 +578,7 @@ const Home = () => {
                     </div>
                  </div>
                  
-                 <div className="relative">
+                 <div className="relative" ref={chatMenuRef}>
                  <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
                     <MoreVertical size={20} />
                  </button>
@@ -1250,7 +1255,7 @@ const Home = () => {
               </button>
 
               {isNotificationOpen && (
-                <div ref={notificationRef} className="absolute right-0 mt-2 w-80 rounded-xl shadow-lg border z-50 overflow-hidden theme-card">
+                <div ref={notificationRef} className="absolute right-0 mt-2 w-60 md:w-80 rounded-xl shadow-lg border z-50 overflow-hidden theme-card origin-top-right">
                   <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-white">
                     <h3 className="font-bold theme-text text-sm">Notifikasi</h3>
                     <div className="flex gap-2">
