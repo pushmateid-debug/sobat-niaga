@@ -22,15 +22,9 @@ import {
 // Registrasi Chart.js
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-const calculateAdminFee = (amount, isCompetitor = false) => {
-  if (!isCompetitor) return 2000; // Flat fee for non-competitors
-
-  if (amount < 50000) return 2000;
-  if (amount <= 250000) return 5000;
-  
-  // > 250k: 1% (Max 20k)
-  const fee = amount * 0.01;
-  return Math.min(fee, 20000);
+const calculateAdminFee = (amount) => {
+  if (amount < 15000) return 500;
+  return 2000;
 };
 
 const DashboardSeller = ({ user, onBack }) => {
@@ -47,7 +41,7 @@ const DashboardSeller = ({ user, onBack }) => {
     price: '',
         fieldInputType: 'ID Only', // nilai default
     stock: '',
-    category: 'Makan', // Default Category
+    category: 'Niaga Food', // Default Category
     subCategory: '', // Sub-Kategori Dinamis
     skinProblem: '', // Masalah Kulit (Skin Care)
     estimation: '', // Estimasi Pengerjaan (Jasa)
@@ -374,7 +368,7 @@ const DashboardSeller = ({ user, onBack }) => {
       }
 
       // Reset Form
-      setProductForm({ name: '', description: '', price: '', stock: '', category: 'Makan', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
+      setProductForm({ name: '', description: '', price: '', stock: '', category: 'Niaga Food', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
       setMediaFile(null);
       setMediaPreview(null);
       setMediaType('image');
@@ -417,7 +411,7 @@ const DashboardSeller = ({ user, onBack }) => {
   // Handle Batal Edit
   const handleCancelEdit = () => {
     setEditingProductId(null);
-    setProductForm({ name: '', description: '', price: '', stock: '', category: 'Makan', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
+    setProductForm({ name: '', description: '', price: '', stock: '', category: 'Niaga Food', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
     setMediaFile(null);
     setMediaPreview(null);
     setMediaType('image');
@@ -651,7 +645,7 @@ const DashboardSeller = ({ user, onBack }) => {
                         <p class="text-sm font-bold text-green-600">+ Rp ${(() => {
                             const items = Array.isArray(o.items) ? o.items : Object.values(o.items);
                             const revenue = items.filter(i => i.sellerId === user.uid).reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                            return (revenue - calculateAdminFee(revenue, isCompetitorRef.current)).toLocaleString('id-ID');
+                            return (revenue - calculateAdminFee(revenue)).toLocaleString('id-ID');
                         })()}</p>
                         <p class="text-[10px] text-gray-400">Sudah Cair</p>
                     </div>
@@ -674,6 +668,64 @@ const DashboardSeller = ({ user, onBack }) => {
             const message = `Halo Admin SobatNiaga, saya Seller ${storeName} ingin mencairkan saldo Rp________.\n\n(Saya memahami bahwa biaya admin transfer antar bank/e-wallet ditanggung sepenuhnya oleh Seller dan akan dipotong langsung oleh pihak penyedia layanan).`;
             window.open(`https://wa.me/6289517587498?text=${encodeURIComponent(message)}`, '_blank');
         }
+    });
+  };
+
+  // Handle Terima Pesanan Makanan (Niaga Food)
+  const handleAcceptFoodOrder = async (orderId) => {
+    Swal.fire({
+      title: 'Terima Pesanan Ini?',
+      text: "Status akan diubah menjadi 'Dimasak'. Pastikan Anda siap menyiapkannya.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Terima & Masak',
+      confirmButtonColor: '#16a34a', // green
+      cancelButtonText: 'Batal'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          // Update status order di Firebase
+          await update(ref(db, `orders/${orderId}`), {
+            status: 'being_prepared'
+          });
+
+          const order = sellerOrders.find(o => o.id === orderId);
+
+          // --- LOGIKA BARU: Broadcast order ke driver ---
+          if (order && order.deliveryFee > 0) {
+            const deliveryData = {
+              orderId: order.id,
+              storeName: sellerInfo?.storeName,
+              storeLocation: sellerInfo?.storeAddress,
+              buyerName: order.buyerName,
+              buyerLocation: order.deliveryAddress,
+              deliveryFee: order.deliveryFee,
+              createdAt: new Date().toISOString(),
+            };
+            await set(ref(db, `food_delivery_pool/${order.id}`), deliveryData);
+          }
+
+          // Kirim notifikasi ke pembeli
+          if (order) {
+            await push(ref(db, 'notifications'), {
+              userId: order.buyerId,
+              title: 'Pesananmu sedang dimasak! 🍳',
+              message: `Restoran ${sellerInfo?.storeName || 'Toko'} sedang menyiapkan pesananmu. Mohon ditunggu ya.`,
+              type: 'info',
+              targetView: 'history',
+              targetTab: 'being_prepared', // Arahkan ke tab yang benar
+              orderId: orderId,
+              createdAt: new Date().toISOString(),
+              isRead: false
+            });
+          }
+
+          Swal.fire('Pesanan Diterima!', 'Segera siapkan pesanan untuk pelanggan.', 'success');
+        } catch (error) {
+          console.error("Error accepting food order:", error);
+          Swal.fire('Error', 'Gagal menerima pesanan.', 'error');
+        }
+      }
     });
   };
 
@@ -778,8 +830,8 @@ const DashboardSeller = ({ user, onBack }) => {
     const isUp = lastValue >= prevValue;
     // Warna Hijau (Cuan) Default
     const mainColor = isMobile ? '#10b981' : '#0ea5e9'; // Hijau di HP, Biru di Web
-    const gradientStart = isMobile ? 'rgba(16, 185, 129, 0.2)' : 'rgba(14, 165, 233, 0.2)';
-    const gradientEnd = isMobile ? 'rgba(16, 185, 129, 0)' : 'rgba(14, 165, 233, 0)';
+    const gradientStart = isMobile ? 'rgba(16, 185, 129, 0.15)' : 'rgba(14, 165, 233, 0.2)';
+    const gradientEnd = isMobile ? 'rgba(16, 185, 129, 0.01)' : 'rgba(14, 165, 233, 0)';
 
     return {
       labels,
@@ -795,13 +847,14 @@ const DashboardSeller = ({ user, onBack }) => {
           return gradient;
         },
         borderColor: mainColor,
-        borderWidth: 2,
-        tension: 0.3, // Smooth curve (Stockbit style)
-        pointRadius: 3, // Tampilkan titik data sesuai request
-        pointHoverRadius: 5,
-        pointBackgroundColor: mainColor,
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
+        borderWidth: 1.5, // Garis lebih tipis & elegan
+        tension: 0.4, // Smooth curve (Stockbit style)
+        pointRadius: 0, // Titik data sembunyi (hanya muncul hover)
+        pointHoverRadius: 4, // Muncul putih saat hover/tap
+        pointHoverBackgroundColor: '#ffffff',
+        pointHoverBorderColor: mainColor,
+        pointHoverBorderWidth: 2,
+        pointHitRadius: 20, // Area tap lebih besar
       }],
     };
   }, [sellerOrders, dateRange, user.uid, isMobile, chartFilter]);
@@ -876,15 +929,16 @@ const DashboardSeller = ({ user, onBack }) => {
     scales: {
       x: {
         grid: { display: false, drawBorder: false },
-        ticks: { font: { size: 10 }, color: isDarkMode ? '#9ca3af' : '#9ca3af', maxTicksLimit: 6, maxRotation: 0 }
+        ticks: { font: { size: 10 }, color: isDarkMode ? '#64748b' : '#94a3b8', maxTicksLimit: 6, maxRotation: 0 }
       },
       y: {
         display: true, // Tampilkan Sumbu Y di Desktop & Mobile
         grid: { display: !isMobile, drawBorder: false, color: isDarkMode ? '#334155' : '#f1f5f9', borderDash: [4, 4] },
         ticks: { 
-          font: { size: 10 }, 
-          color: isDarkMode ? '#9ca3af' : '#9ca3af',
-          callback: (value) => `Rp ${value >= 1000 ? value/1000 + 'k' : value}`
+          font: { size: 9 }, 
+          color: isDarkMode ? '#64748b' : '#94a3b8',
+          callback: (value) => value >= 1000 ? (value/1000).toFixed(0) + 'k' : value,
+          maxTicksLimit: 5
         },
         beginAtZero: true
       }
@@ -892,7 +946,27 @@ const DashboardSeller = ({ user, onBack }) => {
     interaction: {
       mode: 'nearest',
       axis: 'x',
-      intersect: false
+      intersect: false,
+    },
+    onClick: () => {
+        // Fitur Auto-Rotate Landscape saat grafik diklik (HP Only)
+        if (isMobile) {
+            try {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().then(() => {
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
+                        }
+                    }).catch(err => console.log("Fullscreen failed:", err));
+                } else {
+                    document.exitFullscreen().then(() => {
+                        if (screen.orientation && screen.orientation.unlock) {
+                            screen.orientation.unlock();
+                        }
+                    }).catch(err => console.log("Exit fullscreen failed:", err));
+                }
+            } catch (e) { console.log("Landscape mode not supported", e); }
+        }
     }
   }), [isDarkMode, isMobile]);
 
@@ -938,6 +1012,7 @@ const DashboardSeller = ({ user, onBack }) => {
   const getOrderStatusBadge = (status) => {
     switch (status) {
       case 'waiting_payment': return <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-xs font-bold">Belum Bayar</span>;
+      case 'being_prepared': return <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-bold">Sedang Disiapkan</span>;
       case 'waiting_verification': return <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-bold">Verifikasi Admin</span>;
       case 'processed': return <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-bold">Perlu Dikirim</span>;
       case 'shipped': return <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs font-bold">Dikirim</span>;
@@ -1250,11 +1325,31 @@ const DashboardSeller = ({ user, onBack }) => {
               
               {/* Mobile Header for Stats (Visible only on Mobile) */}
               {mobileView === 'stats' && (
-                <div className="flex items-center gap-3 mb-6 md:hidden">
-                    <button onClick={handleMobileBack} className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                        <ArrowLeft size={20} />
-                    </button>
-                    <h2 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h2>
+                <div className="flex flex-col items-center mb-6 md:hidden">
+                    {/* Header Dinamis & Total Omzet */}
+                    <div className="flex items-center justify-between w-full mb-4">
+                        <button onClick={handleMobileBack} className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div className="text-center">
+                            <h2 className={`font-bold text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{getMobileDateDisplay()}</h2>
+                            <p className={`text-lg font-extrabold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {totalRevenueForPeriod.toLocaleString('id-ID')}</p>
+                        </div>
+                        <div className="w-9"></div> {/* Spacer */}
+                    </div>
+
+                    {/* Stockbit Style Filter (Sleek) */}
+                    <div className={`flex p-1 rounded-xl ${isDarkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
+                        {['1D', '1W', '1M', 'ALL'].map(f => (
+                            <button 
+                                key={f} 
+                                onClick={() => handleMobileFilter(f)}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${chartFilter === f ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-gray-800 shadow-sm') : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600')}`}
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
                 </div>
               )}
 
@@ -1282,34 +1377,6 @@ const DashboardSeller = ({ user, onBack }) => {
                 </div>
               </div>
 
-              {/* Total Sales Info */}
-              {totalRevenueForPeriod > 0 && (
-              <div className="mb-6 text-center md:text-left">
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Total Pendapatan</p>
-                <h3 className={`text-3xl md:text-4xl font-extrabold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {totalRevenueForPeriod.toLocaleString('id-ID')}</h3>
-              </div>
-              )}
-
-              {/* Mobile Date Display */}
-              <div className="md:hidden text-center mb-4">
-                  <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {getMobileDateDisplay()}
-                  </p>
-              </div>
-
-              {/* Stockbit Style Filter (Mobile Only) */}
-              <div className="flex justify-center gap-2 mb-6 md:hidden">
-                {['1D', '1W', '1M', 'ALL'].map(f => (
-                    <button 
-                        key={f} 
-                        onClick={() => handleMobileFilter(f)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${chartFilter === f ? 'bg-sky-600 text-white shadow-md shadow-sky-200' : (isDarkMode ? 'bg-slate-700 text-gray-400 hover:bg-slate-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}`}
-                    >
-                        {f}
-                    </button>
-                ))}
-              </div>
-              
               <div className={`h-64 md:h-80 w-full`}>
                 <Line options={chartOptions} data={chartData} />
               </div>
@@ -1375,7 +1442,7 @@ const DashboardSeller = ({ user, onBack }) => {
                       onChange={e => setProductForm({...productForm, category: e.target.value, subCategory: '', skinProblem: ''})}
                       className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none appearance-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-gray-200'}`}
                     >
-                      <option value="Makan">Makan</option>
+                      <option value="Niaga Food">Niaga Food</option>
                       <option value="Skin Care">Skin Care</option>
                       <option value="Fashion">Fashion</option>
                       <option value="Isi Pulsa">Isi Pulsa</option>
@@ -1385,7 +1452,7 @@ const DashboardSeller = ({ user, onBack }) => {
                   </div>
 
                   {/* Dropdown Sub-Kategori (Khusus Makan) */}
-                  {productForm.category === 'Makan' && (
+                  {productForm.category === 'Niaga Food' && (
                     <div className="relative animate-pulse">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Tag size={18} className="text-gray-400" />
@@ -1626,6 +1693,7 @@ const DashboardSeller = ({ user, onBack }) => {
                             <tr key={order.id} className={`hover:transition-colors ${isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-gray-50'}`}>
                                 {(() => {
                                     const isJasa = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Jasa');
+                                    const isNiagaFoodOrder = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
                                     return (
                                 <>
                                 <td className="px-6 py-4 font-medium text-xs">#{order.id.slice(-6)}</td>
@@ -1662,7 +1730,11 @@ const DashboardSeller = ({ user, onBack }) => {
                                 <td className="px-6 py-4 font-price font-bold text-[#333333]">Rp {order.totalPrice.toLocaleString('id-ID')}</td>
                                 <td className="px-6 py-4">
                                     {order.status === 'processed' && (
-                                        <button onClick={() => handleProcessOrder(order.id, isJasa)} className="text-white bg-sky-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 shadow-sm transition-colors">{isJasa ? 'Tandai Selesai' : 'Proses & Kirim'}</button>
+                                        isNiagaFoodOrder ? (
+                                            <button onClick={() => handleAcceptFoodOrder(order.id)} className="text-white bg-green-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition-colors">Terima & Siapkan</button>
+                                        ) : (
+                                            <button onClick={() => handleProcessOrder(order.id, isJasa)} className="text-white bg-sky-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 shadow-sm transition-colors">{isJasa ? 'Tandai Selesai' : 'Proses & Kirim'}</button>
+                                        )
                                     )}
                                     {order.status === 'waiting_verification' && <span className="text-xs text-gray-400 italic">Menunggu Admin</span>}
                                 </td>

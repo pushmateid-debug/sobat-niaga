@@ -5,6 +5,11 @@ import { ref, get, update } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
+const calculateAdminFee = (amount) => {
+  if (amount < 15000) return 500;
+  return 2000;
+};
+
 const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
@@ -205,6 +210,10 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           <div className="mt-6 text-center">
             <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Tagihan</p>
             <h2 className={`font-price text-3xl font-bold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {orderData.totalPrice?.toLocaleString('id-ID')}</h2>
+            <div className={`mt-2 text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Harga: Rp {(orderData.totalPrice - calculateAdminFee(orderData.totalPrice)).toLocaleString('id-ID')} + 
+              Admin: Rp {calculateAdminFee(orderData.totalPrice).toLocaleString('id-ID')}
+            </div>
             <div className={`flex items-center justify-center gap-2 mt-2 text-xs py-1 px-3 rounded-full inline-flex ${isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-50 text-orange-600'}`}>
               <Clock size={12} /> Bayar sebelum 23:59 WIB
             </div>

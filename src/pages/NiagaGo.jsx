@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye } from 'lucide-react';
+import { 
+  Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, 
+  Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils 
+} from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore, storage } from '../config/firebase';
-import { ref, onValue, update, get } from 'firebase/database';
+import { ref, onValue, update, get, remove } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +26,12 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+// Helper: Hitung Biaya Admin
+const calculateAdminFee = (amount) => {
+  if (amount < 15000) return 500;
+  return 2000;
+};
 
 // Custom Icon Motor (Biar Keren!)
 const motorIcon = new L.Icon({
@@ -423,6 +432,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // State User & Role
   const [userProfile, setUserProfile] = useState(null);
   const [isDriverMode, setIsDriverMode] = useState(false);
+  const [driverService, setDriverService] = useState('ojek'); // 'ojek' | 'food'
   const [userLocation, setUserLocation] = useState(null); // Lokasi GPS User (Untuk proteksi order jauh)
 
   // State Form Order
@@ -445,6 +455,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // State Data
   const [orders, setOrders] = useState([]);
   const [driversLocations, setDriversLocations] = useState({});
+  const [foodDeliveries, setFoodDeliveries] = useState([]); // State untuk orderan Niaga Food
 
   // State Withdrawal
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -452,7 +463,13 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // State Registration Driver
   const [viewMode, setViewMode] = useState('main'); // 'main' | 'register'
-  const [regForm, setRegForm] = useState({ name: '', email: '', phone: '' });
+  const [regForm, setRegForm] = useState({ 
+    name: '', 
+    email: '', 
+    phone: '', 
+    plateNumber: '', // Plat nomor
+    services: { niagaGo: true, niagaFood: false } // Default NiagaGo dicentang
+  });
   const [ktmFile, setKtmFile] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [latestReg, setLatestReg] = useState(null);
@@ -468,11 +485,12 @@ const NiagaGo = ({ onOpenProfile }) => {
   // Prefill Form Pendaftaran saat User Profile dimuat
   useEffect(() => {
     if (userProfile) {
-      setRegForm({
+      setRegForm(prev => ({
+        ...prev,
         name: userProfile.displayName || '',
         email: userProfile.email || '',
         phone: userProfile.phoneNumber || ''
-      });
+      }));
     }
 
     // Cek Status Pendaftaran Terakhir
@@ -542,6 +560,20 @@ const NiagaGo = ({ onOpenProfile }) => {
     return () => unsubscribe();
   }, []);
 
+  // --- FETCH FOOD DELIVERIES (REALTIME DB) ---
+  useEffect(() => {
+    if (isDriverMode) {
+      const poolRef = ref(realDb, 'food_delivery_pool');
+      const unsubscribe = onValue(poolRef, (snapshot) => {
+        const data = snapshot.val();
+        const availableDeliveries = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+        setFoodDeliveries(availableDeliveries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      });
+      return () => unsubscribe();
+    }
+  }, [isDriverMode]);
+
+
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
     if (!dbFirestore || !userProfile?.uid) {
@@ -552,8 +584,10 @@ const NiagaGo = ({ onOpenProfile }) => {
     let q;
 
     if (isDriverMode) {
-      // Driver melihat orderan pending (cari penumpang) ATAU orderan yang dia ambil (accepted/paid/verified/ongoing)
-      // FIX: Hapus orderBy sementara biar gak error "Missing Index" di Firebase
+      // Driver melihat:
+      // 1. Ojek: orderan pending (cari penumpang) ATAU orderan yang dia ambil
+      // 2. Food: orderan makanan yang dia ambil
+      // Untuk simplicity, kita fetch semua orderan yang relevan dengan driver ini
       // Note: Idealnya query dipisah, tapi untuk demo kita filter di client side saja biar simpel
       q = query(ordersRef); 
     } else {
@@ -564,9 +598,13 @@ const NiagaGo = ({ onOpenProfile }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Filter khusus Driver: Tampilkan Pending (semua) + Orderan Saya (yang diambil)
+      // Filter khusus Driver
       let filteredData = isDriverMode 
-        ? data.filter(o => o.status === 'pending' || o.driverId === userProfile.uid)
+        ? data.filter(o => {
+            const isMyOjekOrder = o.driverId === userProfile.uid;
+            const isPendingOjek = driverService === 'ojek' && o.status === 'pending';
+            return isMyOjekOrder || isPendingOjek;
+        })
         : data;
 
       // Filter Soft Delete (Sembunyikan yang sudah dihapus user/driver)
@@ -908,6 +946,75 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
+  // 2. Driver Mengambil Orderan Niaga Food
+  const handleTakeFoodDelivery = async (delivery) => {
+    const result = await Swal.fire({
+      title: 'Ambil Orderan Makanan?',
+      html: `Ambil pengantaran dari <b>${delivery.storeName}</b> ke <b>${delivery.buyerName}</b>?<br/>Ongkir: <b>Rp ${delivery.deliveryFee.toLocaleString()}</b>`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Ambil!',
+      cancelButtonText: 'Batal'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        // ATOMIC UPDATE: Update Order & Hapus dari Pool secara bersamaan
+        // Ini mencegah Race Condition di mana order berhasil diambil tapi gagal dihapus (atau sebaliknya)
+        const updates = {};
+        updates[`orders/${delivery.orderId}/driverId`] = userProfile.uid;
+        updates[`orders/${delivery.orderId}/driverName`] = userProfile.displayName;
+        updates[`orders/${delivery.orderId}/driverPlate`] = userProfile.plateNumber || 'N/A';
+        updates[`orders/${delivery.orderId}/status`] = 'ready_for_pickup'; // Driver OTW Resto
+        updates[`food_delivery_pool/${delivery.id}`] = null; // Hapus dari pool
+
+        await update(ref(realDb), updates);
+
+        // 3. Kirim notifikasi ke Seller & Pembeli
+        const orderSnap = await get(ref(realDb, `orders/${delivery.orderId}`));
+        if (orderSnap.exists()) {
+          const orderData = orderSnap.val();
+          const sellerId = (Array.isArray(orderData.items) ? orderData.items[0] : Object.values(orderData.items)[0]).sellerId;
+          // Notif ke Seller
+          await push(ref(realDb, 'notifications'), {
+            userId: sellerId,
+            title: 'Driver Ditemukan!',
+            message: `Driver ${userProfile.displayName} sedang menuju ke tokomu untuk mengambil pesanan #${delivery.orderId.slice(-6)}.`,
+            type: 'info',
+            targetView: 'dashboard-seller',
+            createdAt: new Date().toISOString(),
+            isRead: false
+          });
+          // Notif ke Pembeli
+          await push(ref(realDb, 'notifications'), {
+            userId: orderData.buyerId,
+            title: 'Driver OTW ke Resto!',
+            message: `Driver ${userProfile.displayName} (${userProfile.plateNumber}) sedang dalam perjalanan mengambil pesananmu.`,
+            type: 'info',
+            targetView: 'history',
+            targetTab: 'ready_for_pickup',
+            orderId: delivery.orderId,
+            createdAt: new Date().toISOString(),
+            isRead: false
+          });
+        }
+
+        Swal.fire('Berhasil Mengambil Orderan!', 'Segera menuju ke resto untuk mengambil pesanan.', 'success');
+      } catch (error) {
+        console.error("Error taking food delivery:", error);
+        Swal.fire('Gagal', 'Orderan sudah diambil driver lain atau terjadi kesalahan.', 'error');
+      }
+    }
+  };
+
+  // 2.1 Driver Update Status Pengantaran Makanan
+  const handleUpdateFoodDeliveryStatus = async (orderId, newStatus) => {
+    await update(ref(realDb, `orders/${orderId}`), {
+      status: newStatus
+    });
+    // Bisa ditambahkan notifikasi ke pembeli di sini
+  };
+
   // 2.5 User Menerima Tawaran Driver
   const handleAcceptOffer = async (order, offer) => {
       try {
@@ -1032,8 +1139,8 @@ const NiagaGo = ({ onOpenProfile }) => {
             const driverData = driverSnap.val();
             const currentDriverSaldo = parseInt(driverData.saldo || 0);
             
-            // Hitung Pendapatan Bersih (Potong Fee Admin jika ada)
-            const appFee = adminPaymentInfo?.appFee ? parseInt(adminPaymentInfo.appFee) : 2000;
+            // Hitung Pendapatan Bersih (Potong Fee Admin)
+            const appFee = calculateAdminFee(order.price);
             const netIncome = Math.max(0, order.price - appFee);
 
             // Update Saldo Driver
@@ -1106,6 +1213,12 @@ const NiagaGo = ({ onOpenProfile }) => {
        return;
     }
 
+    // Validasi Layanan
+    if (!regForm.services.niagaGo && !regForm.services.niagaFood) {
+      Swal.fire('Pilih Layanan', 'Mohon pilih minimal satu layanan yang ingin diambil (Niaga Go / Niaga Food).', 'warning');
+      return;
+    }
+
     setIsRegistering(true);
     try {
       console.log("Memulai proses pendaftaran...");
@@ -1120,6 +1233,8 @@ const NiagaGo = ({ onOpenProfile }) => {
         name: regForm.name,
         email: regForm.email,
         phone: regForm.phone,
+        plateNumber: regForm.plateNumber,
+        services: regForm.services, // Simpan layanan yang dipilih
         ktmUrl: ktmUrl,
         status: 'pending',
         createdAt: serverTimestamp()
@@ -1268,6 +1383,35 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
 
                 <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Plat Nomor Kendaraan</label>
+                  <input type="text" value={regForm.plateNumber} onChange={(e) => setRegForm({...regForm, plateNumber: e.target.value.toUpperCase()})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="Contoh: P 1234 AA" required />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Layanan yang Diambil</label>
+                  <div className="space-y-2 pt-2">
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${regForm.services.niagaGo ? 'border-sky-500 bg-sky-50 dark:bg-slate-700' : 'dark:border-slate-600'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={regForm.services.niagaGo}
+                        onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaGo: e.target.checked}})}
+                        className="w-5 h-5 text-sky-600 rounded focus:ring-sky-500"
+                      />
+                      <span className="font-medium text-sm">Niaga Go (Antar Penumpang)</span>
+                    </label>
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${regForm.services.niagaFood ? 'border-sky-500 bg-sky-50 dark:bg-slate-700' : 'dark:border-slate-600'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={regForm.services.niagaFood}
+                        onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaFood: e.target.checked}})}
+                        className="w-5 h-5 text-sky-600 rounded focus:ring-sky-500"
+                      />
+                      <span className="font-medium text-sm">Niaga Food (Antar Makanan)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
                   <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Foto KTM</label>
                   <div className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${isDarkMode ? 'border-slate-600 hover:border-sky-500 bg-slate-700/50' : 'border-sky-200 hover:border-sky-500 bg-sky-50'}`}>
                     <input type="file" accept="image/*" onChange={(e) => setKtmFile(e.target.files[0])} className="hidden" id="ktm-upload" />
@@ -1307,11 +1451,20 @@ const NiagaGo = ({ onOpenProfile }) => {
           {userProfile?.role === 'driver' ? (
             <button 
               onClick={() => setIsDriverMode(!isDriverMode)}
-              className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDriverMode ? 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/30' : 'border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+              className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDriverMode ? 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/30' : (isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100')}`}
             >
               {isDriverMode ? '👨‍✈️ Mode Driver Aktif' : '👤 Mode Penumpang'}
             </button>
           ) : (
+            // Tombol Daftar Driver
+            latestReg?.status === 'approved' ? (
+              <button 
+                onClick={() => setIsDriverMode(true)}
+                className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+              >
+                Masuk Mode Driver
+              </button>
+            ) :
             latestReg?.status === 'pending' ? (
               <button 
                 disabled
@@ -1335,7 +1488,27 @@ const NiagaGo = ({ onOpenProfile }) => {
 
         {/* --- DRIVER DASHBOARD (SALDO & WITHDRAW) --- */}
         {isDriverMode && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-700 text-white shadow-lg">
+          <div className="mb-6">
+            {/* Service Toggle */}
+            <div className={`flex gap-2 mb-4 p-1.5 rounded-xl border shadow-sm transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+              <button
+                onClick={() => setDriverService('ojek')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                  driverService === 'ojek' ? (isDarkMode ? 'bg-sky-900/50 text-sky-300' : 'bg-sky-100 text-sky-600') : (isDarkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-50')
+                }`}
+              >
+                <Bike size={16} /> Ojek
+              </button>
+              <button
+                onClick={() => setDriverService('food')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                  driverService === 'food' ? (isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-600') : (isDarkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-50')
+                }`}
+              >
+                <Utensils size={16} /> Food
+              </button>
+            </div>
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-700 text-white shadow-lg">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <p className="text-sky-100 text-xs font-medium">Saldo Niaga (Virtual)</p>
@@ -1362,6 +1535,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
               </form>
             )}
+            </div>
           </div>
         )}
 
@@ -1456,7 +1630,56 @@ const NiagaGo = ({ onOpenProfile }) => {
             )}
           </div>
 
-          {orders.length === 0 ? (
+          {/* --- TAMPILAN DRIVER: NIAGA FOOD DELIVERY POOL --- */}
+          {isDriverMode && driverService === 'food' && (
+            foodDeliveries.length === 0 ? (
+              <div className="text-center py-10 text-gray-500">
+                <Utensils size={48} className="mx-auto mb-2 opacity-20" />
+                <p>Belum ada orderan makanan tersedia.</p>
+              </div>
+            ) : (
+              foodDeliveries.map((delivery) => (
+                <div key={delivery.id} className={`p-4 rounded-xl border relative overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
+                      <Utensils size={20} className="text-green-500" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold">{delivery.storeName}</h4>
+                      <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> {new Date(delivery.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin size={16} className="text-red-500" />
+                      <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{delivery.storeLocation}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Navigation size={16} className="text-blue-500" />
+                      <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{delivery.buyerLocation}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-300 dark:border-slate-600">
+                    <div>
+                      <p className="text-xs text-gray-400">Ongkir</p>
+                      <div className="font-bold text-lg text-green-500">
+                        Rp {delivery.deliveryFee.toLocaleString()}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleTakeFoodDelivery(delivery)}
+                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                    >
+                      <Bike size={16} /> Ambil
+                    </button>
+                  </div>
+                </div>
+              ))
+            )
+          )}
+
+          {/* --- TAMPILAN DRIVER: OJEK & USER: HISTORY --- */}
+          {!(isDriverMode && driverService === 'food') && (orders.length === 0 ? (
             <div className="text-center py-10 text-gray-500">
               <Bike size={48} className="mx-auto mb-2 opacity-20" />
               <p>Belum ada orderan nih.</p>
@@ -1470,6 +1693,8 @@ const NiagaGo = ({ onOpenProfile }) => {
                   order.status === 'accepted' ? 'bg-blue-500/20 text-blue-600' :
                   order.status === 'paid' ? 'bg-purple-500/20 text-purple-600' :
                   order.status === 'verified' ? 'bg-indigo-500/20 text-indigo-600' :
+                  order.status === 'ready_for_pickup' ? 'bg-teal-500/20 text-teal-600' :
+                  order.status === 'delivering' ? 'bg-cyan-500/20 text-cyan-600' :
                   order.status === 'ongoing' ? 'bg-orange-500/20 text-orange-600' :
                   'bg-green-500/20 text-green-600'
                 }`}>
@@ -1477,6 +1702,8 @@ const NiagaGo = ({ onOpenProfile }) => {
                    order.status === 'accepted' ? 'Menunggu Pembayaran' :
                    order.status === 'paid' ? 'Verifikasi Admin' :
                    order.status === 'verified' ? (order.paymentMethod === 'saldo' ? 'Sudah Terbayar via Saldo' : 'Siap Jemput') :
+                   order.status === 'ready_for_pickup' ? 'Driver OTW Resto' :
+                   order.status === 'delivering' ? 'Diantar ke Kamu' :
                    order.status === 'ongoing' ? 'Dalam Perjalanan' :
                    'Selesai'}
                 </div>
@@ -1635,6 +1862,28 @@ const NiagaGo = ({ onOpenProfile }) => {
                     </div>
                   )}
 
+                  {/* 4.5 STATUS PENGANTARAN MAKANAN (DRIVER) */}
+                  {isDriverMode && ['ready_for_pickup', 'delivering'].includes(order.status) && (
+                    <div className="flex gap-2 justify-end">
+                      <a href={`https://wa.me/${order.userPhone}`} target="_blank" rel="noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                        <Phone size={16} /> WA Pembeli
+                      </a>
+                      {order.status === 'ready_for_pickup' && (
+                        <button onClick={() => handleUpdateFoodDeliveryStatus(order.id, 'delivering')} className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-bold">
+                          Mulai Antar
+                        </button>
+                      )}
+                      {order.status === 'delivering' && (
+                        <button 
+                          onClick={() => handleUpdateFoodDeliveryStatus(order.id, 'completed')}
+                          className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                        >
+                          <CheckSquare size={16} /> Selesai
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* 5. STATUS ONGOING: User Konfirmasi Selesai */}
                   {order.status === 'ongoing' && (
                     <div className="flex flex-col gap-3 w-full">
@@ -1687,7 +1936,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
               </div>
             ))
-          )}
+          ))}
         </div>
       </div>
 

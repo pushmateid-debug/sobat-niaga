@@ -73,12 +73,9 @@ const ImageUploader = ({ label, currentUrl, onFileSelect }) => {
 };
 
 // Helper: Hitung Biaya Admin (Sama dengan logic di Seller)
-const calculateAdminFee = (amount, isCompetitor = false) => {
-  if (!isCompetitor) return 2000;
-  if (amount < 50000) return 2000;
-  if (amount <= 250000) return 5000;
-  const fee = amount * 0.01;
-  return Math.min(fee, 20000);
+const calculateAdminFee = (amount) => {
+  if (amount < 15000) return 500;
+  return 2000;
 };
 
 const AdminDashboard = ({ onBack }) => {
@@ -278,10 +275,7 @@ const AdminDashboard = ({ onBack }) => {
     
     const totalProfit = filteredFinance.reduce((acc, curr) => {
         if (curr.type === 'Marketplace') {
-            // Cek apakah seller kompetitor (butuh data seller, disini kita estimasi flat dulu atau ambil dari sellers state jika ada)
-            // Untuk akurasi dashboard, kita pakai logic sederhana dulu atau mapping sellerId
-            // Agar cepat, kita pakai default non-competitor (2000) atau logic standar
-            return acc + calculateAdminFee(curr.amount, false); 
+            return acc + calculateAdminFee(curr.amount); 
         } else {
             const fee = curr.adminFee !== undefined ? parseInt(curr.adminFee) : 2000;
             return acc + fee;
@@ -544,7 +538,8 @@ const AdminDashboard = ({ onBack }) => {
 
         // 2. Update role user di Realtime Database (Biar tombol Mode Driver muncul di user)
         await update(ref(realDb, `users/${req.userId}`), {
-          role: 'driver'
+          role: 'driver',
+          plateNumber: req.plateNumber || 'N/A' // Simpan plat nomor
         });
 
         Swal.fire('Berhasil', 'Driver berhasil diverifikasi!', 'success');
@@ -622,7 +617,7 @@ const AdminDashboard = ({ onBack }) => {
     try {
       if (isApproved) {
         // 1. Hitung Pendapatan Bersih Driver & Admin Fee
-        const adminFee = parseInt(adminSettings.appFee) || 2000;
+        const adminFee = calculateAdminFee(parseInt(order.price) || 0);
         const netIncome = (parseInt(order.price) || 0) - adminFee;
 
         // 2. Update Status di Firestore
@@ -1820,7 +1815,7 @@ const AdminDashboard = ({ onBack }) => {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-gray-500">Admin Fee</span>
-                        <span className="font-bold text-orange-500">Rp {(parseInt(adminSettings.appFee)||2000).toLocaleString('id-ID')}</span>
+                        <span className="font-bold text-orange-500">Rp {calculateAdminFee(selectedNiagaOrder.price).toLocaleString('id-ID')}</span>
                     </div>
                 </div>
             </div>

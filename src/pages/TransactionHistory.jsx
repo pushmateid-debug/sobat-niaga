@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Package, Clock, CheckCircle, Truck, XCircle, ShoppingBag, Video, ShieldAlert, Trash2, Star, Upload, X, PlayCircle, MessageCircle, Wrench, AlertTriangle, Copy } from 'lucide-react';
+import { ArrowLeft, Package, Clock, CheckCircle, Truck, XCircle, ShoppingBag, Video, ShieldAlert, Trash2, Star, Upload, X, PlayCircle, MessageCircle, Wrench, AlertTriangle, Copy, ChefHat, Bike, Home, MapPin, Utensils } from 'lucide-react';
 import { db } from '../config/firebase';
 import { ref, onValue, query, orderByChild, equalTo, update, get, push, set } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
 // Helper: Hitung Biaya Admin (Logic Math.min)
-const calculateAdminFee = (amount, isCompetitor = false) => {
-  if (!isCompetitor) return 2000; // Flat fee for non-competitors
-
-  if (amount < 50000) return 2000;
-  if (amount <= 250000) return 5000;
-  
-  // > 250k: 1% (Max 20k)
-  const fee = amount * 0.01;
-  return Math.min(fee, 20000);
+const calculateAdminFee = (amount) => {
+  if (amount < 15000) return 500;
+  return 2000;
 };
+
+const isNiagaFood = (order) => (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
 
 const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId }) => {
   const { theme } = useTheme();
@@ -23,6 +19,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab || 'waiting_payment');
+  const [mainTab, setMainTab] = useState('products'); // 'products' | 'food'
   const [flashingOrderId, setFlashingOrderId] = useState(null);
   const [compSettings, setCompSettings] = useState({ isActive: false, startDate: '', endDate: '' });
   
@@ -246,8 +243,8 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
               const currentBalance = data.balance || 0;
               const isCompetitor = data.isCompetitor || false;
 
-              // Hitung Potongan Admin (Otomatis Math.min)
-              const adminFee = calculateAdminFee(amount, isCompetitor);
+              // Hitung Potongan Admin
+              const adminFee = calculateAdminFee(amount);
               const netIncome = amount - adminFee;
 
               // Cek Kompetisi Aktif untuk Poin
@@ -279,6 +276,30 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                   createdAt: new Date().toISOString(),
                   isRead: false
               });
+            }
+          }
+
+          // 2.5 Distribusi Dana ke Driver (Jika ini orderan Niaga Food)
+          if (order.deliveryFee && order.driverId) {
+            const driverRef = ref(db, `users/${order.driverId}`);
+            const driverSnap = await get(driverRef);
+            if (driverSnap.exists()) {
+                const driverData = driverSnap.val();
+                const currentDriverSaldo = parseInt(driverData.saldo || 0);
+                const ongkir = parseInt(order.deliveryFee || 0);
+                
+                await update(driverRef, {
+                    saldo: currentDriverSaldo + ongkir
+                });
+
+                await push(ref(db, 'notifications'), {
+                    userId: order.driverId,
+                    title: 'Ongkir Masuk',
+                    message: `Ongkir sebesar Rp ${ongkir.toLocaleString('id-ID')} dari order #${order.id.slice(-6)} telah masuk ke saldo.`,
+                    type: 'success',
+                    createdAt: new Date().toISOString(),
+                    isRead: false
+                });
             }
           }
 
@@ -448,9 +469,42 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
     });
   };
 
-  const getStatusBadge = (status) => {
+  // Handle Chat Driver (Khusus Niaga Food)
+  const handleChatDriver = async (driverId) => {
+    if (!driverId) return;
+    try {
+        const snap = await get(ref(db, `users/${driverId}`));
+        if (snap.exists()) {
+            const phone = snap.val().phoneNumber;
+            if (phone) {
+                const formatted = phone.replace(/^0/, '62');
+                window.open(`https://wa.me/${formatted}`, '_blank');
+            } else {
+                Swal.fire('Info', 'Nomor driver tidak tersedia.', 'info');
+            }
+        }
+    } catch (error) {
+        console.error("Error fetching driver info:", error);
+    }
+  };
+
+  const getStatusBadge = (status, isFood = false) => {
+    if (isFood) {
+        switch (status) {
+            case 'waiting_payment': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700'}`}><Clock size={12} /> Belum Bayar</span>;
+            case 'waiting_verification': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><Clock size={12} /> Verifikasi</span>;
+            case 'processed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><CheckCircle size={12} /> Diterima</span>;
+            case 'being_prepared': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><ChefHat size={12} /> Dimasak</span>;
+            case 'ready_for_pickup': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700'}`}><Bike size={12} /> Ambil</span>;
+            case 'delivering': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-sky-900/50 text-sky-300' : 'bg-sky-100 text-sky-700'}`}><Package size={12} /> Antar</span>;
+            case 'completed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}><Home size={12} /> Selesai</span>;
+            default: return <span className={`px-2 py-1 rounded-lg text-xs font-bold ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>{status}</span>;
+        }
+    }
     switch (status) {
       case 'waiting_payment': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700'}`}><Clock size={12} /> Belum Bayar</span>;
+      case 'being_prepared': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><Clock size={12} /> Sedang Disiapkan</span>;
+      case 'ready_for_pickup': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-teal-900/50 text-teal-300' : 'bg-teal-100 text-teal-700'}`}><Package size={12} /> Siap Diambil</span>;
       case 'payment_rejected': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'}`}><XCircle size={12} /> Ditolak (Upload Ulang)</span>;
       case 'waiting_verification': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><Clock size={12} /> Verifikasi Admin</span>;
       case 'processed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Package size={12} /> Dikemas</span>;
@@ -463,10 +517,21 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
   // Filter Pesanan Berdasarkan Tab
   const getFilteredOrders = () => {
-    if (activeTab === 'waiting_payment') {
-      return orders.filter(o => o.status === 'waiting_payment' || o.status === 'payment_rejected');
+    if (mainTab === 'food') {
+        // Tab Niaga Food: Filter berdasarkan status tab
+        const foodOrders = orders.filter(o => isNiagaFood(o));
+        if (activeTab === 'waiting_payment') {
+             return foodOrders.filter(o => o.status === 'waiting_payment' || o.status === 'payment_rejected');
+        }
+        return foodOrders.filter(o => o.status === activeTab);
     }
-    return orders.filter(o => o.status === activeTab);
+    
+    // Tab Produk/Paket
+    const productOrders = orders.filter(o => !isNiagaFood(o));
+    if (activeTab === 'waiting_payment') {
+      return productOrders.filter(o => o.status === 'waiting_payment' || o.status === 'payment_rejected');
+    }
+    return productOrders.filter(o => o.status === activeTab);
   };
 
   const filteredOrders = getFilteredOrders();
@@ -490,8 +555,21 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
         </div>
       </div>
 
+      {/* Main Tabs (Produk vs Food) */}
+      <div className="max-w-3xl mx-auto px-4 mt-4">
+        <div className={`flex p-1 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+            <button onClick={() => { setMainTab('products'); setActiveTab('waiting_payment'); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mainTab === 'products' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-sky-50 text-sky-600 shadow-sm') : 'text-gray-400'}`}>
+                📦 Produk / Paket
+            </button>
+            <button onClick={() => { setMainTab('food'); setActiveTab('waiting_payment'); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mainTab === 'food' ? (isDarkMode ? 'bg-slate-700 text-white shadow-sm' : 'bg-orange-50 text-orange-600 shadow-sm') : 'text-gray-400'}`}>
+                🍔 Niaga Food
+            </button>
+        </div>
+      </div>
+
       {/* Tabs Filter Status */}
-      <div className={`shadow-sm mb-4 transition-colors ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white'}`}>
+      {mainTab === 'products' && (
+      <div className={`shadow-sm mb-4 mt-2 transition-colors ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white'}`}>
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex overflow-x-auto scrollbar-hide">
             {[
@@ -512,10 +590,38 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
           </div>
         </div>
       </div>
+      )}
 
-      <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-4">
+      {/* Tabs Filter Status (Niaga Food) */}
+      {mainTab === 'food' && (
+      <div className={`shadow-sm mb-4 mt-2 transition-colors ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white'}`}>
+        <div className="max-w-3xl mx-auto px-4">
+          <div className="flex overflow-x-auto scrollbar-hide">
+            {[
+              { id: 'waiting_payment', label: 'Belum Bayar' },
+              { id: 'waiting_verification', label: 'Verifikasi' },
+              { id: 'processed', label: 'Diterima' },
+              { id: 'being_prepared', label: 'Dimasak' },
+              { id: 'ready_for_pickup', label: 'Ambil' },
+              { id: 'delivering', label: 'Antar' },
+              { id: 'completed', label: 'Selesai' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-3 text-sm font-bold whitespace-nowrap border-b-2 transition-colors px-4 ${activeTab === tab.id ? 'border-orange-500 text-orange-600' : (isDarkMode ? 'border-transparent text-gray-400 hover:text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-700')}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      )}
+
+      <div className={`max-w-3xl mx-auto p-4 lg:p-6 space-y-4 ${mainTab === 'food' ? 'mt-0' : ''}`}>
         {/* Visual Indicator untuk Tab Diverifikasi */}
-        {activeTab === 'waiting_verification' && (
+        {mainTab === 'products' && activeTab === 'waiting_verification' && (
           <div className={`p-4 rounded-xl flex gap-3 items-start mb-2 border ${isDarkMode ? 'bg-blue-900/30 border-blue-800/50' : 'bg-blue-50 border-blue-200'}`}>
             <ShieldAlert className={isDarkMode ? 'text-blue-400' : 'text-blue-600'} size={20} />
             <div>
@@ -526,40 +632,53 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
         )}
 
         {/* Warning Video Unboxing */}
-        <div className={`p-4 rounded-xl flex gap-3 items-start border ${isDarkMode ? 'bg-yellow-900/30 border-yellow-800/50' : 'bg-yellow-50 border-yellow-200'}`}>
+        {mainTab === 'products' && (
+        <div className={`p-4 rounded-xl flex gap-3 items-start border mb-4 ${isDarkMode ? 'bg-yellow-900/30 border-yellow-800/50' : 'bg-yellow-50 border-yellow-200'}`}>
           <Video className={isDarkMode ? 'text-yellow-500' : 'text-yellow-600'} size={20} />
           <div>
             <p className={`text-sm font-bold ${isDarkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>Wajib Video Unboxing!</p>
             <p className={`text-xs mt-1 ${isDarkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>Rekam video saat membuka paket. Tanpa video, klaim garansi/retur tidak akan diproses.</p>
           </div>
         </div>
+        )}
 
         {isLoading ? (
           <div className={`text-center py-10 animate-pulse ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Memuat riwayat...</div>
         ) : filteredOrders.length === 0 ? (
-          <div className={`text-center py-20 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tidak ada pesanan di tab ini.</div>
+          <div className={`text-center py-20 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            {mainTab === 'food' ? (
+                <Utensils size={48} className="mx-auto mb-3 opacity-20" />
+            ) : (
+                <ShoppingBag size={48} className="mx-auto mb-3 opacity-20" />
+            )}
+            <p>Tidak ada pesanan di tab ini.</p>
+          </div>
         ) : (
           <div className={`max-h-[500px] overflow-y-auto space-y-4 pr-1 scrollbar-thin ${isDarkMode ? 'scrollbar-thumb-slate-700' : 'scrollbar-thumb-gray-200'}`}>
             {filteredOrders.map((order) => (
             <div 
               key={order.id} 
-              className={`p-4 rounded-xl shadow-sm border transition-all duration-500 ${flashingOrderId === order.id ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-100 scale-[1.02]' : (isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100')}`}
+              className={`p-4 rounded-xl shadow-sm border transition-all duration-500 relative overflow-hidden ${flashingOrderId === order.id ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-100 scale-[1.02]' : (isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100')}`}
             >
               {/* Cek apakah ini order Jasa */}
+              {/* Cek apakah ini order Niaga Food */}
               {(() => {
                   const isJasa = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Jasa');
+                  const isNiagaFoodOrder = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
                   return (
                     <>
-              <div className={`flex justify-between items-start mb-3 border-b pb-3 ${isDarkMode ? 'border-slate-700' : 'border-gray-50'}`}>
+              <div 
+                className={`flex justify-between items-start mb-3 border-b pb-3 ${isDarkMode ? 'border-slate-700' : 'border-gray-50'}`}
+              >
                 <div className="flex items-center gap-2">
-                    <ShoppingBag size={16} className="text-sky-600" />
+                    {isNiagaFoodOrder ? <Utensils size={16} className="text-orange-500" /> : <ShoppingBag size={16} className="text-sky-600" />}
                     <div>
-                        <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Belanja</p>
+                        <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{isNiagaFoodOrder ? 'Niaga Food' : 'Belanja'}</p>
                         <p className={`text-[10px] ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>{new Date(order.createdAt).toLocaleDateString('id-ID')}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isJasa && order.status === 'processed' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Wrench size={12} /> Jasa Sedang Dikerjakan</span> : (isJasa && order.status === 'shipped' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'}`}><CheckCircle size={12} /> Menunggu Konfirmasi</span> : getStatusBadge(order.status))}
+                  {isJasa && order.status === 'processed' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Wrench size={12} /> Jasa Sedang Dikerjakan</span> : (isJasa && order.status === 'shipped' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'}`}><CheckCircle size={12} /> Menunggu Konfirmasi</span> : getStatusBadge(order.status, isNiagaFoodOrder))}
                   {['completed', 'cancelled'].includes(order.status) && (
                     <button 
                       onClick={() => handleDeleteHistory(order.id)}
@@ -646,6 +765,31 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                 )}
               </div>
 
+              {/* Driver Info (Khusus Niaga Food) */}
+              {isNiagaFoodOrder && order.driverId && ['ready_for_pickup', 'delivering', 'completed'].includes(order.status) && (
+                <div className={`mt-3 p-3 rounded-lg flex items-center gap-3 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-50'}`}>
+                  <div className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-600' : 'bg-gray-200'}`}><Bike size={16} className="text-gray-500" /></div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Driver Anda</p>
+                    <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{order.driverName}</p>
+                    <p className={`text-xs font-mono font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{order.driverPlate}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Rincian Harga (termasuk ongkir jika ada) */}
+              {(() => {
+                const subtotal = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                return (
+                  <div className="text-xs space-y-1 mt-3">
+                      <div className="flex justify-between"><span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Subtotal Produk</span><span>Rp {subtotal.toLocaleString('id-ID')}</span></div>
+                      {order.deliveryFee > 0 && (
+                        <div className="flex justify-between"><span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Ongkos Kirim</span><span>Rp {order.deliveryFee.toLocaleString('id-ID')}</span></div>
+                      )}
+                      <div className="flex justify-between"><span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Biaya Admin</span><span>Rp {calculateAdminFee(subtotal).toLocaleString('id-ID')}</span></div>
+                  </div>);
+              })()}
+
               <div className={`mt-4 pt-3 border-t flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-50'}`}>
                 <div>
                     <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Belanja</p>
@@ -672,9 +816,16 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                     </button>
                 )}
 
-                {order.status && order.status.toLowerCase() === 'shipped' && (
+                {/* Tombol Chat Driver (Khusus Niaga Food - Ambil & Antar) */}
+                {isNiagaFoodOrder && ['ready_for_pickup', 'delivering'].includes(order.status) && order.driverId && (
+                    <button onClick={() => handleChatDriver(order.driverId)} className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${isDarkMode ? 'bg-green-600 hover:bg-green-700 shadow-none' : 'bg-green-500 hover:bg-green-600 shadow-sm shadow-green-200'}`}>
+                        <MessageCircle size={14} /> Chat Driver
+                    </button>
+                )}
+
+                {((order.status && order.status.toLowerCase() === 'shipped') || (isNiagaFoodOrder && order.status === 'delivering')) && (
                     <button onClick={() => handleOrderReceived(order)} className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-colors ${isDarkMode ? 'bg-green-500 hover:bg-green-600 shadow-none' : 'bg-green-600 hover:bg-green-700 shadow-sm shadow-green-200'}`}>
-                        {isJasa ? 'Konfirmasi Selesai' : 'Terima Barang'}
+                        {isJasa ? 'Konfirmasi Selesai' : 'Pesanan Diterima'}
                     </button>
                 )}
               </div>

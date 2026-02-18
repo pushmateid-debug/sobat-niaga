@@ -7,10 +7,13 @@ const SearchResults = ({ onBack, products = [], query, onProductClick }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
 
-  // Filter products based on the query (case-insensitive)
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase())
-  );
+  // Filter products based on the query (case-insensitive, OR logic for multiple words)
+  const searchTerms = query.toLowerCase().split(' ').filter(term => term);
+  const filteredProducts = products.filter(p => {
+    const productName = p.name.toLowerCase();
+    // Return true if any of the search terms are included in the product name
+    return searchTerms.some(term => productName.includes(term));
+  });
 
   return (
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>

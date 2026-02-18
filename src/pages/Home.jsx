@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp, ChevronLeft, MoreVertical } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp, ChevronLeft, MoreVertical, Mail, X } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -26,6 +26,7 @@ import DigitalCenter from './DigitalCenter'; // Import halaman baru
 import NiagaGo from './NiagaGo'; // Import NiagaGo
 import SearchResults from './SearchResults'; // Import halaman hasil pencarian
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
+import SearchPage from './SearchPage'; // Halaman Pencarian Mobile
 import { auth, db } from '../config/firebase';
 import { ref, onValue, push, update, remove, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -67,6 +68,8 @@ const Home = () => {
   const [pagesContent, setPagesContent] = useState({}); // Konten Halaman Statis
   const [chatTab, setChatTab] = useState('admin'); // 'admin' | 'seller'
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
+  const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop
+  const desktopChatRef = useRef(null);
 
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
@@ -118,7 +121,7 @@ const Home = () => {
   const navCategories = [
     { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50' },
     { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50' },
-    { name: 'Makan', icon: <Utensils size={20} />, color: 'shadow-red-500/50' },
+    { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50' },
     { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50' },
     { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50' },
     { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50' },
@@ -252,6 +255,9 @@ const Home = () => {
       if (chatMenuRef.current && !chatMenuRef.current.contains(event.target)) {
         setIsChatMenuOpen(false);
       }
+      if (desktopChatRef.current && !desktopChatRef.current.contains(event.target)) {
+        setIsDesktopChatOpen(false);
+      }
     };
 
     const handleEscapeKey = (event) => {
@@ -260,6 +266,7 @@ const Home = () => {
         setIsNotificationOpen(false);
         setShowSuggestions(false);
         setIsChatMenuOpen(false);
+        setIsDesktopChatOpen(false);
       }
     };
 
@@ -270,7 +277,7 @@ const Home = () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscapeKey);
     };
-  }, [dropdownRef]);
+  }, []);
 
   // Auth Persistence Listener: Cek status login saat refresh
   useEffect(() => {
@@ -326,7 +333,7 @@ const Home = () => {
     switch (name) {
       case 'Populer': ref = populerRef; break;
       case 'Isi Pulsa': ref = pulsaRef; break;
-      case 'Makan': ref = makanRef; break;
+      case 'Niaga Food': ref = makanRef; break;
       case 'Skin Care': ref = skincareRef; break;
       case 'Fashion': ref = fashionRef; break;
       case 'Jasa': ref = jasaRef; break;
@@ -533,7 +540,7 @@ const Home = () => {
   const renderContent = () => {
     switch (currentView) {
       case 'topup': return <TopUp onBack={() => setCurrentView('home')} />;
-      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />; // View key 'food' is fine, component handles its own content
       case 'skincare': return <SkinCare onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
@@ -542,6 +549,19 @@ const Home = () => {
       case 'address': return <Address user={user} onBack={() => setCurrentView('home')} />;
       case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => setCurrentView('home')} />;
       case 'product-detail': return <ProductDetail product={selectedProduct} onBack={() => setCurrentView(previousView)} onGoToCart={() => setCurrentView('cart')} user={user} onVisitStore={handleVisitStore} />;
+      case 'search-page': return (
+        <SearchPage 
+          onBack={() => setCurrentView('home')} 
+          products={products} 
+          onProductClick={handleProductClick} 
+          onSearch={(q) => {
+            setSearchQuery(q);
+            setActiveSearchQuery(q);
+            setPreviousView(currentView);
+            setCurrentView('search-results');
+          }}
+        />
+      );
       case 'payment': return <Payment order={currentOrder} onBack={() => setCurrentView('cart')} onPaymentSuccess={() => setCurrentView('history')} />;
       case 'history': return <TransactionHistory user={user} onBack={() => setCurrentView('home')} onPay={(order) => { setCurrentOrder(order); setCurrentView('payment'); }} initialTab={historyTab} highlightOrderId={highlightOrderId} />;
       case 'admin-dashboard': return <AdminDashboard onBack={() => setCurrentView('home')} />;
@@ -556,81 +576,17 @@ const Home = () => {
       
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat': return (
-        <div className={`flex flex-col h-[calc(100vh-64px)] ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-           {/* Chat Header with Tabs */}
-           <div className={`flex-none border-b sticky top-0 z-20 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-              <div className="px-4 py-2 flex items-center justify-between">
-                 <div className="flex items-center gap-1">
-                    <button onClick={() => setCurrentView('home')} className={`p-1 rounded-full transition-colors ${isDarkMode ? 'text-white hover:bg-slate-700' : 'text-sky-600 hover:bg-sky-50'}`}>
-                        <ChevronLeft size={26} />
-                    </button>
-                    <div className="flex items-center gap-3 ml-1">
-                        <div className="relative">
-                            <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center border border-sky-50 overflow-hidden">
-                                <img src="https://via.placeholder.com/150?text=Admin" alt="Admin" className="w-full h-full object-cover" />
-                            </div>
-                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full"></div>
-                        </div>
-                        <div>
-                            <h3 className={`font-bold text-sm leading-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Admin SobatNiaga</h3>
-                            <p className="text-[10px] text-green-500 font-bold">Online</p>
-                        </div>
-                    </div>
-                 </div>
-                 
-                 <div className="relative" ref={chatMenuRef}>
-                 <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-                    <MoreVertical size={20} />
-                 </button>
-                 {isChatMenuOpen && (
-                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-30 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}>
-                            <User size={14} /> Lihat Profil
-                        </button>
-                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}>
-                            <Trash2 size={14} /> Bersihkan Chat
-                        </button>
-                    </div>
-                 )}
-                 </div>
-              </div>
-              
-              <div className="flex border-t dark:border-slate-700">
-                 <button 
-                    onClick={() => setChatTab('admin')}
-                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'admin' ? 'border-sky-600 text-sky-600 bg-gray-50 dark:bg-slate-900' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                 >
-                    Chat Admin
-                 </button>
-                 <button 
-                    onClick={() => setChatTab('seller')}
-                    className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${chatTab === 'seller' ? 'border-sky-600 text-sky-600 bg-gray-50 dark:bg-slate-900' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                 >
-                    Chat Seller
-                 </button>
-              </div>
-           </div>
-
-           {/* Messages Area */}
-           <div className={`flex-1 overflow-y-auto relative ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-              {!user ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
-                  <User size={40} className="mb-2 opacity-50" />
-                  <p className="text-sm">Silakan login untuk memulai chat.</p>
-                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold">Login</button>
-                </div>
-              ) : (
-                chatTab === 'admin' ? (
-                    <ChatComponent user={user} isDarkMode={isDarkMode} />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center p-6">
-                        <Store size={40} className="mb-3 opacity-50" />
-                        <p className="text-sm font-bold">Fitur Chat Seller</p>
-                        <p className="text-xs mt-1 max-w-xs">Tanya produk langsung ke penjual? Fitur ini segera hadir! Sementara gunakan WhatsApp di halaman produk.</p>
-                    </div>
-                )
-              )}
-           </div>
+        <div className="flex flex-col h-[calc(100vh-64px)]">
+            <ChatLayout 
+                isMobile={true} 
+                onClose={() => setCurrentView('home')} 
+                user={user} 
+                isDarkMode={isDarkMode} 
+                chatTab={chatTab} 
+                setChatTab={setChatTab} 
+                isChatMenuOpen={isChatMenuOpen} 
+                setIsChatMenuOpen={setIsChatMenuOpen} 
+            />
         </div>
       );
       
@@ -1019,14 +975,14 @@ const Home = () => {
         {/* SECTION: Makan */}
         <div ref={makanRef} className="scroll-mt-40">
           <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Makan Hemat</h2>
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Niaga Food</h2>
             <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Makan').slice(0, 6).map((product) => (
+            {products.filter(p => p.category === 'Niaga Food').slice(0, 6).map((product) => (
               <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
             ))}
-            {products.filter(p => p.category === 'Makan').length === 0 && (
+            {products.filter(p => p.category === 'Niaga Food').length === 0 && (
                 <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
             )}
           </div>
@@ -1166,17 +1122,14 @@ const Home = () => {
             <div className="pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Ikuti Kami</h4>
               <div className="flex gap-4">
-                <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-sky-600 hover:border-sky-600 transition-all shadow-lg">
+                <a href="https://www.instagram.com/sobatniaga_offic?igsh=cWJrcTNkaXN2dGRx" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-pink-600 hover:border-pink-600 transition-all shadow-lg">
                   <Instagram size={20} />
                 </a>
+                <a href="https://wa.me/6289517587498" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-green-600 hover:border-green-600 transition-all shadow-lg">
+                  <MessageCircle size={20} />
+                </a>
                 <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-red-600 hover:border-red-600 transition-all shadow-lg">
-                  <Youtube size={20} />
-                </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-blue-600 hover:border-blue-600 transition-all shadow-lg">
-                  <Facebook size={20} />
-                </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-sky-400 hover:border-sky-400 transition-all shadow-lg">
-                  <Twitter size={20} />
+                  <Mail size={20} />
                 </a>
               </div>
             </div>
@@ -1217,7 +1170,15 @@ const Home = () => {
               value={searchQuery}
               onChange={handleSearchInput}
               onKeyDown={handleSearch}
-              onFocus={() => { if(searchQuery.trim().length > 0) setShowSuggestions(true); }}
+              onFocus={(e) => {
+                if (window.innerWidth < 768) {
+                  e.target.blur(); // Cegah keyboard muncul di halaman home
+                  setPreviousView(currentView);
+                  setCurrentView('search-page');
+                } else if (searchQuery.trim().length > 0) {
+                  setShowSuggestions(true);
+                }
+              }}
             />
             
             {/* Auto-Suggestions Dropdown */}
@@ -1359,7 +1320,28 @@ const Home = () => {
       )}
 
       {/* Customer Service Chat Widget */}
-      {currentView !== 'chat' && <DraggableChatWidget onClick={() => setCurrentView('chat')} icon={chatIcon} />}
+      {currentView !== 'chat' && !isDesktopChatOpen && (
+        <DraggableChatWidget 
+            onClick={() => window.innerWidth >= 768 ? setIsDesktopChatOpen(true) : setCurrentView('chat')} 
+            icon={chatIcon} 
+        />
+      )}
+
+      {/* Desktop Chat Popup */}
+      {isDesktopChatOpen && (
+        <div ref={desktopChatRef} className="hidden md:flex fixed bottom-24 right-8 z-[100] w-[380px] h-[550px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in">
+            <ChatLayout 
+                isMobile={false} 
+                onClose={() => setIsDesktopChatOpen(false)} 
+                user={user} 
+                isDarkMode={isDarkMode} 
+                chatTab={chatTab} 
+                setChatTab={setChatTab} 
+                isChatMenuOpen={isChatMenuOpen} 
+                setIsChatMenuOpen={setIsChatMenuOpen} 
+            />
+        </div>
+      )}
 
       {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
       {!['product-detail', 'cart', 'payment', 'niagago'].includes(currentView) && (
@@ -1503,7 +1485,7 @@ const ChatComponent = ({ user, isDarkMode }) => {
 
   return (
     <>
-      <div className="p-3 space-y-3 pb-32">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.map(m => (
              <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${m.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-900 border border-gray-100') + ' rounded-tl-none'}`}>
@@ -1515,7 +1497,7 @@ const ChatComponent = ({ user, isDarkMode }) => {
           <div ref={bottomRef} />
       </div>
       
-      <div className={`fixed bottom-[64px] md:bottom-0 left-0 right-0 p-3 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+      <div className={`flex-none p-3 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
           <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto items-center">
              <input 
                 value={input} 
@@ -1527,6 +1509,87 @@ const ChatComponent = ({ user, isDarkMode }) => {
           </form>
        </div>
     </>
+  );
+};
+
+// --- CHAT LAYOUT COMPONENT (Reusable for Mobile & Desktop) ---
+const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen }) => {
+  return (
+    <div className={`flex flex-col h-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+       {/* Chat Header */}
+       <div className={`flex-none border-b sticky top-0 z-20 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
+          <div className={`px-4 py-3 flex items-center justify-between ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+             <div className="flex items-center gap-2">
+                <button onClick={onClose} className={`p-1 rounded-full transition-colors ${isDarkMode ? 'text-white hover:bg-slate-700' : 'text-slate-800 hover:bg-gray-100'}`}>
+                    {isMobile ? <ChevronLeft size={26} /> : <X size={24} />}
+                </button>
+                <div className="flex items-center gap-3 ml-1">
+                    <div className="relative">
+                        <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center border border-sky-50 overflow-hidden">
+                            <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold text-[10px]">ADM</div>
+                        </div>
+                        <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full"></div>
+                    </div>
+                    <div>
+                        <h3 className={`font-bold text-sm leading-tight ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Admin SobatNiaga</h3>
+                        <p className="text-[10px] text-green-500 font-bold">Online</p>
+                    </div>
+                </div>
+             </div>
+             
+             <div className="relative">
+                 <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-gray-100'}`}>
+                    <MoreVertical size={20} />
+                 </button>
+                 {isChatMenuOpen && (
+                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-30 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                            <User size={14} /> Lihat Profil
+                        </button>
+                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}>
+                            <Trash2 size={14} /> Bersihkan Chat
+                        </button>
+                    </div>
+                 )}
+             </div>
+          </div>
+          
+          <div className={`flex border-t ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+             <button 
+                onClick={() => setChatTab('admin')} 
+                className={`flex-1 py-3 text-xs font-bold border-b-2 transition-colors ${
+                    chatTab === 'admin' 
+                    ? (isDarkMode ? 'border-sky-500 text-sky-400 bg-slate-800' : 'border-sky-600 text-sky-700 bg-sky-50/50') 
+                    : (isDarkMode ? 'border-transparent text-gray-400 hover:bg-slate-800' : 'border-transparent text-gray-500 hover:bg-gray-50')
+                }`}
+             >
+                Chat Admin
+             </button>
+             <button 
+                onClick={() => setChatTab('seller')} 
+                className={`flex-1 py-3 text-xs font-bold border-b-2 transition-colors ${
+                    chatTab === 'seller' 
+                    ? (isDarkMode ? 'border-sky-500 text-sky-400 bg-slate-800' : 'border-sky-600 text-sky-700 bg-sky-50/50') 
+                    : (isDarkMode ? 'border-transparent text-gray-400 hover:bg-slate-800' : 'border-transparent text-gray-500 hover:bg-gray-50')
+                }`}
+             >
+                Chat Seller
+             </button>
+          </div>
+       </div>
+
+       <div className={`flex-1 relative flex flex-col overflow-hidden ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+          {!user ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
+              <User size={40} className="mb-2 opacity-50" />
+              <p className="text-sm">Silakan login untuk memulai chat.</p>
+              <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold">Login</button>
+            </div>
+          ) : (
+            chatTab === 'admin' ? <ChatComponent user={user} isDarkMode={isDarkMode} /> : <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center p-6"><Store size={40} className="mb-3 opacity-50" /><p className="text-sm font-bold">Fitur Chat Seller</p><p className="text-xs mt-1 max-w-xs">Tanya produk langsung ke penjual? Fitur ini segera hadir!</p></div>
+          )}
+       </div>
+    </div>
   );
 };
 

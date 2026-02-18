@@ -16,8 +16,8 @@ const FoodOrder = ({ onBack, products, onProductClick }) => {
   ];
 
   // Filter Produk Kategori 'Makan' dari Firebase
-  const foodItems = products ? products.filter(p => 
-    p.category === 'Makan' && (activeCategory === 'Semua' || p.subCategory === activeCategory)
+  const foodItems = products ? products.filter(p =>
+    p.category === 'Niaga Food' && (activeCategory === 'Semua' || p.subCategory === activeCategory)
   ) : [];
 
   return (
@@ -29,7 +29,7 @@ const FoodOrder = ({ onBack, products, onProductClick }) => {
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h1 className={`text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Makan Hemat</h1>
+            <h1 className={`text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Niaga Food</h1>
             <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Lokasi: Kampus Pusat</p>
           </div>
         </div>
