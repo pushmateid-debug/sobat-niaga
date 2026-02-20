@@ -61,9 +61,9 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   };
 
   const uploadToCloudinary = async (file) => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
+    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
     const timestamp = Math.round((new Date()).getTime() / 1000);
     
     const params = { folder: 'sobatniaga/payments', timestamp: timestamp };

@@ -61,12 +61,9 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
 
   // Fungsi Upload ke Cloudinary
   const uploadToCloudinary = async (file) => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-
-    // Debugging: Cek apakah variabel environment terbaca
-    console.log("DEBUG CLOUDINARY (HARDCODED):", { cloudName, apiKey, apiSecret: apiSecret ? '***' : 'undefined' });
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY;
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET;
 
     const timestamp = Math.round((new Date()).getTime() / 1000);
     const params = {

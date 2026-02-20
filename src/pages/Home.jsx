@@ -865,7 +865,7 @@ const Home = () => {
 
       {/* FLASH DEAL SECTION (New) */}
       {flashDeal?.isActive && !isExpired && (
-        <div className="w-full max-w-6xl mx-auto px-4 mt-6 mb-8 relative z-10">
+        <div className="w-full max-w-7xl mx-auto px-4 mt-6 mb-8 relative z-10">
             <div className="rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-blue-900 to-sky-600 flex flex-col md:flex-row min-h-[280px]">
                 {/* Left: Banner & Countdown */}
                 <div className="w-full md:w-1/3 relative p-8 flex flex-col justify-center text-white overflow-hidden">
@@ -951,7 +951,7 @@ const Home = () => {
         
         {/* SECTION: Populer */}
         <div ref={populerRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -971,7 +971,7 @@ const Home = () => {
 
         {/* SECTION: Isi Pulsa */}
         <div ref={pulsaRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Isi Pulsa & Paket Data</h2>
             <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
           </div>
@@ -987,7 +987,7 @@ const Home = () => {
 
         {/* SECTION: Makan */}
         <div ref={makanRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Niaga Food</h2>
             <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
@@ -1003,7 +1003,7 @@ const Home = () => {
 
         {/* SECTION: Skin Care */}
         <div ref={skincareRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Skin Care Glowing</h2>
             <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
@@ -1019,7 +1019,7 @@ const Home = () => {
 
         {/* SECTION: Fashion */}
         <div ref={fashionRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Fashion Terkini</h2>
             <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
@@ -1035,7 +1035,7 @@ const Home = () => {
 
         {/* SECTION: Jasa */}
         <div ref={jasaRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Jasa Mahasiswa</h2>
             <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
@@ -1051,7 +1051,7 @@ const Home = () => {
 
         {/* SECTION: Top Up Game */}
         <div ref={gameRef} className="scroll-mt-40">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Top Up Game</h2>
             <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
@@ -1483,8 +1483,9 @@ const ChatComponent = ({ user, isDarkMode }) => {
   }, [messages]);
 
   const send = async () => {
-    if (!input.trim()) return;
-    const text = input;
+    // Sanitasi Input Chat
+    const text = input.replace(/[<>]/g, "").trim();
+    if (!text) return;
     setInput('');
     await push(ref(db, `chats/${user.uid}/messages`), {
       text,

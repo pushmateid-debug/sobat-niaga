@@ -721,9 +721,9 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // Helper: Upload ke Cloudinary (Optimasi Upload Gambar)
   const uploadToCloudinary = async (file, folder = 'sobatniaga/drivers') => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY;
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET;
     const timestamp = Math.round((new Date()).getTime() / 1000);
     
     const params = { folder: folder, timestamp: timestamp };

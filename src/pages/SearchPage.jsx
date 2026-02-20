@@ -99,8 +99,9 @@ const SearchPage = ({ onBack, products = [], onProductClick, onSearch }) => {
                 >
                   <Search size={18} className="text-gray-400" />
                   {/* Highlight Text Logic */}
-                  <span className="flex-1 text-sm font-medium line-clamp-1" dangerouslySetInnerHTML={{
-                      __html: product.name.replace(new RegExp(`(${query})`, 'gi'), '<span class="font-bold text-sky-500">$1</span>')
+                  <span className="flex-1 text-sm font-medium line-clamp-1" dangerouslySetInnerHTML={{ 
+                      __html: product.name.replace(/</g, "&lt;").replace(/>/g, "&gt;") // Sanitasi dasar XSS
+                        .replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<span class="font-bold text-sky-500">$1</span>') 
                   }} />
                   <div className="text-gray-300">
                       <ArrowUpLeft size={18} />
