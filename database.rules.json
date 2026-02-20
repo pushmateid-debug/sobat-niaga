@@ -1,9 +1,39 @@
 {
   "rules": {
     ".read": "auth != null",
-    ".write": "auth != null",
+    ".write": "auth.token.email === 'pushmate.id@gmail.com'",
+
+    "users": {
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+
+    "orders": {
+      ".write": "auth != null"
+    },
+
+    "chats": {
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+
     "notifications": {
-      ".indexOn": ["userId"] 
+      ".indexOn": ["userId"],
+      "$notifId": {
+        ".write": "data.exists() && data.child('userId').val() === auth.uid"
+      }
+    },
+
+    "drivers_locations": {
+      "$driverId": {
+        ".write": "$driverId === auth.uid"
+      }
+    },
+
+    "food_delivery_pool": {
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'driver'"
     }
   }
 }

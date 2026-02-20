@@ -617,7 +617,7 @@ const Home = () => {
               { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => setCurrentView('history') },
               { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => setCurrentView('address') },
               { label: 'Dashboard Seller', icon: <Store size={20} />, action: () => setCurrentView('dashboard-seller') },
-              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => setCurrentView('admin-dashboard'), hidden: user?.role !== 'admin' },
+              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => setCurrentView('admin-dashboard'), hidden: user?.email !== 'pushmate.id@gmail.com' },
               { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => setCurrentView('help') },
             ].map((item, idx) => (
               !item.hidden && (
@@ -1294,7 +1294,9 @@ const Home = () => {
                   <button onClick={() => { setCurrentView('profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
                   <button onClick={() => { setCurrentView('history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
                   <button onClick={() => { setCurrentView('dashboard-seller'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Dasbor Seller</button>
-                  <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                  {user?.email === 'pushmate.id@gmail.com' && (
+                    <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                  )}
                   <button onClick={() => { setCurrentView('address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
                   <div className="border-t border-gray-100 my-1"></div>
                   <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>

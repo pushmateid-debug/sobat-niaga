@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, 
+  Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X,
   Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils 
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
-import { auth, db as realDb, dbFirestore, storage } from '../config/firebase';
-import { ref, onValue, update, get, remove } from 'firebase/database';
+import { auth, db as realDb, dbFirestore } from '../config/firebase';
+import { ref, onValue, update, get, push, runTransaction } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
@@ -95,6 +95,9 @@ const formatDuration = (minutes) => {
   if (h > 0) return `${h} Jam ${m} Menit`;
   return `${m} Menit`;
 };
+
+// Helper to identify Niaga Food orders
+const isNiagaFood = (order) => (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
 
 // Helper: Auto Recenter Peta pas Driver Gerak
 const RecenterMap = ({ center }) => {
@@ -456,6 +459,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [orders, setOrders] = useState([]);
   const [driversLocations, setDriversLocations] = useState({});
   const [foodDeliveries, setFoodDeliveries] = useState([]); // State untuk orderan Niaga Food
+  const [activeFoodOrders, setActiveFoodOrders] = useState([]); // State untuk orderan Food yang SEDANG diambil driver
 
   // State Withdrawal
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -478,6 +482,8 @@ const NiagaGo = ({ onOpenProfile }) => {
   
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null); // State untuk loading tombol aksi driver
+  const [takingOrderId, setTakingOrderId] = useState(null); // State untuk loading ambil order
   const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [showQrisModal, setShowQrisModal] = useState(false);
@@ -603,7 +609,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         ? data.filter(o => {
             const isMyOjekOrder = o.driverId === userProfile.uid;
             const isPendingOjek = driverService === 'ojek' && o.status === 'pending';
-            return isMyOjekOrder || isPendingOjek;
+            return isMyOjekOrder || isPendingOjek; // Tampilkan orderan sendiri ATAU orderan pending (kalau lagi mode ojek)
         })
         : data;
 
@@ -629,6 +635,18 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     return () => unsubscribe();
   }, [isDriverMode, userProfile?.uid]);
+
+  // --- COMBINED ORDERS (OJEK + FOOD) ---
+  // Gabungin orderan Ojek (Firestore) dan Food (Realtime DB) buat ditampilin di list
+  const combinedOrders = useMemo(() => {
+    const normalizedOjek = orders.map(o => ({...o, type: 'ojek'}));
+    // Gabung dan sort berdasarkan waktu terbaru
+    return [...normalizedOjek, ...activeFoodOrders].sort((a, b) => {
+        const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt).getTime();
+        const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt).getTime();
+        return timeB - timeA;
+    });
+  }, [orders, activeFoodOrders]);
 
   // --- DRIVER GPS BROADCASTER (Kirim Lokasi ke DB) ---
   useEffect(() => {
@@ -948,6 +966,10 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // 2. Driver Mengambil Orderan Niaga Food
   const handleTakeFoodDelivery = async (delivery) => {
+    // Prevent double-click
+    if (takingOrderId) return;
+    setTakingOrderId(delivery.id);
+
     const result = await Swal.fire({
       title: 'Ambil Orderan Makanan?',
       html: `Ambil pengantaran dari <b>${delivery.storeName}</b> ke <b>${delivery.buyerName}</b>?<br/>Ongkir: <b>Rp ${delivery.deliveryFee.toLocaleString()}</b>`,
@@ -958,61 +980,90 @@ const NiagaGo = ({ onOpenProfile }) => {
     });
 
     if (result.isConfirmed) {
-      try {
-        // ATOMIC UPDATE: Update Order & Hapus dari Pool secara bersamaan
-        // Ini mencegah Race Condition di mana order berhasil diambil tapi gagal dihapus (atau sebaliknya)
-        const updates = {};
-        updates[`orders/${delivery.orderId}/driverId`] = userProfile.uid;
-        updates[`orders/${delivery.orderId}/driverName`] = userProfile.displayName;
-        updates[`orders/${delivery.orderId}/driverPlate`] = userProfile.plateNumber || 'N/A';
-        updates[`orders/${delivery.orderId}/status`] = 'ready_for_pickup'; // Driver OTW Resto
-        updates[`food_delivery_pool/${delivery.id}`] = null; // Hapus dari pool
-
-        await update(ref(realDb), updates);
-
-        // 3. Kirim notifikasi ke Seller & Pembeli
-        const orderSnap = await get(ref(realDb, `orders/${delivery.orderId}`));
-        if (orderSnap.exists()) {
-          const orderData = orderSnap.val();
-          const sellerId = (Array.isArray(orderData.items) ? orderData.items[0] : Object.values(orderData.items)[0]).sellerId;
-          // Notif ke Seller
-          await push(ref(realDb, 'notifications'), {
-            userId: sellerId,
-            title: 'Driver Ditemukan!',
-            message: `Driver ${userProfile.displayName} sedang menuju ke tokomu untuk mengambil pesanan #${delivery.orderId.slice(-6)}.`,
-            type: 'info',
-            targetView: 'dashboard-seller',
-            createdAt: new Date().toISOString(),
-            isRead: false
-          });
-          // Notif ke Pembeli
-          await push(ref(realDb, 'notifications'), {
-            userId: orderData.buyerId,
-            title: 'Driver OTW ke Resto!',
-            message: `Driver ${userProfile.displayName} (${userProfile.plateNumber}) sedang dalam perjalanan mengambil pesananmu.`,
-            type: 'info',
-            targetView: 'history',
-            targetTab: 'ready_for_pickup',
-            orderId: delivery.orderId,
-            createdAt: new Date().toISOString(),
-            isRead: false
-          });
+      const deliveryPoolRef = ref(realDb, `food_delivery_pool/${delivery.id}`);
+      
+      // Gunakan Transaction untuk mencegah race condition
+      runTransaction(deliveryPoolRef, (currentData) => {
+        if (currentData === null) {
+          return; // Abort transaction, order sudah diambil
         }
+        return null; // Ambil order dengan set data jadi null
+      }).then(async (transactionResult) => {
+        if (!transactionResult.committed) {
+          Swal.fire('Gagal', 'Orderan ini sudah diambil driver lain!', 'warning');
+        } else {
+          // Jika transaksi berhasil, update data order
+          try {
+            await update(ref(realDb, `orders/${delivery.orderId}`), {
+              driverId: userProfile.uid,
+              driverName: userProfile.displayName,
+              driverPlate: userProfile.plateNumber || 'N/A',
+              status: 'ready_for_pickup', // Driver OTW Resto
+              storeName: delivery.storeName,
+              storeLocation: delivery.storeLocation
+            });
 
-        Swal.fire('Berhasil Mengambil Orderan!', 'Segera menuju ke resto untuk mengambil pesanan.', 'success');
-      } catch (error) {
-        console.error("Error taking food delivery:", error);
-        Swal.fire('Gagal', 'Orderan sudah diambil driver lain atau terjadi kesalahan.', 'error');
-      }
+            // Kirim notifikasi ke Seller & Pembeli
+            const orderSnap = await get(ref(realDb, `orders/${delivery.orderId}`));
+            if (orderSnap.exists()) {
+              const orderData = orderSnap.val();
+              const itemsArray = orderData.items ? (Array.isArray(orderData.items) ? orderData.items : Object.values(orderData.items)) : [];
+
+              if (itemsArray.length > 0 && itemsArray[0].sellerId) {
+                await push(ref(realDb, 'notifications'), {
+                  userId: itemsArray[0].sellerId,
+                  title: 'Driver Ditemukan!',
+                  message: `Driver ${userProfile.displayName} sedang menuju ke tokomu untuk mengambil pesanan #${delivery.orderId.slice(-6)}.`,
+                  type: 'info',
+                  targetView: 'dashboard-seller',
+                  createdAt: new Date().toISOString(),
+                  isRead: false
+                });
+              }
+
+              await push(ref(realDb, 'notifications'), {
+                userId: orderData.buyerId,
+                title: 'Driver OTW ke Resto!',
+                message: `Driver ${userProfile.displayName} (${userProfile.plateNumber}) sedang dalam perjalanan mengambil pesananmu.`,
+                type: 'info',
+                targetView: 'history',
+                targetTab: 'ready_for_pickup',
+                orderId: delivery.orderId,
+                createdAt: new Date().toISOString(),
+                isRead: false
+              });
+            }
+
+            Swal.fire('Berhasil!', 'Segera menuju ke resto untuk mengambil pesanan.', 'success').then(() => {
+              setDriverService('ojek'); // Pindah ke tab pesanan aktif
+            });
+          } catch (updateError) {
+            console.error("Error updating order after transaction:", updateError);
+            Swal.fire('Error', `Gagal memproses order: ${updateError.message}`, 'error');
+          }
+        }
+      }).catch((error) => {
+        console.error("Food delivery transaction failed: ", error);
+        Swal.fire('Error', `Gagal mengambil orderan: ${error.message}`, 'error');
+      }).finally(() => {
+        setTakingOrderId(null); // Reset loading state
+      });
+    } else {
+      setTakingOrderId(null); // Reset jika user batal
     }
   };
 
   // 2.1 Driver Update Status Pengantaran Makanan
   const handleUpdateFoodDeliveryStatus = async (orderId, newStatus) => {
-    await update(ref(realDb, `orders/${orderId}`), {
-      status: newStatus
-    });
-    // Bisa ditambahkan notifikasi ke pembeli di sini
+    try {
+      await update(ref(realDb, `orders/${orderId}`), {
+        status: newStatus
+      });
+      Swal.fire('Status Updated', `Status pesanan berubah jadi: ${newStatus === 'delivering' ? 'Diantar' : 'Selesai'}`, 'success');
+    } catch (error) {
+      console.error("Update status failed:", error);
+      Swal.fire('Error', 'Gagal update status.', 'error');
+    }
   };
 
   // 2.5 User Menerima Tawaran Driver
@@ -1303,10 +1354,17 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     if (result.isConfirmed) {
       try {
-        const updateData = isDriverMode ? { hiddenForDriver: true } : { hiddenForUser: true };
-        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), updateData);
+        if (order.type === 'food') {
+            await update(ref(realDb, `orders/${order.id}`), {
+                [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true
+            });
+        } else {
+            const updateData = isDriverMode ? { hiddenForDriver: true } : { hiddenForUser: true };
+            await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), updateData);
+        }
         Swal.fire('Terhapus', 'Riwayat berhasil disembunyikan.', 'success');
       } catch (error) {
+        console.error("Error deleting history:", error);
         Swal.fire('Error', 'Gagal menghapus riwayat.', 'error');
       }
     }
@@ -1314,7 +1372,7 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // 10. Bersihkan Semua Riwayat Selesai (Bulk Soft Delete)
   const handleClearHistory = async () => {
-    const targetOrders = orders.filter(o => {
+    const targetOrders = combinedOrders.filter(o => {
       const isFinished = ['completed', 'cancelled', 'payment_rejected'].includes(o.status);
       // Driver hanya bisa hapus history miliknya, bukan order pending di pool
       return isFinished && (isDriverMode ? o.driverId === userProfile.uid : true);
@@ -1333,14 +1391,25 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     if (result.isConfirmed) {
       const updateData = isDriverMode ? { hiddenForDriver: true } : { hiddenForUser: true };
-      Promise.all(targetOrders.map(o => updateDoc(doc(dbFirestore, 'ojek_orders', o.id), updateData)))
+      
+      const promises = targetOrders.map(o => {
+          if (o.type === 'food') {
+              return update(ref(realDb, `orders/${o.id}`), {
+                  [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true
+              });
+          } else {
+              return updateDoc(doc(dbFirestore, 'ojek_orders', o.id), updateData);
+          }
+      });
+
+      Promise.all(promises)
         .then(() => Swal.fire('Bersih!', 'Riwayat perjalanan telah dibersihkan.', 'success'))
         .catch(() => Swal.fire('Error', 'Gagal membersihkan riwayat.', 'error'));
     }
   };
 
   // Cek apakah ada order yang bisa dibersihkan untuk tombol "Bersihkan Selesai"
-  const hasClearableOrders = orders.some(o => {
+  const hasClearableOrders = combinedOrders.some(o => {
     const isFinished = ['completed', 'cancelled', 'payment_rejected'].includes(o.status);
     return isFinished && (isDriverMode ? o.driverId === userProfile.uid : true);
   });
@@ -1668,9 +1737,10 @@ const NiagaGo = ({ onOpenProfile }) => {
                     </div>
                     <button 
                       onClick={() => handleTakeFoodDelivery(delivery)}
-                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                      disabled={takingOrderId === delivery.id}
+                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 w-24 h-10 transition-all"
                     >
-                      <Bike size={16} /> Ambil
+                      {takingOrderId === delivery.id ? <Loader2 size={16} className="animate-spin"/> : <><Bike size={16} /> Ambil</>}
                     </button>
                   </div>
                 </div>
@@ -1679,13 +1749,13 @@ const NiagaGo = ({ onOpenProfile }) => {
           )}
 
           {/* --- TAMPILAN DRIVER: OJEK & USER: HISTORY --- */}
-          {!(isDriverMode && driverService === 'food') && (orders.length === 0 ? (
+          {!(isDriverMode && driverService === 'food') && (combinedOrders.length === 0 ? (
             <div className="text-center py-10 text-gray-500">
               <Bike size={48} className="mx-auto mb-2 opacity-20" />
               <p>Belum ada orderan nih.</p>
             </div>
           ) : (
-            orders.map((order) => (
+            combinedOrders.map((order) => (
               <div key={order.id} className={`p-4 rounded-xl border relative overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
                 {/* Status Badge */}
                 <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-xl ${
@@ -1713,7 +1783,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                     <User size={20} className="text-sky-500" />
                   </div>
                   <div>
-                    <h4 className="font-bold">{order.userName}</h4>
+                    <h4 className="font-bold">{order.type === 'food' ? (order.buyerName || order.userName) : order.userName}</h4>
                     <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> Baru saja</p>
                   </div>
                   {/* Vehicle Icon Badge */}
@@ -1725,11 +1795,11 @@ const NiagaGo = ({ onOpenProfile }) => {
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2 text-sm">
                     <MapPin size={16} className="text-red-500" />
-                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{order.pickup}</span>
+                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{order.type === 'food' ? (order.storeName || 'Restoran') : order.pickup}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Navigation size={16} className="text-blue-500" />
-                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{order.destination}</span>
+                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{order.type === 'food' ? (order.deliveryAddress || 'Lokasi Pembeli') : order.destination}</span>
                   </div>
                 </div>
                 
@@ -1739,7 +1809,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
 
                 {/* 0. STATUS PENDING: User Cari Driver */}
-                {!isDriverMode && order.status === 'pending' && (
+                {!isDriverMode && order.status === 'pending' && order.type !== 'food' && (
                     <div className="flex flex-col gap-3 w-full mb-3">
                         <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" driversLocations={driversLocations} />
                         <p className="text-xs text-center text-gray-500 animate-pulse">Sedang mencari driver di sekitarmu...</p>
@@ -1822,7 +1892,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   )}
 
                   {/* 3. STATUS PAID: Menunggu Admin (Bisa disimulasikan approve di sini untuk dev) */}
-                  {order.status === 'paid' && (
+                  {order.status === 'paid' && order.type !== 'food' && (
                     <div className="flex flex-col items-end">
                       <span className="text-xs text-orange-500 font-bold flex items-center gap-1"><Clock size={12}/> Verifikasi Admin</span>
                       {/* Tombol Rahasia Dev untuk Approve (Biar flow jalan) */}
@@ -1863,7 +1933,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   )}
 
                   {/* 4.5 STATUS PENGANTARAN MAKANAN (DRIVER) */}
-                  {isDriverMode && ['ready_for_pickup', 'delivering'].includes(order.status) && (
+                  {isDriverMode && order.type === 'food' && ['ready_for_pickup', 'delivering'].includes(order.status) && (
                     <div className="flex gap-2 justify-end">
                       <a href={`https://wa.me/${order.userPhone}`} target="_blank" rel="noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
                         <Phone size={16} /> WA Pembeli
