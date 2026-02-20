@@ -6,7 +6,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore } from '../config/firebase';
-import { ref, onValue, update, get, push, runTransaction } from 'firebase/database';
+import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
@@ -408,7 +408,7 @@ const OfferCard = ({ offer, onAccept, onTimeout }) => {
            </div>
         </div>
         <div className="text-right">
-           <p className="font-bold text-sky-600">Rp {offer.price.toLocaleString()}</p>
+           <p className="font-bold text-sky-600">Rp {(offer.price || 0).toLocaleString('id-ID')}</p>
         </div>
       </div>
       
@@ -579,6 +579,40 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   }, [isDriverMode]);
 
+  // --- FETCH ACTIVE FOOD ORDERS (DRIVER) ---
+  useEffect(() => {
+    if (isDriverMode && userProfile?.uid) {
+      const ordersRef = query(ref(realDb, 'orders'), orderByChild('driverId'), equalTo(userProfile.uid));
+      const unsubscribe = onValue(ordersRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            const myOrders = Object.keys(data).map(key => ({ id: key, ...data[key], type: 'food' }));
+            setActiveFoodOrders(myOrders.filter(o => !o.hiddenForDriver));
+        } else {
+            setActiveFoodOrders([]);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [isDriverMode, userProfile?.uid]);
+
+  // --- FETCH ACTIVE FOOD ORDERS (DRIVER) ---
+  useEffect(() => {
+    if (isDriverMode && userProfile?.uid) {
+      // FIX: Gunakan realQuery (alias) untuk Realtime DB, bukan query (Firestore)
+      const ordersRef = realQuery(ref(realDb, 'orders'), orderByChild('driverId'), equalTo(userProfile.uid));
+      const unsubscribe = onValue(ordersRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            const myOrders = Object.keys(data).map(key => ({ id: key, ...data[key], type: 'food' }));
+            setActiveFoodOrders(myOrders.filter(o => !o.hiddenForDriver));
+        } else {
+            setActiveFoodOrders([]);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [isDriverMode, userProfile?.uid]);
 
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
@@ -968,6 +1002,14 @@ const NiagaGo = ({ onOpenProfile }) => {
   const handleTakeFoodDelivery = async (delivery) => {
     // Prevent double-click
     if (takingOrderId) return;
+
+    // --- FIX: Validasi Nama Driver ---
+    const driverName = userProfile?.displayName || auth.currentUser?.displayName;
+    if (!driverName) {
+        Swal.fire('Profil Belum Lengkap', 'Nama driver tidak ditemukan. Silakan lengkapi profil Anda terlebih dahulu.', 'error');
+        return;
+    }
+
     setTakingOrderId(delivery.id);
 
     const result = await Swal.fire({
@@ -996,7 +1038,7 @@ const NiagaGo = ({ onOpenProfile }) => {
           try {
             await update(ref(realDb, `orders/${delivery.orderId}`), {
               driverId: userProfile.uid,
-              driverName: userProfile.displayName,
+              driverName: driverName,
               driverPlate: userProfile.plateNumber || 'N/A',
               status: 'ready_for_pickup', // Driver OTW Resto
               storeName: delivery.storeName,
@@ -1055,14 +1097,105 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // 2.1 Driver Update Status Pengantaran Makanan
   const handleUpdateFoodDeliveryStatus = async (orderId, newStatus) => {
-    try {
-      await update(ref(realDb, `orders/${orderId}`), {
-        status: newStatus
-      });
-      Swal.fire('Status Updated', `Status pesanan berubah jadi: ${newStatus === 'delivering' ? 'Diantar' : 'Selesai'}`, 'success');
-    } catch (error) {
-      console.error("Update status failed:", error);
-      Swal.fire('Error', 'Gagal update status.', 'error');
+    if (newStatus === 'completed') {
+        const result = await Swal.fire({
+            title: 'Pesanan Sampai?',
+            text: "Konfirmasi pesanan telah diterima pembeli? Dana akan diteruskan.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Selesai',
+            confirmButtonColor: '#10b981'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                const orderRef = ref(realDb, `orders/${orderId}`);
+                const snapshot = await get(orderRef);
+                if (!snapshot.exists()) throw new Error("Order tidak ditemukan");
+                
+                const orderData = snapshot.val();
+                const updates = {};
+                
+                // 1. Update Status
+                updates[`orders/${orderId}/status`] = 'completed';
+                updates[`orders/${orderId}/completedAt`] = new Date().toISOString();
+
+                // 2. Trigger Saldo Driver (Ongkir)
+                const driverId = userProfile.uid;
+                const deliveryFee = parseInt(orderData.deliveryFee || 3000);
+                
+                const driverRef = ref(realDb, `users/${driverId}`);
+                const driverSnap = await get(driverRef);
+                const currentDriverSaldo = driverSnap.exists() ? (parseInt(driverSnap.val().saldo) || 0) : 0;
+                updates[`users/${driverId}/saldo`] = currentDriverSaldo + deliveryFee;
+
+                // 3. Trigger Saldo Seller (Harga Makanan)
+                let sellerId = null;
+                let foodPrice = 0;
+                if (orderData.items) {
+                    const items = Array.isArray(orderData.items) ? orderData.items : Object.values(orderData.items);
+                    if (items.length > 0) {
+                        sellerId = items[0].sellerId;
+                        foodPrice = items.reduce((acc, item) => acc + (parseInt(item.price) * parseInt(item.quantity)), 0);
+                    }
+                }
+
+                if (sellerId) {
+                    const sellerRef = ref(realDb, `users/${sellerId}/sellerInfo`);
+                    const sellerSnap = await get(sellerRef);
+                    if (sellerSnap.exists()) {
+                        const currentSellerBalance = parseInt(sellerSnap.val().balance) || 0;
+                        updates[`users/${sellerId}/sellerInfo/balance`] = currentSellerBalance + foodPrice;
+                    }
+                }
+
+                await update(ref(realDb), updates);
+
+                // Notifikasi Selesai
+                await push(ref(realDb, 'notifications'), {
+                    userId: orderData.buyerId,
+                    title: 'Pesanan Selesai',
+                    message: 'Selamat menikmati makanannya! Jangan lupa beri ulasan.',
+                    type: 'success',
+                    targetView: 'history',
+                    createdAt: new Date().toISOString(),
+                    isRead: false
+                });
+
+                Swal.fire('Selesai!', 'Pesanan selesai & Saldo cair.', 'success');
+            } catch (error) {
+                console.error("Error finishing order:", error);
+                Swal.fire('Error', 'Gagal menyelesaikan pesanan.', 'error');
+            }
+        }
+    } else {
+        // Status: Delivering (Mulai Antar)
+        try {
+            await update(ref(realDb, `orders/${orderId}`), { status: newStatus });
+            
+            // Notifikasi Pembeli: Driver OTW
+            if (newStatus === 'delivering') {
+                 const snapshot = await get(ref(realDb, `orders/${orderId}`));
+                 if (snapshot.exists()) {
+                     const orderData = snapshot.val();
+                     await push(ref(realDb, 'notifications'), {
+                        userId: orderData.buyerId,
+                        title: 'Driver Menuju Lokasi!',
+                        message: 'Driver sedang mengantarkan pesananmu. Siap-siap ya!',
+                        type: 'info',
+                        targetView: 'history',
+                        targetTab: 'delivering',
+                        orderId: orderId,
+                        createdAt: new Date().toISOString(),
+                        isRead: false
+                    });
+                 }
+            }
+            Swal.fire('Status Updated', 'Status berubah jadi Diantar.', 'success');
+        } catch (error) {
+            console.error("Update status failed:", error);
+            Swal.fire('Error', 'Gagal update status.', 'error');
+        }
     }
   };
 
@@ -1732,7 +1865,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                     <div>
                       <p className="text-xs text-gray-400">Ongkir</p>
                       <div className="font-bold text-lg text-green-500">
-                        Rp {delivery.deliveryFee.toLocaleString()}
+                        Rp {(delivery.deliveryFee || 0).toLocaleString('id-ID')}
                       </div>
                     </div>
                     <button 
@@ -1853,7 +1986,7 @@ const NiagaGo = ({ onOpenProfile }) => {
 
                 <div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-300 dark:border-slate-600">
                   <div className="font-bold text-lg text-sky-500">
-                    Rp {order.price.toLocaleString()}
+                    Rp {(order.price || order.totalPrice || 0).toLocaleString('id-ID')}
                   </div>
                   
                   {/* --- LOGIKA TOMBOL BERDASARKAN STATUS --- */}
@@ -2085,7 +2218,7 @@ const NiagaGo = ({ onOpenProfile }) => {
               </div>
               <div className="text-right">
                  <p className="text-xs text-gray-400">Tarif {viewingRouteOrder.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</p>
-                 <p className="text-lg font-bold text-green-600">Rp {viewingRouteOrder.price?.toLocaleString('id-ID')}</p>
+                 <p className="text-lg font-bold text-green-600">Rp {(viewingRouteOrder.price || 0).toLocaleString('id-ID')}</p>
               </div>
             </div>
           </div>

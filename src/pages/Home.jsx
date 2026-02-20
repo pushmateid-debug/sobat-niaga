@@ -750,8 +750,9 @@ const Home = () => {
       {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
       
       {/* MOBILE: NiagaGo Banner (Tetap di Atas Kategori) */}
-      <div className="md:hidden px-4 mt-8 mb-6 max-w-7xl mx-auto">
-        <div className={`w-full rounded-xl p-3 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+      <div className="md:hidden mt-8 mb-6 w-full">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={`w-full rounded-xl p-3 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
           <div className="relative z-10 text-left flex-1">
             <div className="flex items-center gap-2 mb-0">
               <Bike className={`w-5 h-5 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
@@ -767,6 +768,7 @@ const Home = () => {
           <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
             <Bike className="w-20 h-20" />
           </div>
+        </div>
         </div>
       </div>
 
@@ -838,8 +840,9 @@ const Home = () => {
       </div>
 
       {/* DESKTOP: NiagaGo Banner (Pindah ke Bawah Kategori & Full Width) */}
-      <div ref={niagaGoRef} className="hidden md:block scroll-mt-40 px-4 mt-8 max-w-7xl mx-auto">
-        <div className={`w-full rounded-2xl p-6 flex flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+      <div ref={niagaGoRef} className="hidden md:block scroll-mt-40 mt-8 w-full">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={`w-full rounded-2xl p-6 flex flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
           <div className="relative z-10 text-left flex-1">
             <div className="flex items-center gap-2 mb-2">
               <Bike className={`w-6 h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
@@ -856,6 +859,7 @@ const Home = () => {
           <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
             <Bike className="w-48 h-48" />
           </div>
+        </div>
         </div>
       </div>
 

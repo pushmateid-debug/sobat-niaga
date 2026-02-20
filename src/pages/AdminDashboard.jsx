@@ -1299,29 +1299,37 @@ const AdminDashboard = ({ onBack }) => {
           {activeTab === 'chat' && (
             <div className="h-[calc(100vh-100px)] flex rounded-2xl border overflow-hidden bg-white dark:bg-slate-800 dark:border-slate-700">
               {/* Chat List */}
-              <div className={`w-1/3 border-r ${isDarkMode ? 'border-slate-700' : 'border-gray-200'} flex flex-col`}>
-                <div className="p-4 border-b dark:border-slate-700">
-                  <h3 className="font-bold">Pesan Masuk</h3>
+              <div className={`w-1/3 border-r flex flex-col ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <div className={`p-4 border-b ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                  <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Pesan Masuk</h3>
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {chatList.map(chat => (
                     <div 
                       key={chat.uid}
                       onClick={() => setSelectedChat(chat)}
-                      className={`p-4 border-b cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-slate-700 dark:border-slate-700 ${selectedChat?.uid === chat.uid ? (isDarkMode ? 'bg-slate-700' : 'bg-blue-50') : ''}`}
+                      className={`p-4 border-b cursor-pointer transition-colors ${
+                        isDarkMode 
+                          ? 'hover:bg-slate-700 border-slate-700' 
+                          : 'hover:bg-sky-50 border-gray-100'
+                      } ${
+                        selectedChat?.uid === chat.uid 
+                          ? (isDarkMode ? 'bg-slate-700' : 'bg-sky-50 border-l-4 border-l-sky-500') 
+                          : (isDarkMode ? '' : 'bg-white')
+                      }`}
                     >
                       <div className="flex justify-between items-start">
-                        <h4 className={`font-bold text-sm ${chat.hasUnreadAdmin ? 'text-sky-600' : ''}`}>{chat.userName || 'User'}</h4>
+                        <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{chat.userName || 'User'}</h4>
                         {chat.hasUnreadAdmin && <span className="w-2 h-2 bg-red-500 rounded-full"></span>}
                       </div>
-                      <p className="text-xs text-gray-500 truncate mt-1">Klik untuk lihat pesan</p>
+                      <p className={`text-xs truncate mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Klik untuk lihat pesan</p>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Chat Window */}
-              <div className="flex-1 flex flex-col bg-gray-50 dark:bg-slate-900">
+              <div className={`flex-1 flex flex-col ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
                 {selectedChat ? (
                   <>
                     <div className="p-4 bg-white dark:bg-slate-800 border-b dark:border-slate-700 flex justify-between items-center">
@@ -1358,9 +1366,9 @@ const AdminDashboard = ({ onBack }) => {
                     </form>
                   </>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-                    <MessageCircle size={48} className="mb-2 opacity-20" />
-                    <p>Pilih percakapan untuk mulai membalas.</p>
+                  <div className={`flex-1 flex flex-col items-center justify-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <MessageCircle size={48} className={`mb-3 ${isDarkMode ? 'text-gray-600' : 'text-sky-500'}`} />
+                    <p className="font-medium">Pilih percakapan untuk mulai membalas.</p>
                   </div>
                 )}
               </div>
