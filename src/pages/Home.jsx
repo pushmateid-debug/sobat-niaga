@@ -303,6 +303,15 @@ const Home = () => {
     return () => unsubscribe();
   }, []);
 
+  // Protected View "Redirect"
+  useEffect(() => {
+    // Jika user mencoba mengakses halaman admin tanpa hak, tendang ke home.
+    if (currentView === 'admin-dashboard' && user?.email !== 'pushmate.id@gmail.com') {
+      console.warn("Access Denied: You are not authorized to view this page. Redirecting to home.");
+      setCurrentView('home');
+    }
+  }, [currentView, user]); // Dijalankan setiap kali view atau user berubah
+
   const toggleProfileDropdown = () => {
     setIsProfileOpen(!isProfileOpen);
   };

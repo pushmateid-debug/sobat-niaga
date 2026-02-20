@@ -34,6 +34,11 @@
 
     "food_delivery_pool": {
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'driver'"
+    },
+
+    "admin": {
+      ".read": "auth.token.email === 'pushmate.id@gmail.com'",
+      ".write": "auth.token.email === 'pushmate.id@gmail.com'"
     }
   }
 }
