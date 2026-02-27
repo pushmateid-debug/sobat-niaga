@@ -39,7 +39,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
       });
       return () => unsubscribe();
     }
-  }, [user]);
+  }, [user?.uid]); // FIX: Dependency changed from [user] to [user?.uid] to prevent memory leak/re-render loop
 
   const handleImageChange = (e) => {
     if (e.target.files[0]) {
@@ -123,12 +123,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
         updatedAt: new Date().toISOString()
       };
 
-      try {
-        await update(dbRef(db, `users/${user.uid}`), userData);
-      } catch (dbError) {
-        console.warn("Database permission denied (diabaikan agar UI tetap update):", dbError);
-        // Kita lanjut aja, karena update foto & nama di Auth sudah berhasil
-      }
+      await update(dbRef(db, `users/${user.uid}`), userData);
 
       // 4. Update State di Home biar langsung berubah tanpa refresh
       const updatedUser = {
@@ -145,9 +140,9 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
       
       Swal.fire({
         icon: 'success',
-        title: 'Mantap!',
-        text: 'Profil Kamu Makin Keren! 🥳',
-        timer: 2000,
+        title: 'Berhasil!',
+        text: 'Profil berhasil diperbarui.',
+        timer: 1500,
         showConfirmButton: false
       });
     } catch (error) {
@@ -213,7 +208,17 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
   };
 
   return (
-    <div className="min-h-screen pb-20 transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
+    <div className="min-h-screen pb-20 transition-colors duration-300 relative" style={{ backgroundColor: 'var(--bg-main)' }}>
+      {/* Loading Overlay - Fix Blank Screen Issue */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[9999] bg-black/20 backdrop-blur-[2px] flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-2xl flex flex-col items-center animate-in fade-in zoom-in duration-200">
+                <Loader2 size={36} className="text-sky-500 animate-spin mb-3" />
+                <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Menyimpan...</p>
+            </div>
+        </div>
+      )}
+
       {/* Header Biru Muda - Konsisten */}
       <div className={`shadow-sm sticky top-0 z-50 border-b transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
