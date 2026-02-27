@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
@@ -17,6 +18,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Pastikan Auth Persistence diatur ke LOCAL (Tahan Refresh)
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.error("Gagal set persistence:", error);
+});
+
 export const googleProvider = new GoogleAuthProvider();
 export const db = getDatabase(app);
 export const dbFirestore = getFirestore(app);

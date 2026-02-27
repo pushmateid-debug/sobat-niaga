@@ -281,11 +281,18 @@ const Home = () => {
 
   // Auth Persistence Listener: Cek status login saat refresh
   useEffect(() => {
+    let dbUnsubscribe; // Simpan fungsi unsubscribe DB
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      // Bersihkan listener DB sebelumnya jika ada (misal ganti akun)
+      if (dbUnsubscribe) dbUnsubscribe();
+
       if (currentUser) {
         // Jika user login, ambil data lengkap dari Realtime DB
         const userRef = ref(db, `users/${currentUser.uid}`);
-        onValue(userRef, (snapshot) => {
+        
+        // Gunakan onValue agar data user (saldo, dll) selalu realtime
+        dbUnsubscribe = onValue(userRef, (snapshot) => {
           if (snapshot.exists()) {
             const dbUser = snapshot.val();
             // Gabungkan data Auth dan DB
@@ -294,13 +301,20 @@ const Home = () => {
             // User baru, belum ada data di DB
             setUser(currentUser);
           }
+          // PENTING: Matikan loading HANYA setelah data user siap
+          setIsLoading(false);
         });
       } else {
         setUser(null);
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
-    return () => unsubscribe();
+    
+    // Cleanup saat unmount
+    return () => {
+      unsubscribe();
+      if (dbUnsubscribe) dbUnsubscribe();
+    };
   }, []);
 
   // Protected View "Redirect"
