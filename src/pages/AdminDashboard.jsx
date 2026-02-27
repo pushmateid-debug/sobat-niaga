@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  ArrowLeft, LayoutDashboard, FileText, Users, DollarSign, 
+  LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
-  Search, Send, Check, Trash2, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
-  ChevronRight, LogOut, TrendingUp, CreditCard, Loader2, Clock, User, ZoomIn
+  Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
+  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';

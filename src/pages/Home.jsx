@@ -1,36 +1,38 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, Youtube, Facebook, Twitter, FileText, ShieldCheck, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronDown, ChevronUp, ChevronLeft, MoreVertical, Mail, X } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/pagination';
 import 'swiper/css/effect-coverflow';
 import ProductCard from '../components/ProductCard';
-import TopUp from './TopUp';
-import FoodOrder from './FoodOrder';
-import SkinCare from './SkinCare';
-import Fashion from './Fashion';
-import Jasa from './Jasa';
-import Cart from './Cart';
-import Login from './Login';
-import Profile from './Profile';
-import DashboardSeller from './DashboardSeller';
-import Address from './Address';
-import ProductDetail from './ProductDetail';
-import Payment from './Payment';
-import TransactionHistory from './TransactionHistory';
-import AdminDashboard from './AdminDashboard';
-import StoreProfile from './StoreProfile';
-import DigitalCenter from './DigitalCenter'; // Import halaman baru
-import NiagaGo from './NiagaGo'; // Import NiagaGo
-import SearchResults from './SearchResults'; // Import halaman hasil pencarian
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
-import SearchPage from './SearchPage'; // Halaman Pencarian Mobile
 import { auth, db } from '../config/firebase';
-import { ref, onValue, push, update, remove, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
+import { ref, onValue, push, update, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useTheme } from '../context/ThemeContext'; // Import Context
+
+// Lazy Load Pages untuk Optimasi Bundle Size
+const TopUp = React.lazy(() => import('./TopUp'));
+const FoodOrder = React.lazy(() => import('./FoodOrder'));
+const SkinCare = React.lazy(() => import('./SkinCare'));
+const Fashion = React.lazy(() => import('./Fashion'));
+const Jasa = React.lazy(() => import('./Jasa'));
+const Cart = React.lazy(() => import('./Cart'));
+const Login = React.lazy(() => import('./Login'));
+const Profile = React.lazy(() => import('./Profile'));
+const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
+const Address = React.lazy(() => import('./Address'));
+const ProductDetail = React.lazy(() => import('./ProductDetail'));
+const Payment = React.lazy(() => import('./Payment'));
+const TransactionHistory = React.lazy(() => import('./TransactionHistory'));
+const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
+const StoreProfile = React.lazy(() => import('./StoreProfile'));
+const DigitalCenter = React.lazy(() => import('./DigitalCenter'));
+const NiagaGo = React.lazy(() => import('./NiagaGo'));
+const SearchResults = React.lazy(() => import('./SearchResults'));
+const SearchPage = React.lazy(() => import('./SearchPage'));
 
 const Home = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -556,7 +558,11 @@ const Home = () => {
 
   // Auth Check
   if (!user) {
-    return <Login onLogin={(userData) => setUser(userData)} />;
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-sky-600" /></div>}>
+        <Login onLogin={(userData) => setUser(userData)} />
+      </Suspense>
+    );
   }
 
   // Render Content Helper
@@ -668,7 +674,7 @@ const Home = () => {
         </div>
       );
 
-      default: return (
+      default: return ( 
         <>
       {/* 1. Hero Section (Coverflow Effect) */}
       <div 
@@ -699,7 +705,7 @@ const Home = () => {
             pagination={{ clickable: true, dynamicBullets: true }}
           className="w-full py-1 md:py-8"
           >
-            {banners.map((banner) => (
+            {banners.map((banner, index) => (
             <SwiperSlide key={banner.id} className="!w-[75%] md:!w-[700px] lg:!w-[900px] aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
                 {banner.link ? (
                   banner.link.startsWith('http') ? (
@@ -713,6 +719,7 @@ const Home = () => {
                         src={banner.image} 
                         alt={banner.alt} 
                         className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                        loading={index === 0 ? "eager" : "lazy"} // Optimasi LCP: Slide pertama eager, sisanya lazy
                       />
                     </a>
                   ) : (
@@ -724,6 +731,7 @@ const Home = () => {
                         src={banner.image} 
                         alt={banner.alt} 
                         className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                        loading={index === 0 ? "eager" : "lazy"}
                       />
                     </Link>
                   )
@@ -732,6 +740,7 @@ const Home = () => {
                     src={banner.image} 
                     alt={banner.alt} 
                     className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                    loading={index === 0 ? "eager" : "lazy"}
                   />
                 )}
               </SwiperSlide>
@@ -1337,7 +1346,9 @@ const Home = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col w-full">
-        {renderContent()}
+        <Suspense fallback={<div className="flex-1 flex items-center justify-center min-h-[50vh]"><Loader2 className="animate-spin text-sky-600" /></div>}>
+          {renderContent()}
+        </Suspense>
       </main>
 
       {/* Modal Top Up Game (Global) */}
