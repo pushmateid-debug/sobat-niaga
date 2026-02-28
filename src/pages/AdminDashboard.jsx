@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
-  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft
+  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
@@ -135,6 +135,7 @@ const AdminDashboard = ({ onBack }) => {
   const [niagaSales, setNiagaSales] = useState([]);
   const [financeFilter, setFinanceFilter] = useState('today'); // today, week, month
   
+  const [saldoSearch, setSaldoSearch] = useState(''); // State Pencarian Saldo
   // State Tabs Internal
   const [sellerTabMode, setSellerTabMode] = useState('sellers'); // 'sellers' | 'drivers'
   const [trxTabMode, setTrxTabMode] = useState('marketplace'); // 'marketplace' | 'niagago'
@@ -233,30 +234,51 @@ const AdminDashboard = ({ onBack }) => {
     return () => unsubscribe();
   }, []);
 
-  // Gabung & Filter Data Keuangan
-  const filteredFinance = useMemo(() => {
-    let combined = [
-        ...marketplaceSales.map(s => ({
+  // Gabung & Filter Data Keuangan (Termasuk Payouts)
+  const financialRecords = useMemo(() => {
+    let records = [];
+    
+    // 1. Marketplace Sales (Masuk)
+    marketplaceSales.forEach(s => {
+        records.push({
             id: s.id,
-            item: s.items ? (Array.isArray(s.items) ? s.items[0].name : Object.values(s.items)[0].name) + (s.items.length > 1 ? '...' : '') : 'Order',
-            amount: s.totalPrice || 0,
+            title: s.items ? (Array.isArray(s.items) ? s.items[0].name : Object.values(s.items)[0].name) : 'Order Marketplace',
+            amount: parseInt(s.totalPrice || 0),
             date: s.createdAt,
-            type: 'Marketplace',
-            status: 'Sukses'
-        })),
-        ...niagaSales.map(s => ({
+            type: 'in',
+            category: 'Marketplace',
+            adminFee: calculateAdminFee(parseInt(s.totalPrice || 0))
+        });
+    });
+
+    // 2. NiagaGo Sales (Masuk)
+    niagaSales.forEach(s => {
+        records.push({
             id: s.id,
-            item: `Trip: ${s.pickup} -> ${s.destination}`,
-            amount: s.price || 0,
+            title: `Trip: ${s.pickup?.split(',')[0] || '...'} -> ${s.destination?.split(',')[0] || '...'}`,
+            amount: parseInt(s.price || 0),
             date: s.createdAt,
-            type: 'NiagaGo',
-            status: 'Sukses',
-            adminFee: s.adminFee
-        }))
-    ];
+            type: 'in',
+            category: 'NiagaGo',
+            adminFee: s.adminFee ? parseInt(s.adminFee) : 2000
+        });
+    });
+
+    // 3. Payouts (Keluar)
+    payouts.forEach(p => {
+        records.push({
+            id: p.id,
+            title: `Pencairan: ${p.storeName}`,
+            amount: parseInt(p.amount || 0),
+            date: p.createdAt,
+            type: 'out',
+            category: 'Payout',
+            adminFee: 0
+        });
+    });
 
     const now = new Date();
-    return combined.filter(item => {
+    return records.filter(item => {
         const d = new Date(item.date);
         if (financeFilter === 'today') {
             return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -269,24 +291,15 @@ const AdminDashboard = ({ onBack }) => {
         }
         return true;
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [marketplaceSales, niagaSales, financeFilter]);
+  }, [marketplaceSales, niagaSales, payouts, financeFilter]);
 
   // Hitung Ringkasan Keuangan
-  // REVISI: Gunakan logic calculateAdminFee yang konsisten
   const financeSummary = useMemo(() => {
-    const totalIn = filteredFinance.reduce((acc, curr) => acc + curr.amount, 0);
-    
-    const totalProfit = filteredFinance.reduce((acc, curr) => {
-        if (curr.type === 'Marketplace') {
-            return acc + calculateAdminFee(curr.amount); 
-        } else {
-            const fee = curr.adminFee !== undefined ? parseInt(curr.adminFee) : 2000;
-            return acc + fee;
-        }
-    }, 0);
-    
-    return { totalIn, totalProfit };
-  }, [filteredFinance]); // Note: Idealnya dependency ke sellers juga kalau mau cek competitor status
+    const totalIn = financialRecords.filter(r => r.type === 'in').reduce((acc, curr) => acc + curr.amount, 0);
+    const totalOut = financialRecords.filter(r => r.type === 'out').reduce((acc, curr) => acc + curr.amount, 0);
+    const totalProfit = financialRecords.filter(r => r.type === 'in').reduce((acc, curr) => acc + curr.adminFee, 0);
+    return { totalIn, totalOut, totalProfit };
+  }, [financialRecords]);
 
   // Inject Cropper CSS via CDN (Solusi Error Module Not Found)
   useEffect(() => {
@@ -1044,41 +1057,40 @@ const AdminDashboard = ({ onBack }) => {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold mb-6">Ringkasan Hari Ini</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-blue-100 text-blue-600 rounded-xl dark:bg-blue-900/30 dark:text-blue-400"><ShoppingBag size={24} /></div>
-                    <span className="text-xs font-bold text-green-500 bg-green-100 px-2 py-1 rounded-lg">+12%</span>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400"><ShoppingBag size={20} /></div>
                   </div>
-                  <p className="text-sm text-gray-500">Total Transaksi</p>
-                  <h3 className="text-2xl font-bold">{transactions.length}</h3>
+                  <p className="text-xs text-gray-500">Total Transaksi</p>
+                  <h3 className="text-lg font-bold">{transactions.length}</h3>
                 </div>
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-green-100 text-green-600 rounded-xl dark:bg-green-900/30 dark:text-green-400"><DollarSign size={24} /></div>
+                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="p-2 bg-green-50 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400"><DollarSign size={20} /></div>
                   </div>
-                  <p className="text-sm text-gray-500">Profit Bersih Admin</p>
-                  <h3 className="text-2xl font-bold text-green-600">Rp {financeSummary.totalProfit.toLocaleString('id-ID')}</h3>
+                  <p className="text-xs text-gray-500">Profit Admin</p>
+                  <h3 className="text-lg font-bold text-green-600">Rp {financeSummary.totalProfit.toLocaleString('id-ID')}</h3>
                 </div>
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-orange-100 text-orange-600 rounded-xl dark:bg-orange-900/30 dark:text-orange-400"><Bike size={24} /></div>
-                    {driverRequests.length > 0 && <span className="text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded-lg">{driverRequests.length} Baru</span>}
+                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="p-2 bg-orange-50 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400"><Bike size={20} /></div>
+                    {driverRequests.length > 0 && <span className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{driverRequests.length}</span>}
                   </div>
-                  <p className="text-sm text-gray-500">Driver Pending</p>
-                  <h3 className="text-2xl font-bold">{driverRequests.length}</h3>
+                  <p className="text-xs text-gray-500">Driver Pending</p>
+                  <h3 className="text-lg font-bold">{driverRequests.length}</h3>
                 </div>
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-purple-100 text-purple-600 rounded-xl dark:bg-purple-900/30 dark:text-purple-400"><MessageCircle size={24} /></div>
+                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400"><MessageCircle size={20} /></div>
                   </div>
-                  <p className="text-sm text-gray-500">Pesan Belum Dibaca</p>
-                  <h3 className="text-2xl font-bold">{stats.unreadMessages}</h3>
+                  <p className="text-xs text-gray-500">Pesan Baru</p>
+                  <h3 className="text-lg font-bold">{stats.unreadMessages}</h3>
                 </div>
               </div>
 
               {/* Grafik Penjualan (Stockbit Style) */}
-              <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+              <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="font-bold text-lg">Tren Pendapatan</h3>
@@ -1404,81 +1416,119 @@ const AdminDashboard = ({ onBack }) => {
           {/* --- DAFTAR PENJUAL & SALDO --- */}
           {activeTab === 'sellers' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Manajemen Saldo</h2>
-                <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                    <button onClick={() => setSellerTabMode('sellers')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${sellerTabMode === 'sellers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>Seller Barang</button>
-                    <button onClick={() => setSellerTabMode('drivers')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${sellerTabMode === 'drivers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>Driver NiagaGo</button>
-                </div>
+              {/* Sticky Header Area */}
+              <div className={`sticky top-0 z-20 pb-2 -mt-4 pt-4 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+                  <h2 className="text-2xl font-bold mb-4">Manajemen Saldo</h2>
+                  
+                  <div className={`flex w-full rounded-xl p-1 mb-4 border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                      <button 
+                          onClick={() => setSellerTabMode('sellers')} 
+                          className={`w-1/2 py-3 text-sm font-semibold rounded-lg transition-all ${sellerTabMode === 'sellers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
+                      >
+                          Seller Barang
+                      </button>
+                      <button 
+                          onClick={() => setSellerTabMode('drivers')} 
+                          className={`w-1/2 py-3 text-sm font-semibold rounded-lg transition-all ${sellerTabMode === 'drivers' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
+                      >
+                          Driver NiagaGo
+                      </button>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative shadow-sm">
+                    <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} size={20} />
+                    <input 
+                        type="text" 
+                        placeholder={sellerTabMode === 'sellers' ? "Cari Nama Toko / Owner..." : "Cari Nama Driver..."}
+                        value={saldoSearch}
+                        onChange={(e) => setSaldoSearch(e.target.value)}
+                        className={`w-full pl-11 pr-4 py-3.5 rounded-xl border outline-none text-sm font-medium transition-all ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white focus:border-sky-500' : 'bg-white border-gray-200 focus:border-sky-500'}`}
+                    />
+                  </div>
               </div>
 
               {/* Form Manual Top Up (Inject Saldo) */}
-              <div className={`p-6 rounded-2xl border mb-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><DollarSign className="text-green-500"/> Inject Saldo User (Manual Top Up)</h3>
-                <form onSubmit={handleManualTopUp} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div className={`p-5 rounded-2xl border mb-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <h3 className="font-bold text-sm mb-4 flex items-center gap-2"><DollarSign className="text-green-500" size={18}/> Inject Saldo User (Manual Top Up)</h3>
+                <form onSubmit={handleManualTopUp} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                     <div className="w-full">
                         <label className={labelClass}>Email User</label>
                         <input type="email" placeholder="user@example.com" value={topUpForm.email} onChange={e => setTopUpForm({...topUpForm, email: e.target.value})} className={inputClass} required />
                     </div>
                     <div className="w-full">
-                        <label className={labelClass}>Jumlah Saldo (Rp)</label>
+                        <label className={labelClass}>Jumlah (Rp)</label>
                         <input type="number" placeholder="50000" value={topUpForm.amount} onChange={e => setTopUpForm({...topUpForm, amount: e.target.value})} className={inputClass} required />
                     </div>
                     <div className="w-full">
-                        <label className={labelClass}>Bukti Transfer (Admin)</label>
+                        <label className={labelClass}>Bukti Transfer</label>
                         <div className={`relative w-full border rounded-xl overflow-hidden ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200'}`}>
                             <input type="file" accept="image/*" onChange={e => setTopUpProof(e.target.files[0])} className="w-full text-xs p-2 cursor-pointer" required />
                         </div>
                     </div>
                     <button 
                         type="submit" 
-                        className="w-full md:w-auto py-3 px-6 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors h-[46px]"
+                        className="w-full md:w-auto py-3 px-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors h-[46px] flex items-center justify-center gap-2 text-sm"
                     >
-                        + Tambah Saldo
+                        <DollarSign size={16} /> Top Up
                     </button>
                 </form>
               </div>
 
+              {/* Table View for Sellers/Drivers */}
               <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className={`text-xs uppercase ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                <div className="overflow-auto max-h-[400px]">
+                  <table className="w-full text-sm text-left relative">
+                    <thead className={`text-xs uppercase sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
                       <tr>
-                        <th className="px-6 py-3">{sellerTabMode === 'sellers' ? 'Nama Toko' : 'Nama Driver'}</th>
-                        <th className="px-6 py-3">Pemilik</th>
-                        <th className="px-6 py-3">Saldo Aktif</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3 text-right">Aksi</th>
+                        {sellerTabMode === 'sellers' && <th className="px-6 py-3 whitespace-nowrap">Nama Toko</th>}
+                        <th className="px-6 py-3 whitespace-nowrap">Pemilik</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Saldo Aktif</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Status</th>
+                        <th className="px-6 py-3 whitespace-nowrap text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                      {sellerTabMode === 'sellers' ? sellers.map((seller) => (
-                        <tr key={seller.uid} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
-                          <td className="px-6 py-4 font-bold">{seller.storeName || 'Tanpa Nama'}</td>
-                          <td className="px-6 py-4 text-gray-500">{seller.displayName || seller.email}</td>
-                          <td className="px-6 py-4 font-mono font-bold text-green-600">Rp {(seller.balance || 0).toLocaleString('id-ID')}</td>
-                          <td className="px-6 py-4">
-                            {seller.isVerifiedSeller ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold">Verified</span> : <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">Pending</span>}
+                      {(sellerTabMode === 'sellers' ? sellers : drivers)
+                        .filter(item => {
+                            const name = item.storeName || item.displayName || 'Tanpa Nama';
+                            const email = item.email || '';
+                            return name.toLowerCase().includes(saldoSearch.toLowerCase()) || email.toLowerCase().includes(saldoSearch.toLowerCase());
+                        })
+                        .map((item) => (
+                        <tr key={item.uid} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
+                          {sellerTabMode === 'sellers' && (
+                            <td className="px-6 py-4 whitespace-nowrap font-bold">{item.storeName || 'Tanpa Nama'}</td>
+                          )}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="font-medium">{item.displayName || 'User'}</div>
+                            <div className="text-xs text-gray-500">{item.email}</div>
                           </td>
-                          <td className="px-6 py-4 text-right">
-                            <button onClick={() => handlePayout(seller)} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">Cairkan Dana</button>
+                          <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-green-600">
+                            Rp {(sellerTabMode === 'sellers' ? (item.balance || 0) : (item.saldo || 0)).toLocaleString('id-ID')}
                           </td>
-                        </tr>
-                      )) : drivers.map((driver) => (
-                        <tr key={driver.uid} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
-                          <td className="px-6 py-4 font-bold">{driver.displayName}</td>
-                          <td className="px-6 py-4 text-gray-500">{driver.email}</td>
-                          <td className="px-6 py-4 font-mono font-bold text-green-600">Rp {(driver.saldo || 0).toLocaleString('id-ID')}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">Aktif</span>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {sellerTabMode === 'sellers' ? (
+                                item.isVerifiedSeller 
+                                ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold"><Check size={10}/> Verified</span>
+                                : <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-bold">Pending</span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold"><Bike size={10}/> Driver</span>
+                            )}
                           </td>
-                          <td className="px-6 py-4 text-right">
-                            <button onClick={() => handlePayout(driver)} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">Cairkan Dana</button>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <button 
+                                onClick={() => handlePayout(item)} 
+                                className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                            >
+                                Cairkan Dana
+                            </button>
                           </td>
                         </tr>
                       ))}
-                      {sellerTabMode === 'sellers' && sellers.length === 0 && <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Belum ada penjual.</td></tr>}
-                      {sellerTabMode === 'drivers' && drivers.length === 0 && <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Belum ada driver.</td></tr>}
+                      {(sellerTabMode === 'sellers' ? sellers : drivers).length === 0 && (
+                        <tr><td colSpan={sellerTabMode === 'sellers' ? 5 : 4} className="px-6 py-8 text-center text-gray-500">Tidak ada data ditemukan.</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1488,96 +1538,135 @@ const AdminDashboard = ({ onBack }) => {
 
           {/* --- LAPORAN KEUANGAN (Placeholder) --- */}
           {activeTab === 'finance' && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 className="text-2xl font-bold">Laporan Keuangan</h2>
-                <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                    {['today', 'week', 'month'].map(f => (
-                        <button 
-                            key={f}
-                            onClick={() => setFinanceFilter(f)}
-                            className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${financeFilter === f ? 'bg-sky-600 text-white shadow-sm' : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
-                        >
-                            {f === 'today' ? 'Hari Ini' : (f === 'week' ? '7 Hari' : 'Bulan Ini')}
-                        </button>
-                    ))}
-                </div>
+            <div className="space-y-6 pb-32">
+              {/* Header: Summary & Filter (Relative agar ikut scroll) */}
+              <div className={`relative pb-4 pt-2 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold">Laporan Keuangan</h2>
+                    <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
+                        {['today', 'week', 'month'].map(f => (
+                            <button 
+                                key={f}
+                                onClick={() => setFinanceFilter(f)}
+                                className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${financeFilter === f ? 'bg-sky-600 text-white shadow-sm' : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
+                            >
+                                {f === 'today' ? 'Hari Ini' : (f === 'week' ? '7 Hari' : 'Bulan Ini')}
+                            </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Grid Summary (Compact) */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Total Masuk</p>
+                        <h3 className="text-sm md:text-lg font-bold text-green-500 truncate">Rp {financeSummary.totalIn.toLocaleString('id-ID')}</h3>
+                    </div>
+                    <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Total Keluar</p>
+                        <h3 className="text-sm md:text-lg font-bold text-red-500 truncate">Rp {financeSummary.totalOut.toLocaleString('id-ID')}</h3>
+                    </div>
+                    <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Profit Bersih</p>
+                        <h3 className="text-sm md:text-lg font-bold text-sky-500 truncate">Rp {financeSummary.totalProfit.toLocaleString('id-ID')}</h3>
+                    </div>
+                  </div>
               </div>
 
-              {/* Ringkasan Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                    <p className="text-xs text-gray-500 font-bold uppercase">Total Masuk (Omzet)</p>
-                    <h3 className="text-2xl font-bold text-sky-500 mt-1">Rp {financeSummary.totalIn.toLocaleString('id-ID')}</h3>
-                </div>
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                    <p className="text-xs text-gray-500 font-bold uppercase">Total Pencairan (Keluar)</p>
-                    <h3 className="text-2xl font-bold text-red-500 mt-1">Rp {payouts.reduce((acc, curr) => acc + (parseInt(curr.amount)||0), 0).toLocaleString('id-ID')}</h3>
-                </div>
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                    <p className="text-xs text-gray-500 font-bold uppercase">Profit Admin (Bersih)</p>
-                    <h3 className="text-2xl font-bold text-green-500 mt-1">Rp {financeSummary.totalProfit.toLocaleString('id-ID')}</h3>
-                </div>
-              </div>
+              {/* Content Tables (Normal Flow) */}
+              <div className="space-y-8">
+                  
+                  {/* 1. Rincian Pemasukan (Income) - TABLE */}
+                  <div>
+                    <h3 className={`font-bold text-sm mb-3 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                        <div className="p-1 bg-green-100 text-green-600 rounded-lg"><TrendingUp size={14}/></div>
+                        Rincian Pemasukan (Uang Masuk)
+                    </h3>
+                    <div className={`rounded-xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                        <div className="overflow-auto max-h-[300px]">
+                            <table className="w-full text-sm text-left relative">
+                                <thead className={`text-xs uppercase sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                                    <tr>
+                                        <th className="px-4 py-3 whitespace-nowrap">Tanggal</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Keterangan</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Tipe</th>
+                                        <th className="px-4 py-3 whitespace-nowrap text-right">Nominal</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
+                                    {financialRecords.filter(r => r.type === 'in').length === 0 ? (
+                                        <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500 text-xs">Belum ada pemasukan periode ini.</td></tr>
+                                    ) : (
+                                        financialRecords.filter(r => r.type === 'in').map((item) => (
+                                            <tr key={item.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
+                                                <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                                                    {new Date(item.date).toLocaleDateString('id-ID')} <br/>
+                                                    <span className="text-[10px] opacity-70">{new Date(item.date).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                </td>
+                                                <td className={`px-4 py-3 whitespace-nowrap font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                                    {item.title}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${item.category === 'Marketplace' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                        {item.category}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-green-600">
+                                                    + Rp {item.amount.toLocaleString('id-ID')}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                  </div>
 
-              {/* Tabel Detail Transaksi Masuk */}
-              <h3 className="font-bold text-lg mt-4">Rincian Pemasukan</h3>
-              <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className={`text-xs uppercase ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
-                      <tr>
-                        <th className="px-6 py-3">Tanggal</th>
-                        <th className="px-6 py-3">Keterangan</th>
-                        <th className="px-6 py-3">Tipe</th>
-                        <th className="px-6 py-3 text-right">Nominal</th>
-                      </tr>
-                    </thead>
-                    <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                      {filteredFinance.map((item, idx) => (
-                        <tr key={idx} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
-                          <td className="px-6 py-4 text-gray-500">{new Date(item.date).toLocaleDateString('id-ID')}</td>
-                          <td className="px-6 py-4 font-medium">{item.item}</td>
-                          <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-bold ${item.type === 'Marketplace' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{item.type}</span></td>
-                          <td className="px-6 py-4 text-right font-bold text-green-600">+ Rp {item.amount.toLocaleString('id-ID')}</td>
-                        </tr>
-                      ))}
-                      {filteredFinance.length === 0 && (
-                        <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-500">Belum ada data keuangan untuk periode ini.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                  {/* 2. Riwayat Pencairan (Outcome) - TABLE */}
+                  <div>
+                    <h3 className={`font-bold text-sm mb-3 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                        <div className="p-1 bg-red-100 text-red-600 rounded-lg"><CreditCard size={14}/></div>
+                        Riwayat Pencairan Dana (Keluar)
+                    </h3>
+                    <div className={`rounded-xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                         <div className="overflow-auto max-h-[300px]">
+                             <table className="w-full text-sm text-left relative">
+                                 <thead className={`text-xs uppercase sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                                    <tr>
+                                        <th className="px-4 py-3 whitespace-nowrap">Tanggal</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Toko / Driver</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Catatan</th>
+                                        <th className="px-4 py-3 whitespace-nowrap text-right">Nominal</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
+                                    {financialRecords.filter(r => r.type === 'out').length === 0 ? (
+                                        <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500 text-xs">Belum ada pencairan dana.</td></tr>
+                                    ) : (
+                                        financialRecords.filter(r => r.type === 'out').map((item) => (
+                                            <tr key={item.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
+                                                <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                                                    {new Date(item.date).toLocaleDateString('id-ID')}
+                                                </td>
+                                                <td className={`px-4 py-3 whitespace-nowrap font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                                    {item.title.replace('Pencairan: ', '')}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 italic">
+                                                    {item.note || '-'}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-red-600">
+                                                    - Rp {item.amount.toLocaleString('id-ID')}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                  </div>
 
-              {/* Tabel Riwayat Pencairan */}
-              <h3 className="font-bold text-lg mt-4">Riwayat Pencairan Dana (Keluar)</h3>
-              <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <div className="overflow-x-auto max-h-[300px]">
-                  <table className="w-full text-sm text-left">
-                    <thead className={`text-xs uppercase ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
-                      <tr>
-                        <th className="px-6 py-3">Tanggal</th>
-                        <th className="px-6 py-3">Toko</th>
-                        <th className="px-6 py-3">Catatan</th>
-                        <th className="px-6 py-3 text-right">Nominal</th>
-                      </tr>
-                    </thead>
-                    <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                      {payouts.map((pay, idx) => (
-                        <tr key={idx} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
-                          <td className="px-6 py-4 text-gray-500">{new Date(pay.createdAt).toLocaleDateString('id-ID')}</td>
-                          <td className="px-6 py-4 font-bold">{pay.storeName}</td>
-                          <td className="px-6 py-4 text-xs text-gray-500">{pay.note || 'Pencairan Saldo'}</td>
-                          <td className="px-6 py-4 text-right font-bold text-red-500">- Rp {parseInt(pay.amount).toLocaleString('id-ID')}</td>
-                        </tr>
-                      ))}
-                      {payouts.length === 0 && (
-                        <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-500">Belum ada riwayat pencairan.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
               </div>
             </div>
           )}
