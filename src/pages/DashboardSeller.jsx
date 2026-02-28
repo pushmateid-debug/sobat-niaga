@@ -477,83 +477,138 @@ const DashboardSeller = ({ user, onBack }) => {
 
   // Handle Join Competition
   const handleJoinCompetition = async () => {
-    Swal.fire({
-      title: '🏆 PANDUAN LENGKAP: SOBATNIAGA MONTHLY RACE',
-      width: '650px',
+    const result = await Swal.fire({
+      title: '', // Header kita custom di HTML
+      width: '600px',
       html: `
-        <div class="text-left text-sm text-gray-600 space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-          <p class="font-medium text-gray-800 text-center italic">"Tingkatkan Transaksi, Raih Predikat Top Seller, dan Bawa Pulang Hadiahnya!"</p>
-          <p>Selamat datang di ajang bulanan paling bergengsi untuk para Seller SobatNiaga. Ini bukan cuma soal jualan, tapi soal siapa yang paling dipercaya oleh pelanggan!</p>
-
-          <div>
-            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2">💰 HADIAH PEMENANG (TOTAL RP300.000)</h4>
-            <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-100 space-y-2 text-xs">
-              <p>🥇 <b>Juara 1:</b> Rp150.000 + Badge Golden Seller + Promo Banner Depan.</p>
-              <p>🥈 <b>Juara 2:</b> Rp100.000 + Badge Silver Seller + Promo Banner Depan.</p>
-              <p>🥉 <b>Juara 3:</b> Rp50.000 + Badge Bronze Seller.</p>
+        <div class="text-left space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar font-sans">
+            <!-- Header Image/Banner -->
+            <div class="w-full h-32 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center mb-4 relative overflow-hidden shadow-md">
+                <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
+                <h2 class="text-2xl font-extrabold text-white tracking-widest drop-shadow-md z-10">SOBAT JUARA NIAGA</h2>
+                <div class="absolute -bottom-4 -right-4 text-white/20"><svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
             </div>
-          </div>
 
-          <div>
-            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2">📊 ATURAN MAIN & SISTEM POIN</h4>
-            <p class="mb-2 text-xs">Pemenang ditentukan berdasarkan Skor Kumulatif:</p>
-            <table class="w-full text-xs border-collapse mb-2">
-              <tr class="bg-gray-100"><th class="p-2 border text-left">Kategori</th><th class="p-2 border text-left">Perhitungan Poin</th></tr>
-              <tr><td class="p-2 border">Omzet (Pendapatan)</td><td class="p-2 border">Setiap Rp10.000 = 1 Poin</td></tr>
-              <tr><td class="p-2 border">Volume (Terjual)</td><td class="p-2 border">Setiap 1 Produk = 5 Poin</td></tr>
-              <tr><td class="p-2 border">Loyalitas</td><td class="p-2 border">Target Tercapai = 10 Poin Bonus</td></tr>
-            </table>
-            <div class="text-xs italic bg-gray-50 p-2 rounded border border-gray-200">
-              <b>Contoh:</b><br/>
-              Seller A (1 HP Rp1jt) = 100 Poin.<br/>
-              Seller B (50 Aksesoris Rp500rb) = 50 (Omzet) + 250 (Volume) = 300 Poin.<br/>
-              <b>Pemenang: Seller B!</b>
+            <h3 class="text-center font-bold text-lg text-gray-800">🏆 JADILAH SOBAT JUARA NIAGA BULAN INI! 🏆</h3>
+            <p class="text-sm text-gray-600 leading-relaxed">
+            Halo Seller Hebat! Siap meningkatkan penjualanmu berkali-kali lipat? Bergabunglah dalam Event Bulanan Sobat Niaga dan rebut total hadiah uang tunai serta fitur eksklusif untuk tokomu!
+            </p>
+
+            <!-- Keuntungan Langsung -->
+            <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 shadow-sm">
+            <h4 class="font-bold text-blue-800 flex items-center gap-2 mb-2 text-sm">🚀 Keuntungan Langsung (Tanpa Menunggu Menang):</h4>
+            <p class="text-xs text-blue-900 mb-2">Begitu kamu mendaftar, tokomu otomatis mendapatkan fitur PREMIUM:</p>
+            <ul class="list-disc pl-5 space-y-1 text-xs text-blue-800">
+                <li><b>Potongan Biaya Admin:</b> Transaksi jadi lebih hemat (Hanya Rp1.000 atau bahkan Rp500!).</li>
+                <li><b>Prioritas Pencarian:</b> Produkmu akan tampil lebih atas dibanding seller reguler.</li>
+                <li><b>Badge "Sobat Juara":</b> Logo khusus di tokomu agar pembeli lebih percaya (Trust).</li>
+                <li><b>Fitur Sundul Produk:</b> Akses khusus untuk menampilkan 3 produk jagoanmu di halaman depan.</li>
+            </ul>
             </div>
-          </div>
 
-          <div>
-            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2">📝 SYARAT & KETENTUAN PESERTA</h4>
-            <ul class="list-disc pl-5 space-y-1 text-xs">
-              <li><b>Target Minimal:</b> Pendapatan Rp500.000 & 10 Transaksi Sukses.</li>
-              <li><b>Status Transaksi:</b> Hanya pesanan "Selesai" yang dihitung.</li>
-              <li><b>Kuota Kompetisi:</b> Hadiah cair jika minimal 10 Seller aktif berkompetisi.</li>
+            <!-- Cara Main -->
+            <div>
+            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">🎮 Cara Main & Kumpulkan Poin:</h4>
+            <p class="text-xs text-gray-600 mb-2">Sistem pemenang ditentukan berdasarkan Poin Tertinggi yang dikumpulkan selama 1 bulan penuh. Cara kumpulin poinnya gampang banget:</p>
+            <ul class="list-disc pl-5 space-y-1 text-xs text-gray-700">
+                <li><b>Poin Penjualan:</b> Setiap 1 produk laku (Min. harga Rp10.000), kamu dapat 10 Poin.</li>
+                <li><b>Poin Omzet:</b> Setiap total penjualan mencapai kelipatan Rp50.000, kamu dapat tambahan 5 Poin.</li>
+                <li><b>Poin Pelayanan:</b> Berikan pelayanan terbaik! Setiap ulasan Bintang 5 dari pembeli bernilai 2 Poin.</li>
             </ul>
-          </div>
+            </div>
 
-          <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
-            <h4 class="font-bold text-blue-800 flex items-center gap-2 mb-2">⚖️ Biaya Admin Khusus Peserta:</h4>
-            <ul class="list-disc pl-5 space-y-1 text-blue-900 text-xs">
-              <li>Transaksi &lt; Rp50.000: <b>Biaya Admin Rp2.000</b>.</li>
-              <li>Transaksi Rp50.000 - Rp250.000: <b>Biaya Admin Rp5.000</b>.</li>
-              <li>Transaksi &gt; Rp250.000: <b>Biaya Admin hanya 1% (Maksimal Rp20.000)</b>.</li>
+            <!-- Syarat & Ketentuan -->
+            <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">📜 Syarat & Ketentuan Penting:</h4>
+            <ul class="list-disc pl-5 space-y-1 text-xs text-gray-600">
+                <li><b>Biaya Kepesertaan:</b> Rp25.000/bulan (Berlaku untuk 30 hari periode event).</li>
+                <li><b>Produk Valid:</b> Poin hanya dihitung untuk produk dengan harga di atas Rp10.000.</li>
+                <li><b>Status Transaksi:</b> Poin hanya akan masuk jika pesanan telah Diterima oleh Pembeli (Selesai).</li>
+                <li><b>Sportivitas:</b> Dilarang keras melakukan manipulasi transaksi (Fake Order). Sistem kami memantau IP Address dan data unik perangkat. Pelanggaran berakibat diskualifikasi dan banned permanen.</li>
+                <li><b>Pengumuman:</b> Pemenang akan diumumkan setiap tanggal 1 di bulan berikutnya melalui aplikasi dan sosial media Sobat Niaga.</li>
             </ul>
-          </div>
+            </div>
 
-          <div>
-            <h4 class="font-bold text-gray-800 mb-2">💡 KENAPA HARUS IKUT?</h4>
-            <table class="w-full text-xs border-collapse text-center">
-              <tr class="bg-gray-100">
-                <th class="p-2 border">Fitur</th>
-                <th class="p-2 border">Reguler</th>
-                <th class="p-2 border bg-blue-50 text-blue-800">Peserta Race</th>
-              </tr>
-              <tr><td class="p-2 border text-left">Biaya Admin</td><td class="p-2 border">Flat Rp2.000</td><td class="p-2 border font-bold text-blue-600">Dinamis (Untung di Barang Mahal)</td></tr>
-              <tr><td class="p-2 border text-left">Posisi Web</td><td class="p-2 border">Standar</td><td class="p-2 border font-bold text-blue-600">Prioritas Halaman Depan</td></tr>
-              <tr><td class="p-2 border text-left">Hadiah Tunai</td><td class="p-2 border">-</td><td class="p-2 border font-bold text-blue-600">s/d Rp150.000</td></tr>
-            </table>
-          </div>
+            <!-- Total Hadiah -->
+            <div class="bg-yellow-50 p-4 rounded-xl border border-yellow-200 shadow-sm">
+            <h4 class="font-bold text-yellow-800 flex items-center gap-2 mb-2 text-sm">💰 Total Hadiah Bulanan:</h4>
+            <ul class="space-y-1 text-xs text-yellow-900 font-medium">
+                <li>🥇 <b>Juara 1:</b> Rp150.000 + E-Sertifikat Juara.</li>
+                <li>🥈 <b>Juara 2:</b> Rp100.000.</li>
+                <li>🥉 <b>Juara 3:</b> Rp50.000.</li>
+            </ul>
+            <p class="text-[10px] text-yellow-700 mt-2 italic">(Psst.. Seller yang belum juara bulan ini jangan sedih, kamu akan dapat Diskon Biaya Admin Spesial untuk bulan berikutnya sebagai tanda penghargaan!)</p>
+            </div>
+
+            <p class="text-center font-bold text-gray-800 text-sm mt-4">Siap jadi juara dan bikin tokomu makin laris?</p>
+            
+            <!-- Checkbox -->
+            <div class="flex items-center gap-2 justify-center mt-2 p-3 bg-gray-100 rounded-lg border border-gray-200">
+                <input type="checkbox" id="agreeCheckbox" class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500 cursor-pointer">
+                <label for="agreeCheckbox" class="text-xs font-bold text-gray-700 cursor-pointer select-none">Saya setuju dengan syarat & ketentuan di atas</label>
+            </div>
         </div>
       `,
       showCancelButton: true,
-      confirmButtonColor: '#0ea5e9',
-      confirmButtonText: 'Saya Setuju, Join!',
-      cancelButtonText: 'Batal'
-    }).then(async (result) => {
-      if (result.isConfirmed) {
-        await update(ref(db, `users/${user.uid}/sellerInfo`), { isCompetitor: true });
-        Swal.fire('Berhasil Join!', 'Anda sekarang terdaftar sebagai peserta kompetisi.', 'success');
+      confirmButtonColor: '#10b981', // Hijau
+      confirmButtonText: 'YA, SAYA MAU DAFTAR (Rp25.000)',
+      cancelButtonText: 'Batal',
+      didOpen: () => {
+        const confirmBtn = Swal.getConfirmButton();
+        confirmBtn.disabled = true;
+        const checkbox = document.getElementById('agreeCheckbox');
+        if (checkbox) {
+            checkbox.addEventListener('change', (e) => {
+                confirmBtn.disabled = !e.target.checked;
+            });
+        }
       }
     });
+
+    if (result.isConfirmed) {
+        // Cek Saldo Seller
+        const currentBalance = sellerInfo?.balance || 0;
+        const ticketPrice = 25000;
+
+        if (currentBalance >= ticketPrice) {
+            try {
+                // Potong Saldo & Join
+                await update(ref(db, `users/${user.uid}/sellerInfo`), { 
+                    isCompetitor: true,
+                    balance: currentBalance - ticketPrice,
+                    hasPaidTicket: true,
+                    competitionJoinedAt: new Date().toISOString()
+                });
+                
+                Swal.fire({
+                    title: 'Selamat Bergabung!',
+                    text: 'Biaya pendaftaran Rp25.000 berhasil dibayarkan. Semangat jadi Juara!',
+                    icon: 'success',
+                    confirmButtonColor: '#0ea5e9'
+                });
+            } catch (error) {
+                Swal.fire('Error', 'Gagal memproses pendaftaran.', 'error');
+            }
+        } else {
+            // Saldo Kurang -> Arahkan Top Up
+            Swal.fire({
+                title: 'Saldo Tidak Cukup',
+                text: `Saldo tokomu kurang (Rp ${currentBalance.toLocaleString()}). Biaya pendaftaran Rp ${ticketPrice.toLocaleString()}.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Top Up Saldo',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#0ea5e9'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    // Redirect ke WA Admin untuk Top Up
+                    const storeName = sellerInfo?.storeName || 'Toko Saya';
+                    const message = `Halo Admin, saya Seller ${storeName} ingin Top Up saldo untuk daftar Kompetisi Sobat Juara.`;
+                    window.open(`https://wa.me/6289517587498?text=${encodeURIComponent(message)}`, '_blank');
+                }
+            });
+        }
+    }
   };
 
   // Handle Hapus Produk

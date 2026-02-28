@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
-  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search
+  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
+  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
@@ -101,7 +102,7 @@ const AdminDashboard = ({ onBack }) => {
 
   // State Banners & Flash Deal
   const [banners, setBanners] = useState({});
-  const [flashDeal, setFlashDeal] = useState({ isActive: false, endTime: '', bannerUrl: '' });
+  const [flashDeal, setFlashDeal] = useState({ isActive: false, endTime: '', bannerUrl: '', selectedProducts: {}, discountLabel: '' });
   const [transactions, setTransactions] = useState([]);
   const [niagaOrdersToVerify, setNiagaOrdersToVerify] = useState([]); // Order NiagaGo status 'paid'
 
@@ -151,6 +152,54 @@ const AdminDashboard = ({ onBack }) => {
     appFee: 2000,
     isMaintenance: false
   });
+  const [settingsView, setSettingsView] = useState('menu'); // 'menu', 'flash_deal', 'rekber', 'niagago'
+  
+  // State Event Kompetisi
+  const [competitionSettings, setCompetitionSettings] = useState({
+    isActive: false,
+    ticketPrice: 25000,
+    quota: 20,
+    prizes: { first: 0, second: 0, third: 0 },
+    startDate: '',
+    endDate: ''
+  });
+
+  const [pagesContent, setPagesContent] = useState({}); // State Konten Halaman Statis
+  // State All Products (For Flash Deal Selection)
+  const [allProducts, setAllProducts] = useState([]);
+
+  // Fetch All Products for Flash Deal
+  useEffect(() => {
+    const productsRef = ref(realDb, 'products');
+    const unsubscribe = onValue(productsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setAllProducts(list);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Competition Settings
+  useEffect(() => {
+    const compRef = ref(realDb, 'admin/competitionSettings');
+    const unsubscribe = onValue(compRef, (snapshot) => {
+      if (snapshot.exists()) setCompetitionSettings(snapshot.val());
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Pages Content (Tentang Kami, dll)
+  useEffect(() => {
+    const pagesRef = ref(realDb, 'admin/pages');
+    const unsubscribe = onValue(pagesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setPagesContent(snapshot.val());
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Fetch Marketplace Orders (Realtime DB) untuk Laporan Keuangan
   useEffect(() => {
@@ -483,6 +532,11 @@ const AdminDashboard = ({ onBack }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Reset Settings View when Tab Changes
+  useEffect(() => {
+    if (activeTab !== 'settings') setSettingsView('menu');
+  }, [activeTab]);
 
   // Fetch Chat List
   useEffect(() => {
@@ -960,6 +1014,56 @@ const AdminDashboard = ({ onBack }) => {
         Swal.fire('Sukses', 'Pengaturan tersimpan!', 'success');
     } catch (error) {
         Swal.fire('Error', error.message, 'error');
+    }
+  };
+
+  // Fungsi Simpan Halaman Statis
+  const handleSavePage = async (key, content) => {
+    try {
+        await update(ref(realDb, 'admin/pages'), { [key]: content });
+        Swal.fire('Sukses', 'Halaman berhasil diperbarui!', 'success');
+    } catch (error) {
+        Swal.fire('Error', 'Gagal menyimpan halaman.', 'error');
+    }
+  };
+
+  // Fungsi Simpan Pengaturan Kompetisi
+  const handleSaveCompetition = async (e) => {
+    e.preventDefault();
+    try {
+        await update(ref(realDb, 'admin/competitionSettings'), competitionSettings);
+        Swal.fire('Sukses', 'Pengaturan Event Disimpan!', 'success');
+    } catch (error) {
+        Swal.fire('Error', error.message, 'error');
+    }
+  };
+
+  // Fungsi Reset Kompetisi (Kick-off Bulan Baru)
+  const handleResetCompetition = async () => {
+    const result = await Swal.fire({
+        title: 'Reset Musim Baru?',
+        text: "Poin semua peserta akan di-reset ke 0. Pastikan data pemenang sudah dicatat.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Reset & Kick-off',
+        confirmButtonColor: '#ef4444'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const updates = {};
+            sellers.forEach(seller => {
+                if (seller.isCompetitor) {
+                    updates[`users/${seller.uid}/sellerInfo/points_event`] = 0;
+                    updates[`users/${seller.uid}/sellerInfo/competitionRevenue`] = 0;
+                    updates[`users/${seller.uid}/sellerInfo/competitionQty`] = 0;
+                }
+            });
+            await update(ref(realDb), updates);
+            Swal.fire('Selesai', 'Musim baru dimulai! Poin telah di-reset.', 'success');
+        } catch (error) {
+            Swal.fire('Error', error.message, 'error');
+        }
     }
   };
 
@@ -1674,11 +1778,189 @@ const AdminDashboard = ({ onBack }) => {
           {/* --- PENGATURAN ADMIN --- */}
           {activeTab === 'settings' && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Pengaturan Admin & Rekber</h2>
+              {settingsView === 'menu' ? (
+                <>
+                  <h2 className="text-2xl font-bold mb-4">Menu Pengaturan</h2>
+                  <div className="grid grid-cols-3 gap-3 mb-8">
+                    <button 
+                      onClick={() => setSettingsView('flash_deal')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-4 bg-yellow-100 text-yellow-600 rounded-full dark:bg-yellow-900/30 dark:text-yellow-400">
+                        <Zap size={28} />
+                      </div>
+                      <span className="font-bold text-xs text-center">Flash Deal</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('rekber')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-4 bg-sky-100 text-sky-600 rounded-full dark:bg-sky-900/30 dark:text-sky-400">
+                        <CreditCard size={28} />
+                      </div>
+                      <span className="font-bold text-xs text-center">Rekening Pusat</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('niagago')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-4 bg-orange-100 text-orange-600 rounded-full dark:bg-orange-900/30 dark:text-orange-400">
+                        <Bike size={28} />
+                      </div>
+                      <span className="font-bold text-xs text-center">Tarif NiagaGo</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('competition')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-4 bg-indigo-100 text-indigo-600 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400">
+                        <Trophy size={28} />
+                      </div>
+                      <span className="font-bold text-xs text-center">Event Juara</span>
+                    </button>
+                  </div>
+
+                  {/* Grup Informasi & Legalitas */}
+                  <h3 className="text-sm font-bold mb-3 flex items-center gap-2 opacity-70 uppercase tracking-wider">
+                    <Info size={16}/> Informasi & Legalitas
+                  </h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    <button 
+                      onClick={() => setSettingsView('about')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
+                        <Info size={20} />
+                      </div>
+                      <span className="font-bold text-[10px] text-center leading-tight">Tentang<br/>Kami</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('terms')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-2 bg-orange-50 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400">
+                        <FileText size={20} />
+                      </div>
+                      <span className="font-bold text-[10px] text-center leading-tight">Syarat &<br/>Ketentuan</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('privacy')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-2 bg-green-50 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400">
+                        <Lock size={20} />
+                      </div>
+                      <span className="font-bold text-[10px] text-center leading-tight">Kebijakan<br/>Privasi</span>
+                    </button>
+
+                    <button 
+                      onClick={() => setSettingsView('help')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-2 bg-purple-50 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400">
+                        <HelpCircle size={20} />
+                      </div>
+                      <span className="font-bold text-[10px] text-center leading-tight">Pusat<br/>Bantuan</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setSettingsView('menu')} className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-sky-600 mb-4 transition-colors">
+                    <ArrowLeft size={18} /> Kembali ke Menu
+                  </button>
               
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* --- PENGATURAN FLASH DEAL (NEW) --- */}
+              {settingsView === 'flash_deal' && (
+              <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg flex items-center gap-2"><Zap size={20} className="text-yellow-500"/> Pengaturan Flash Deal</h3>
+                      <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold">Status:</span>
+                          <button 
+                              type="button" 
+                              onClick={() => setFlashDeal({...flashDeal, isActive: !flashDeal.isActive})} 
+                              className={`w-12 h-6 rounded-full transition-colors relative ${flashDeal.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
+                          >
+                              <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${flashDeal.isActive ? 'left-7' : 'left-1'}`}></div>
+                          </button>
+                      </div>
+                  </div>
+                  
+                  <form onSubmit={(e) => { e.preventDefault(); handleSaveFlashDeal(); }} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className={labelClass}>Waktu Berakhir (Countdown)</label>
+                              <input 
+                                  type="datetime-local" 
+                                  value={flashDeal.endTime || ''} 
+                                  onChange={e => setFlashDeal({...flashDeal, endTime: e.target.value})} 
+                                  className={inputClass} 
+                              />
+                          </div>
+                          <div>
+                              <label className={labelClass}>Label Diskon (Global)</label>
+                              <input 
+                                  type="text" 
+                                  placeholder="Contoh: 50%" 
+                                  value={flashDeal.discountLabel || ''} 
+                                  onChange={e => setFlashDeal({...flashDeal, discountLabel: e.target.value})} 
+                                  className={inputClass} 
+                              />
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className={labelClass}>Pilih Produk Flash Deal</label>
+                          <div className={`h-60 overflow-y-auto border rounded-xl p-2 ${isDarkMode ? 'border-slate-600 bg-slate-900' : 'border-gray-200 bg-gray-50'}`}>
+                              {allProducts.length === 0 ? (
+                                  <p className="text-center text-gray-500 text-xs py-4">Memuat produk...</p>
+                              ) : (
+                                  allProducts.map(product => (
+                                      <div key={product.id} className={`flex items-center gap-3 p-2 border-b last:border-0 ${isDarkMode ? 'border-slate-700' : 'border-gray-200'}`}>
+                                          <input 
+                                              type="checkbox" 
+                                              checked={flashDeal.selectedProducts?.[product.id] ? true : false}
+                                              onChange={(e) => {
+                                                  const newSelected = { ...(flashDeal.selectedProducts || {}) };
+                                                  if (e.target.checked) {
+                                                      newSelected[product.id] = true;
+                                                  } else {
+                                                      delete newSelected[product.id];
+                                                  }
+                                                  setFlashDeal({...flashDeal, selectedProducts: newSelected});
+                                              }}
+                                              className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                          />
+                                          <div className="w-10 h-10 rounded overflow-hidden bg-gray-200 flex-shrink-0">
+                                              <img src={product.mediaUrl} className="w-full h-full object-cover" alt="" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                              <p className={`text-xs font-bold truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
+                                              <p className="text-[10px] text-gray-500">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                                          </div>
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-1">*Produk yang diceklis akan muncul di section Flash Deal Home.</p>
+                      </div>
+
+                      <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors shadow-lg shadow-sky-200 dark:shadow-none">
+                          Simpan Pengaturan Flash Deal
+                      </button>
+                  </form>
+              </div>
+              )}
+              
                 {/* Identitas Rekber */}
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                {settingsView === 'rekber' && (
+                <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><CreditCard size={20} className="text-sky-500"/> Identitas Rekening Bersama</h3>
                     <form onSubmit={handleSaveSettings} className="space-y-4">
                         <div className="flex gap-4">
@@ -1703,9 +1985,11 @@ const AdminDashboard = ({ onBack }) => {
                         <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors">Simpan Identitas Rekber</button>
                     </form>
                 </div>
+                )}
 
                 {/* Pengaturan Tarif NiagaGo */}
-                <div className={`p-6 rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                {settingsView === 'niagago' && (
+                <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Bike size={20} className="text-orange-500"/> Tarif NiagaGo & Biaya Layanan</h3>
                     <form onSubmit={handleSaveSettings} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1732,7 +2016,133 @@ const AdminDashboard = ({ onBack }) => {
                         <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors">Simpan Pengaturan Tarif</button>
                     </form>
                 </div>
-              </div>
+                )}
+
+                {/* Pengaturan Event Kompetisi (Sobat Juara) */}
+                {settingsView === 'competition' && (
+                <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-lg flex items-center gap-2"><Trophy size={20} className="text-yellow-500"/> Pengaturan Event 'Sobat Juara'</h3>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold">Status Event:</span>
+                            <button 
+                                type="button" 
+                                onClick={() => setCompetitionSettings({...competitionSettings, isActive: !competitionSettings.isActive})} 
+                                className={`w-12 h-6 rounded-full transition-colors relative ${competitionSettings.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${competitionSettings.isActive ? 'left-7' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleSaveCompetition} className="space-y-6">
+                        {/* Parameter Utama */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className={labelClass}>Biaya Tiket (Rp)</label>
+                                <input type="number" value={competitionSettings.ticketPrice} onChange={e => setCompetitionSettings({...competitionSettings, ticketPrice: parseInt(e.target.value)})} className={inputClass} />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Target Kuota Peserta</label>
+                                <input type="number" value={competitionSettings.quota} onChange={e => setCompetitionSettings({...competitionSettings, quota: parseInt(e.target.value)})} className={inputClass} />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Periode Event</label>
+                                <div className="flex gap-2">
+                                    <input type="date" value={competitionSettings.startDate} onChange={e => setCompetitionSettings({...competitionSettings, startDate: e.target.value})} className={`${inputClass} text-xs`} />
+                                    <input type="date" value={competitionSettings.endDate} onChange={e => setCompetitionSettings({...competitionSettings, endDate: e.target.value})} className={`${inputClass} text-xs`} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Hadiah */}
+                        <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-yellow-50 border-yellow-100'}`}>
+                            <h4 className="text-sm font-bold mb-3 flex items-center gap-2"><Crown size={16} className="text-yellow-600"/> Alokasi Hadiah</h4>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold mb-1 block">Juara 1</label>
+                                    <input type="number" value={competitionSettings.prizes?.first} onChange={e => setCompetitionSettings({...competitionSettings, prizes: {...competitionSettings.prizes, first: parseInt(e.target.value)}})} className={inputClass} placeholder="Rp" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold mb-1 block">Juara 2</label>
+                                    <input type="number" value={competitionSettings.prizes?.second} onChange={e => setCompetitionSettings({...competitionSettings, prizes: {...competitionSettings.prizes, second: parseInt(e.target.value)}})} className={inputClass} placeholder="Rp" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold mb-1 block">Juara 3</label>
+                                    <input type="number" value={competitionSettings.prizes?.third} onChange={e => setCompetitionSettings({...competitionSettings, prizes: {...competitionSettings.prizes, third: parseInt(e.target.value)}})} className={inputClass} placeholder="Rp" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Live Leaderboard */}
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className={labelClass}>Live Leaderboard (Top 5)</label>
+                                <button type="button" onClick={handleResetCompetition} className="text-xs text-red-500 font-bold hover:underline flex items-center gap-1">
+                                    <Target size={14}/> Reset & Kick-off Bulan Baru
+                                </button>
+                            </div>
+                            <div className={`rounded-xl border overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-gray-200'}`}>
+                                <table className="w-full text-xs text-left">
+                                    <thead className={`uppercase ${isDarkMode ? 'bg-slate-800 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
+                                        <tr>
+                                            <th className="px-4 py-2">Rank</th>
+                                            <th className="px-4 py-2">Toko</th>
+                                            <th className="px-4 py-2">Poin</th>
+                                            <th className="px-4 py-2">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
+                                        {sellers.filter(s => s.isCompetitor).sort((a, b) => (b.points_event || 0) - (a.points_event || 0)).slice(0, 5).map((s, idx) => (
+                                            <tr key={s.uid}>
+                                                <td className="px-4 py-2 font-bold">#{idx + 1}</td>
+                                                <td className="px-4 py-2">{s.storeName}</td>
+                                                <td className="px-4 py-2 font-mono text-yellow-600 font-bold">{Math.floor(s.points_event || 0)}</td>
+                                                <td className="px-4 py-2">
+                                                    {s.hasPaidTicket ? <span className="text-green-500 font-bold">Paid</span> : <span className="text-gray-400">Free</span>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {sellers.filter(s => s.isCompetitor).length === 0 && (
+                                            <tr><td colSpan="4" className="px-4 py-4 text-center text-gray-500">Belum ada peserta.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors shadow-lg shadow-sky-200 dark:shadow-none">
+                            Simpan Pengaturan Event
+                        </button>
+                    </form>
+                </div>
+                )}
+
+                {/* Editor Halaman Statis (CMS) */}
+                {['about', 'terms', 'privacy', 'help'].includes(settingsView) && (
+                <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                        {settingsView === 'about' && <><Info size={20} className="text-sky-500"/> Edit Tentang Kami</>}
+                        {settingsView === 'terms' && <><FileText size={20} className="text-orange-500"/> Edit Syarat & Ketentuan</>}
+                        {settingsView === 'privacy' && <><Lock size={20} className="text-green-500"/> Edit Kebijakan Privasi</>}
+                        {settingsView === 'help' && <><HelpCircle size={20} className="text-purple-500"/> Edit Pusat Bantuan</>}
+                    </h3>
+                    <form onSubmit={(e) => { e.preventDefault(); handleSavePage(settingsView, e.target.elements.content.value); }} className="space-y-4">
+                        <div>
+                            <label className={labelClass}>Konten Halaman (Support HTML)</label>
+                            <textarea 
+                                name="content"
+                                defaultValue={pagesContent[settingsView] || ''}
+                                className={`w-full p-4 rounded-xl border outline-none text-sm transition-all min-h-[300px] font-mono ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white focus:border-sky-500' : 'bg-gray-50 border-gray-200 focus:border-sky-500'}`}
+                                placeholder="Tulis konten di sini... Gunakan tag <p>, <b>, <br> untuk format."
+                            ></textarea>
+                        </div>
+                        <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors shadow-lg shadow-sky-200 dark:shadow-none">Simpan Perubahan</button>
+                    </form>
+                </div>
+                )}
+                </>
+              )}
             </div>
           )}
 
