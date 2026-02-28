@@ -480,24 +480,29 @@ const DashboardSeller = ({ user, onBack }) => {
     const result = await Swal.fire({
       title: '', // Header kita custom di HTML
       width: '600px',
+      padding: '0', // Reset padding biar layout full
+      showConfirmButton: false, // Kita pakai tombol custom
+      showCancelButton: false, // Kita pakai tombol custom
       html: `
-        <div class="text-left space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar font-sans">
-            <!-- Header Image/Banner -->
-            <div class="w-full h-32 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center mb-4 relative overflow-hidden shadow-md">
-                <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
-                <h2 class="text-2xl font-extrabold text-white tracking-widest drop-shadow-md z-10">SOBAT JUARA NIAGA</h2>
-                <div class="absolute -bottom-4 -right-4 text-white/20"><svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+        <div class="flex flex-col h-[85vh] md:h-auto md:max-h-[85vh] text-left font-sans bg-white rounded-2xl overflow-hidden">
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5 custom-scrollbar bg-gray-50">
+            
+            <!-- Header Keren -->
+            <div class="bg-gradient-to-r from-yellow-100 to-orange-100 p-4 rounded-xl text-center border border-yellow-200 relative overflow-hidden shadow-sm">
+                <div class="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/confetti.png')] opacity-30"></div>
+                <h3 class="relative z-10 font-extrabold text-lg text-orange-800 uppercase tracking-wider drop-shadow-sm flex items-center justify-center gap-2">
+                    🏆 Jadilah Sobat Juara! 🏆
+                </h3>
             </div>
 
-            <h3 class="text-center font-bold text-lg text-gray-800">🏆 JADILAH SOBAT JUARA NIAGA BULAN INI! 🏆</h3>
-            <p class="text-sm text-gray-600 leading-relaxed">
+            <p class="text-sm text-gray-600 leading-relaxed px-1">
             Halo Seller Hebat! Siap meningkatkan penjualanmu berkali-kali lipat? Bergabunglah dalam Event Bulanan Sobat Niaga dan rebut total hadiah uang tunai serta fitur eksklusif untuk tokomu!
             </p>
 
             <!-- Keuntungan Langsung -->
             <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 shadow-sm">
-            <h4 class="font-bold text-blue-800 flex items-center gap-2 mb-2 text-sm">🚀 Keuntungan Langsung (Tanpa Menunggu Menang):</h4>
-            <p class="text-xs text-blue-900 mb-2">Begitu kamu mendaftar, tokomu otomatis mendapatkan fitur PREMIUM:</p>
+            <h4 class="font-bold text-blue-800 flex items-center gap-2 mb-2 text-sm">🚀 Keuntungan Langsung:</h4>
             <ul class="list-disc pl-5 space-y-1 text-xs text-blue-800">
                 <li><b>Potongan Biaya Admin:</b> Transaksi jadi lebih hemat (Hanya Rp1.000 atau bahkan Rp500!).</li>
                 <li><b>Prioritas Pencarian:</b> Produkmu akan tampil lebih atas dibanding seller reguler.</li>
@@ -507,9 +512,8 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
 
             <!-- Cara Main -->
-            <div>
+            <div class="px-1">
             <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">🎮 Cara Main & Kumpulkan Poin:</h4>
-            <p class="text-xs text-gray-600 mb-2">Sistem pemenang ditentukan berdasarkan Poin Tertinggi yang dikumpulkan selama 1 bulan penuh. Cara kumpulin poinnya gampang banget:</p>
             <ul class="list-disc pl-5 space-y-1 text-xs text-gray-700">
                 <li><b>Poin Penjualan:</b> Setiap 1 produk laku (Min. harga Rp10.000), kamu dapat 10 Poin.</li>
                 <li><b>Poin Omzet:</b> Setiap total penjualan mencapai kelipatan Rp50.000, kamu dapat tambahan 5 Poin.</li>
@@ -518,14 +522,13 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
 
             <!-- Syarat & Ketentuan -->
-            <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">📜 Syarat & Ketentuan Penting:</h4>
             <ul class="list-disc pl-5 space-y-1 text-xs text-gray-600">
                 <li><b>Biaya Kepesertaan:</b> Rp25.000/bulan (Berlaku untuk 30 hari periode event).</li>
                 <li><b>Produk Valid:</b> Poin hanya dihitung untuk produk dengan harga di atas Rp10.000.</li>
                 <li><b>Status Transaksi:</b> Poin hanya akan masuk jika pesanan telah Diterima oleh Pembeli (Selesai).</li>
-                <li><b>Sportivitas:</b> Dilarang keras melakukan manipulasi transaksi (Fake Order). Sistem kami memantau IP Address dan data unik perangkat. Pelanggaran berakibat diskualifikasi dan banned permanen.</li>
-                <li><b>Pengumuman:</b> Pemenang akan diumumkan setiap tanggal 1 di bulan berikutnya melalui aplikasi dan sosial media Sobat Niaga.</li>
+                <li><b>Sportivitas:</b> Dilarang keras melakukan manipulasi transaksi (Fake Order). Pelanggaran berakibat diskualifikasi.</li>
             </ul>
             </div>
 
@@ -537,31 +540,58 @@ const DashboardSeller = ({ user, onBack }) => {
                 <li>🥈 <b>Juara 2:</b> Rp100.000.</li>
                 <li>🥉 <b>Juara 3:</b> Rp50.000.</li>
             </ul>
-            <p class="text-[10px] text-yellow-700 mt-2 italic">(Psst.. Seller yang belum juara bulan ini jangan sedih, kamu akan dapat Diskon Biaya Admin Spesial untuk bulan berikutnya sebagai tanda penghargaan!)</p>
+            <p class="text-[10px] text-yellow-700 mt-2 italic">(Psst.. Seller yang belum juara bulan ini jangan sedih, kamu akan dapat Diskon Biaya Admin Spesial untuk bulan berikutnya!)</p>
+            </div>
             </div>
 
-            <p class="text-center font-bold text-gray-800 text-sm mt-4">Siap jadi juara dan bikin tokomu makin laris?</p>
-            
-            <!-- Checkbox -->
-            <div class="flex items-center gap-2 justify-center mt-2 p-3 bg-gray-100 rounded-lg border border-gray-200">
-                <input type="checkbox" id="agreeCheckbox" class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500 cursor-pointer">
-                <label for="agreeCheckbox" class="text-xs font-bold text-gray-700 cursor-pointer select-none">Saya setuju dengan syarat & ketentuan di atas</label>
+            <!-- Sticky Footer (Checkbox & Buttons) -->
+            <div class="flex-none p-4 border-t border-gray-100 bg-white z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <!-- Checkbox -->
+                <div class="flex items-center gap-3 mb-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors" id="checkboxContainer">
+                    <input type="checkbox" id="agreeCheckbox" class="w-4 h-4 text-sky-600 rounded focus:ring-sky-500 cursor-pointer">
+                    <label for="agreeCheckbox" class="text-xs font-bold text-gray-700 cursor-pointer select-none flex-1">Saya setuju dengan syarat & ketentuan di atas</label>
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex gap-3">
+                    <button id="btnCancel" class="flex-1 py-2.5 rounded-xl font-bold text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 transition-colors text-xs">
+                        Batal
+                    </button>
+                    <button id="btnRegister" disabled class="flex-[2] py-2.5 rounded-xl font-bold text-white bg-gray-300 cursor-not-allowed transition-all text-xs shadow-none flex items-center justify-center gap-2">
+                        YA, SAYA MAU DAFTAR
+                    </button>
+                </div>
             </div>
         </div>
       `,
-      showCancelButton: true,
-      confirmButtonColor: '#10b981', // Hijau
-      confirmButtonText: 'YA, SAYA MAU DAFTAR (Rp25.000)',
-      cancelButtonText: 'Batal',
       didOpen: () => {
-        const confirmBtn = Swal.getConfirmButton();
-        confirmBtn.disabled = true;
         const checkbox = document.getElementById('agreeCheckbox');
-        if (checkbox) {
-            checkbox.addEventListener('change', (e) => {
-                confirmBtn.disabled = !e.target.checked;
-            });
-        }
+        const btnRegister = document.getElementById('btnRegister');
+        const btnCancel = document.getElementById('btnCancel');
+        const checkboxContainer = document.getElementById('checkboxContainer');
+
+        // Handle klik di container checkbox (biar area klik luas)
+        checkboxContainer.addEventListener('click', (e) => {
+            if (e.target.id !== 'agreeCheckbox' && e.target.tagName !== 'LABEL') {
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change'));
+            }
+        });
+
+        checkbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                btnRegister.disabled = false;
+                btnRegister.classList.remove('bg-gray-300', 'cursor-not-allowed', 'shadow-none', 'text-gray-500');
+                btnRegister.classList.add('bg-green-500', 'hover:bg-green-600', 'shadow-lg', 'shadow-green-500/30', 'text-white', 'cursor-pointer');
+            } else {
+                btnRegister.disabled = true;
+                btnRegister.classList.add('bg-gray-300', 'cursor-not-allowed', 'shadow-none', 'text-gray-500');
+                btnRegister.classList.remove('bg-green-500', 'hover:bg-green-600', 'shadow-lg', 'shadow-green-500/30', 'text-white', 'cursor-pointer');
+            }
+        });
+
+        btnCancel.addEventListener('click', () => Swal.close());
+        btnRegister.addEventListener('click', () => Swal.clickConfirm());
       }
     });
 

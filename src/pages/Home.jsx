@@ -888,10 +888,10 @@ const Home = () => {
 
       {/* FLASH DEAL SECTION (New) */}
       {flashDeal?.isActive && !isExpired && (
-        <div className="w-full max-w-7xl mx-auto px-4 mt-6 mb-8 relative z-10">
-            <div className="rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-blue-900 to-sky-600 flex flex-col md:flex-row min-h-[280px]">
+        <div className="w-full max-w-7xl mx-auto px-4 mt-4 md:mt-6 mb-6 md:mb-8 relative z-10">
+            <div className="rounded-xl md:rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-blue-900 to-sky-600 flex flex-row min-h-[160px] md:min-h-[280px]">
                 {/* Left: Banner & Countdown */}
-                <div className="w-full md:w-1/3 relative p-8 flex flex-col justify-center text-white overflow-hidden">
+                <div className="w-[130px] md:w-1/3 relative p-3 md:p-8 flex flex-col justify-center text-white overflow-hidden flex-shrink-0 border-r border-white/10">
                     {/* Background Image with Overlay */}
                     <div className="absolute inset-0 z-0">
                         {flashDeal?.bannerUrl ? (
@@ -899,66 +899,70 @@ const Home = () => {
                         ) : (
                             <div className="w-full h-full bg-blue-800 opacity-50"></div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/90 to-transparent"></div>
+                        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/80 to-blue-900/40 md:bg-gradient-to-r md:from-blue-900/90 md:to-transparent"></div>
                     </div>
                     
-                    <div className="relative z-10">
-                        <div className="inline-block px-3 py-1 bg-yellow-400 text-blue-900 text-xs font-extrabold rounded-full mb-3 shadow-md">
-                            ⚡ LIMITED OFFER
+                    <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
+                        <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-yellow-400 text-blue-900 text-[8px] md:text-xs font-extrabold rounded-full mb-1 md:mb-3 shadow-md">
+                            ⚡ <span className="hidden md:inline">LIMITED OFFER</span><span className="md:hidden">FLASH</span>
                         </div>
-                        <h3 className="text-4xl font-extrabold italic tracking-tighter mb-2 text-white drop-shadow-lg">
-                            FLASH <span className="text-yellow-400">SALE</span>
+                        <h3 className="text-xl md:text-4xl font-extrabold italic tracking-tighter mb-1 md:mb-2 text-white drop-shadow-lg leading-none">
+                            <span className="md:hidden">SALE</span>
+                            <span className="hidden md:inline">FLASH <span className="text-yellow-400">SALE</span></span>
                         </h3>
-                        <p className="text-blue-100 text-sm mb-6 font-medium max-w-[200px]">
+                        <p className="hidden md:block text-blue-100 text-sm mb-6 font-medium max-w-[200px]">
                             Serbu diskon gila-gilaan sebelum waktu habis!
                         </p>
                         
                         {/* Countdown Box */}
-                        <div className="flex items-center gap-2">
-                            <div className="bg-slate-900/80 backdrop-blur-md text-white p-3 rounded-xl min-w-[50px] text-center border border-white/10 shadow-lg">
-                                <span className="text-xl font-bold block leading-none">{String(timeLeft.h).padStart(2, '0')}</span>
-                                <span className="text-[10px] text-gray-400 uppercase">Jam</span>
-                            </div>
-                            <span className="text-white font-bold text-xl pb-4">:</span>
-                            <div className="bg-slate-900/80 backdrop-blur-md text-white p-3 rounded-xl min-w-[50px] text-center border border-white/10 shadow-lg">
-                                <span className="text-xl font-bold block leading-none">{String(timeLeft.m).padStart(2, '0')}</span>
-                                <span className="text-[10px] text-gray-400 uppercase">Mnt</span>
-                            </div>
-                            <span className="text-white font-bold text-xl pb-4">:</span>
-                            <div className="bg-slate-900/80 backdrop-blur-md text-white p-3 rounded-xl min-w-[50px] text-center border border-white/10 shadow-lg">
-                                <span className="text-xl font-bold block leading-none">{String(timeLeft.s).padStart(2, '0')}</span>
-                                <span className="text-[10px] text-gray-400 uppercase">Dtk</span>
+                        <div className="flex flex-col md:flex-row items-center gap-1 md:gap-2 mt-1 md:mt-0">
+                            <p className="text-[10px] md:hidden text-blue-200 mb-0.5">Berakhir dlm:</p>
+                            <div className="flex items-center gap-1">
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.h).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Jam</span>
+                                </div>
+                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.m).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Mnt</span>
+                                </div>
+                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.s).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Dtk</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Right: Product List (Horizontal Scroll) */}
-                <div className={`w-full md:w-2/3 p-6 flex gap-4 overflow-x-auto scrollbar-hide items-center ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10 backdrop-blur-sm'}`}>
+                <div className={`flex-1 p-3 md:p-6 flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide items-center ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10 backdrop-blur-sm'}`}>
                     {products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).length === 0 ? (
-                        <div className="text-white/80 text-sm font-medium w-full text-center">
+                        <div className="text-white/80 text-xs md:text-sm font-medium w-full text-center">
                             Produk segera hadir...
                         </div>
                     ) : (
                         products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).map(product => (
-                            <div key={product.id} onClick={() => handleProductClick(product)} className={`min-w-[160px] w-[160px] rounded-xl p-3 cursor-pointer transition-all hover:scale-105 hover:shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-white'} shadow-md group`}>
-                                <div className="relative aspect-square rounded-lg overflow-hidden mb-3 bg-gray-100">
+                            <div key={product.id} onClick={() => handleProductClick(product)} className={`min-w-[120px] w-[120px] md:min-w-[160px] md:w-[160px] rounded-lg md:rounded-xl p-2 md:p-3 cursor-pointer transition-all hover:scale-105 hover:shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-white'} shadow-md group`}>
+                                <div className="relative aspect-square rounded-md md:rounded-lg overflow-hidden mb-2 md:mb-3 bg-gray-100">
                                     <img src={product.mediaUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
-                                    <div className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-bl-lg shadow-sm z-10">
-                                        50%
+                                    <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] md:text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-bl-lg shadow-sm z-10">
+                                        {flashDeal.discountLabel || '50%'}
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <p className={`text-sm font-bold line-clamp-2 leading-snug ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
-                                    <p className="text-sm font-bold text-red-500">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                                    <p className={`text-xs md:text-sm font-bold line-clamp-2 leading-snug ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
+                                    <p className="text-xs md:text-sm font-bold text-red-500">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
                                     
                                     {/* Progress Bar */}
-                                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden relative">
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 md:h-2 overflow-hidden relative">
                                         <div className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full" style={{ width: '85%' }}></div>
                                     </div>
-                                    <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                                    <div className="flex justify-between text-[8px] md:text-[10px] text-gray-500 font-medium">
                                         <span>Terjual 85%</span>
-                                        <span className="text-red-500">🔥 Segera Habis</span>
+                                        <span className="text-red-500 hidden md:inline">🔥 Segera Habis</span>
                                     </div>
                                 </div>
                             </div>
