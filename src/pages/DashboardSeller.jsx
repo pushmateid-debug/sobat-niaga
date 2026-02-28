@@ -1032,7 +1032,7 @@ const DashboardSeller = ({ user, onBack }) => {
   };
 
   return (
-    <div className={`min-h-screen pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
+    <div className={`h-[100dvh] overflow-hidden flex flex-col justify-start pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
       {/* Header Biru Muda - Konsisten */}
       {mobileView !== 'stats' && (
       <div className={`shadow-sm sticky top-0 z-50 border-b transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-100 border-sky-200'}`}>
@@ -1056,7 +1056,7 @@ const DashboardSeller = ({ user, onBack }) => {
       </div>
       )}
 
-      <div className="max-w-7xl mx-auto p-4 lg:p-6 space-y-4 md:space-y-6">
+      <div className="flex-1 overflow-y-auto max-w-7xl mx-auto px-6 py-4 lg:p-6 space-y-4 md:space-y-6 w-full">
         {/* Kondisi: Belum Verifikasi */}
         {!isVerifiedSeller && (
           <SellerVerification user={user} onVerificationSuccess={handleVerificationSuccess} />
@@ -1198,12 +1198,12 @@ const DashboardSeller = ({ user, onBack }) => {
 
             {/* 1. Header Stats (Grid 2x2) */}
             {/* Tampil di Mobile jika view='overview', Tampil Selalu di Desktop */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mobileView === 'finance' ? 'block' : 'hidden md:grid'}`}>
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mobileView === 'finance' ? 'flex flex-col gap-4' : 'hidden md:grid'}`}>
               {/* Card 1: Total Pendapatan */}
               <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                 <div>
                   <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Saldo Virtual (Rekber)</p>
-                  <div className="flex flex-col mt-3 space-y-3">
+                  <div className="flex flex-col mt-4 space-y-4">
                     <div className="flex justify-between items-center border-b border-dashed border-gray-100 dark:border-slate-700 pb-2">
                         <span className="text-xs font-bold text-gray-400">Tertahan</span>
                         <span className="font-price text-sm md:text-lg font-bold text-orange-500 tracking-wide whitespace-nowrap">Rp {saldoTertahan.toLocaleString('id-ID')}</span>
@@ -1313,7 +1313,7 @@ const DashboardSeller = ({ user, onBack }) => {
                   </h3>
                   <p className="text-xs text-gray-400 mt-1">Rekening tujuan transfer dana dari Admin.</p>
                 </div>
-                <button onClick={() => setIsPaymentModalOpen(true)} className={`mt-4 w-full py-2 text-sm font-bold rounded-lg transition-colors border ${isDarkMode ? 'bg-slate-700 text-gray-200 border-slate-600 hover:bg-slate-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}>
+                <button onClick={() => setIsPaymentModalOpen(true)} className={`mt-4 w-full py-3 text-sm font-bold rounded-xl transition-colors border shadow-sm ${isDarkMode ? 'bg-slate-700 text-white border-slate-600 hover:bg-slate-600' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>
                   Atur Info Pencairan
                 </button>
               </div>

@@ -15,9 +15,10 @@
     },
 
     "chats": {
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$chatId": {
-        ".read": "auth != null && (data.child('senderId').val() === auth.uid || data.child('receiverId').val() === auth.uid)",
-        ".write": "auth != null"
+        ".indexOn": ["senderId", "receiverId"]
       }
     },
 

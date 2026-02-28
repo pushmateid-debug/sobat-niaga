@@ -605,7 +605,7 @@ const Home = () => {
       
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat': return (
-        <div className="flex flex-col h-[calc(100vh-64px)]">
+        <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
             <ChatLayout 
                 isMobile={true} 
                 onClose={() => setCurrentView('home')} 
@@ -1184,7 +1184,7 @@ const Home = () => {
   return (
     <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Global Header (Sticky) */}
-      {currentView !== 'store-profile' && (
+      {!['store-profile', 'chat', 'admin-dashboard'].includes(currentView) && (
       <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
@@ -1384,7 +1384,7 @@ const Home = () => {
       )}
 
       {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
-      {!['product-detail', 'cart', 'payment', 'niagago'].includes(currentView) && (
+      {!['product-detail', 'cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
       <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="flex justify-around items-center h-16">
           <button onClick={() => setCurrentView('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
@@ -1535,15 +1535,16 @@ const ChatComponent = ({ user, isDarkMode }) => {
                 </div>
              </div>
           ))}
-          <div ref={bottomRef} />
+          <div ref={bottomRef} className="pb-4" />
       </div>
       
-      <div className={`flex-none p-3 border-t z-[110] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+      <div className={`flex-none p-3 border-t z-50 pointer-events-auto ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
           <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 max-w-7xl mx-auto items-center">
              <input 
                 value={input} 
                 onChange={e => setInput(e.target.value)} 
                 placeholder="Tulis pesan..." 
+                autoFocus
                 className={`flex-1 py-2.5 px-4 rounded-full border text-sm outline-none transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white placeholder-gray-500' : 'bg-gray-100 border-gray-300 text-gray-900 placeholder-gray-500'}`}
              />
              <button type="submit" className="p-2.5 bg-sky-600 text-white rounded-full hover:bg-sky-700 shadow-sm flex-shrink-0 transition-transform active:scale-95"><Send size={18}/></button>
@@ -1556,13 +1557,13 @@ const ChatComponent = ({ user, isDarkMode }) => {
 // --- CHAT LAYOUT COMPONENT (Reusable for Mobile & Desktop) ---
 const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen }) => {
   return (
-    <div className={`flex flex-col h-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+    <div className={`flex flex-col h-full w-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
        {/* Chat Header */}
-       <div className={`flex-none border-b sticky top-0 z-20 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
+       <div className={`flex-none border-b z-50 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
           <div className={`px-4 py-3 flex items-center justify-between ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
              <div className="flex items-center gap-2">
                 <button onClick={onClose} className={`p-1 rounded-full transition-colors ${isDarkMode ? 'text-white hover:bg-slate-700' : 'text-slate-800 hover:bg-gray-100'}`}>
-                    {isMobile ? <ChevronLeft size={26} /> : <X size={24} />}
+                    {isMobile ? <ChevronLeft size={26} className="text-sky-600" /> : <X size={24} />}
                 </button>
                 <div className="flex items-center gap-3 ml-1">
                     <div className="relative">
@@ -1583,7 +1584,9 @@ const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, 
                     <MoreVertical size={20} />
                  </button>
                  {isChatMenuOpen && (
-                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-30 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsChatMenuOpen(false)}></div>
+                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-50 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                         <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}>
                             <User size={14} /> Lihat Profil
                         </button>
@@ -1591,6 +1594,7 @@ const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, 
                             <Trash2 size={14} /> Bersihkan Chat
                         </button>
                     </div>
+                    </>
                  )}
              </div>
           </div>

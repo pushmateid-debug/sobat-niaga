@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
-  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn
+  LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
@@ -111,6 +111,9 @@ const AdminDashboard = ({ onBack }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [adminMessage, setAdminMessage] = useState('');
   const messagesEndRef = useRef(null);
+
+  // Derived state for mobile chat view
+  const isMobileChatOpen = activeTab === 'chat' && selectedChat;
 
   // State Image Editor (Crop & Resize)
   const [editingImage, setEditingImage] = useState(null);
@@ -963,15 +966,23 @@ const AdminDashboard = ({ onBack }) => {
   ];
 
   return (
-    <div className={`min-h-screen flex ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
+    <div className={`h-[100dvh] flex overflow-hidden ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
       
+      {/* MOBILE OVERLAY FOR SIDEBAR */}
+      {isSidebarOpen && !isMobileChatOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* SIDEBAR */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 border-r ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-[75%] max-w-[260px] md:w-64 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 border-r ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} ${isMobileChatOpen ? 'hidden md:block' : ''}`}>
         <div className="h-full flex flex-col">
           {/* Sidebar Header */}
-          <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-sky-600 flex items-center gap-2">
-              <Shield size={24} /> Admin Panel
+          <div className="p-4 md:p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+            <h2 className="text-lg md:text-xl font-bold text-sky-600 flex items-center gap-2">
+              <Shield size={20} className="md:w-6 md:h-6" /> Admin
             </h2>
             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700">
               <X size={20} />
@@ -979,19 +990,19 @@ const AdminDashboard = ({ onBack }) => {
           </div>
 
           {/* Menu Items */}
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+          <nav className="flex-1 overflow-y-auto p-3 space-y-1">
             {menuItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all ${
                   activeTab === item.id 
                     ? 'bg-sky-600 text-white shadow-lg shadow-sky-200 dark:shadow-none' 
                     : (isDarkMode ? 'text-gray-400 hover:bg-slate-700 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900')
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  {item.icon}
+                  {React.cloneElement(item.icon, { size: 18 })}
                   <span>{item.label}</span>
                 </div>
                 {item.badge > 0 && (
@@ -1004,9 +1015,9 @@ const AdminDashboard = ({ onBack }) => {
           </nav>
 
           {/* Sidebar Footer */}
-          <div className="p-4 border-t border-gray-100 dark:border-slate-700">
-            <button onClick={onBack} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${isDarkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-              <LogOut size={20} />
+          <div className="p-3 border-t border-gray-100 dark:border-slate-700">
+            <button onClick={onBack} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors ${isDarkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
+              <LogOut size={18} />
               <span>Keluar Dashboard</span>
             </button>
           </div>
@@ -1014,18 +1025,20 @@ const AdminDashboard = ({ onBack }) => {
       </aside>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Top Header (Mobile Toggle) */}
-        <header className={`md:hidden flex items-center justify-between p-4 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+        {!isMobileChatOpen && (
+        <header className={`md:hidden flex items-center justify-between p-3 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
-            <Menu size={24} />
+            <Menu size={20} />
           </button>
-          <h1 className="font-bold">Admin Dashboard</h1>
+          <h1 className="font-bold text-sm">Admin Dashboard</h1>
           <div className="w-10"></div>
         </header>
+        )}
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className={`flex-1 overflow-y-auto ${isMobileChatOpen ? 'p-0' : 'p-4 md:p-8'}`}>
           
           {/* --- DASHBOARD OVERVIEW --- */}
           {activeTab === 'dashboard' && (
@@ -1297,18 +1310,19 @@ const AdminDashboard = ({ onBack }) => {
 
           {/* --- PESAN PELANGGAN (CHAT) --- */}
           {activeTab === 'chat' && (
-            <div className="h-[calc(100vh-100px)] flex rounded-2xl border overflow-hidden bg-white dark:bg-slate-800 dark:border-slate-700">
+            <div className={`flex flex-col md:flex-row relative ${selectedChat ? 'fixed inset-0 z-[9999] w-full h-[100dvh] overflow-hidden md:static md:z-auto md:h-[calc(100dvh-100px)] md:rounded-2xl md:border' : 'h-[calc(100dvh-100px)] rounded-2xl border'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
+            <div className={`flex flex-col md:flex-row relative ${selectedChat ? 'fixed inset-0 z-[9999] w-full h-[100dvh] overflow-hidden bg-white dark:bg-slate-900 md:static md:z-auto md:h-[calc(100dvh-100px)] md:rounded-2xl md:border' : 'h-[calc(100dvh-100px)] rounded-2xl border'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
               {/* Chat List */}
-              <div className={`w-1/3 border-r flex flex-col ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <div className={`p-4 border-b ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
-                  <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Pesan Masuk</h3>
+              <div className={`w-full md:w-1/3 border-r flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <div className={`p-3 border-b ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                  <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Pesan Masuk</h3>
                 </div>
-                <div className="flex-1 overflow-y-auto">
+                <div className={`flex-1 overflow-y-auto ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
                   {chatList.map(chat => (
                     <div 
                       key={chat.uid}
                       onClick={() => setSelectedChat(chat)}
-                      className={`p-4 border-b cursor-pointer transition-colors ${
+                      className={`p-3 border-b cursor-pointer transition-colors flex items-center gap-3 ${
                         isDarkMode 
                           ? 'hover:bg-slate-700 border-slate-700' 
                           : 'hover:bg-sky-50 border-gray-100'
@@ -1318,33 +1332,46 @@ const AdminDashboard = ({ onBack }) => {
                           : (isDarkMode ? '' : 'bg-white')
                       }`}
                     >
-                      <div className="flex justify-between items-start">
-                        <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{chat.userName || 'User'}</h4>
-                        {chat.hasUnreadAdmin && <span className="w-2 h-2 bg-red-500 rounded-full"></span>}
+                      {/* Avatar */}
+                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                         {chat.userPhoto ? <img src={chat.userPhoto} className="w-full h-full object-cover" /> : <User size={18} className="text-gray-500" />}
                       </div>
-                      <p className={`text-xs truncate mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Klik untuk lihat pesan</p>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start">
+                            <h4 className={`font-bold text-xs md:text-sm truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{chat.userName || 'User'}</h4>
+                            {chat.hasUnreadAdmin && <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></span>}
+                        </div>
+                        <p className={`text-[10px] md:text-xs truncate mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Klik untuk lihat pesan</p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Chat Window */}
-              <div className={`flex-1 flex flex-col ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+              <div className={`flex-1 flex flex-col ${selectedChat ? 'flex' : 'hidden md:flex'} ${isDarkMode ? 'bg-slate-900' : 'bg-white'} w-full h-full overflow-hidden`}>
                 {selectedChat ? (
                   <>
-                    <div className="p-4 bg-white dark:bg-slate-800 border-b dark:border-slate-700 flex justify-between items-center">
-                      <h3 className="font-bold">{selectedChat.userName}</h3>
+                    <div className={`p-3 border-b flex items-center gap-3 shadow-sm z-10 flex-none ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-100'}`}>
+                      <button onClick={() => setSelectedChat(null)} className={`md:hidden p-1 rounded-full ${isDarkMode ? 'hover:bg-slate-700 text-white' : 'hover:bg-gray-100 text-slate-800'}`}>
+                        <ArrowLeft size={24} />
+                      </button>
+                      <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
+                         {selectedChat.userPhoto ? <img src={selectedChat.userPhoto} className="w-full h-full object-cover" /> : <User size={16} className="m-2 text-gray-500" />}
+                      </div>
+                      <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{selectedChat.userName}</h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
                       {chatMessages.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${
+                          <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
                             msg.sender === 'admin' 
                               ? 'bg-sky-600 text-white rounded-tr-none' 
-                              : (isDarkMode ? 'bg-slate-800 text-gray-200 border border-slate-700' : 'bg-white text-gray-800 border') + ' rounded-tl-none'
+                              : (isDarkMode ? 'bg-slate-800 text-gray-200 border border-slate-700' : 'bg-white text-gray-900 border border-gray-100') + ' rounded-tl-none'
                           }`}>
                             {msg.text}
-                            <p className={`text-[10px] mt-1 text-right ${msg.sender === 'admin' ? 'text-sky-200' : 'text-gray-400'}`}>
+                            <p className={`text-[9px] mt-1 text-right ${msg.sender === 'admin' ? 'text-sky-100' : 'text-gray-400'}`}>
                               {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                             </p>
                           </div>
@@ -1352,16 +1379,16 @@ const AdminDashboard = ({ onBack }) => {
                       ))}
                       <div ref={messagesEndRef} />
                     </div>
-                    <form onSubmit={handleSendAdminMessage} className="p-4 bg-white dark:bg-slate-800 border-t dark:border-slate-700 flex gap-2">
+                    <form onSubmit={handleSendAdminMessage} className={`p-3 border-t flex gap-2 items-center flex-none ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-100'}`}>
                       <input 
                         type="text" 
                         value={adminMessage}
                         onChange={(e) => setAdminMessage(e.target.value)}
-                        placeholder="Balas pesan..."
-                        className={`flex-1 px-4 py-2 rounded-full border outline-none focus:ring-2 focus:ring-sky-500 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-100 border-gray-200'}`}
+                        placeholder="Tulis pesan..."
+                        className={`flex-1 py-2.5 px-4 rounded-full border text-sm outline-none transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white placeholder-gray-500' : 'bg-gray-100 border-gray-300 text-gray-900 placeholder-gray-500'}`}
                       />
-                      <button type="submit" className="p-2 bg-sky-600 text-white rounded-full hover:bg-sky-700">
-                        <Send size={20} />
+                      <button type="submit" className="p-2.5 bg-sky-600 text-white rounded-full hover:bg-sky-700 shadow-sm flex-shrink-0 transition-transform active:scale-95">
+                        <Send size={18} />
                       </button>
                     </form>
                   </>

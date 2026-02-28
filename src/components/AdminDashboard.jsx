@@ -1506,6 +1506,7 @@ const AdminDashboard = ({ onBack }) => {
       )}
     </div>
   );
+  };
 
   const renderSettings = () => (
     <div className={`max-w-2xl mx-auto p-8 rounded-2xl shadow-sm border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
