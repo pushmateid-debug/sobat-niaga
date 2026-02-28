@@ -1,43 +1,53 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth.token.email === 'pushmate.id@gmail.com'",
-
     "users": {
+      ".indexOn": ["email"],
       "$uid": {
-        ".write": "$uid === auth.uid"
+        ".read": "$uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com'",
+        ".write": "$uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com'"
       }
     },
 
     "orders": {
+      ".indexOn": ["userId", "driverId"],
+      ".read": "auth != null",
       ".write": "auth != null"
     },
 
     "chats": {
-      "$uid": {
-        ".write": "$uid === auth.uid"
+      "$chatId": {
+        ".read": "auth != null && (data.child('senderId').val() === auth.uid || data.child('receiverId').val() === auth.uid)",
+        ".write": "auth != null"
       }
     },
 
     "notifications": {
       ".indexOn": ["userId"],
       "$notifId": {
-        ".write": "data.exists() && data.child('userId').val() === auth.uid"
+        ".read": "data.child('userId').val() === auth.uid",
+        ".write": "auth.token.email === 'pushmate.id@gmail.com' || (data.exists() && data.child('userId').val() === auth.uid)"
       }
     },
 
     "drivers_locations": {
+      ".read": "auth != null",
       "$driverId": {
         ".write": "$driverId === auth.uid"
       }
     },
 
     "food_delivery_pool": {
+      ".read": "auth != null",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'driver'"
     },
 
     "admin": {
       ".read": "auth.token.email === 'pushmate.id@gmail.com'",
+      ".write": "auth.token.email === 'pushmate.id@gmail.com'"
+    },
+
+    "products": {
+      ".read": "true",
       ".write": "auth.token.email === 'pushmate.id@gmail.com'"
     }
   }
