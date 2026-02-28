@@ -1310,7 +1310,6 @@ const AdminDashboard = ({ onBack }) => {
 
           {/* --- PESAN PELANGGAN (CHAT) --- */}
           {activeTab === 'chat' && (
-            <div className={`flex flex-col md:flex-row relative ${selectedChat ? 'fixed inset-0 z-[9999] w-full h-[100dvh] overflow-hidden md:static md:z-auto md:h-[calc(100dvh-100px)] md:rounded-2xl md:border' : 'h-[calc(100dvh-100px)] rounded-2xl border'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
             <div className={`flex flex-col md:flex-row relative ${selectedChat ? 'fixed inset-0 z-[9999] w-full h-[100dvh] overflow-hidden bg-white dark:bg-slate-900 md:static md:z-auto md:h-[calc(100dvh-100px)] md:rounded-2xl md:border' : 'h-[calc(100dvh-100px)] rounded-2xl border'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
               {/* Chat List */}
               <div className={`w-full md:w-1/3 border-r flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'} ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
@@ -1790,7 +1789,7 @@ const AdminDashboard = ({ onBack }) => {
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
 
             {/* Footer Actions */}
             <div className="p-4 border-t dark:border-slate-700 flex gap-3 bg-gray-50 dark:bg-slate-800/50">

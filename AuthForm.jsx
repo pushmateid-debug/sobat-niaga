@@ -4,6 +4,22 @@ import { User, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 const AuthForm = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log('Form Submitted:', { type: isLogin ? 'Login' : 'Register', data: formData });
+    // Tambahkan logika autentikasi di sini
+  };
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-4 relative overflow-hidden">
@@ -83,17 +99,22 @@ const AuthForm = () => {
               </div>
 
               {/* Form */}
-              <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+              <form className="space-y-5" onSubmit={handleSubmit}>
                 
                 {!isLogin && (
                   <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                    <label className="text-xs font-bold text-gray-400 ml-1">Username</label>
+                    <label htmlFor="username" className="text-xs font-bold text-gray-400 ml-1">Username</label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                         <User className="text-gray-500 group-focus-within:text-purple-400 transition-colors" size={18} />
                       </div>
                       <input 
+                        id="username"
+                        name="username"
                         type="text" 
+                        value={formData.username}
+                        onChange={handleChange}
+                        required={!isLogin}
                         placeholder="ex: sobatcuan" 
                         className="w-full bg-slate-950/50 border border-gray-700/50 rounded-xl py-3.5 pl-11 pr-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
                       />
@@ -102,13 +123,18 @@ const AuthForm = () => {
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-400 ml-1">Email Address</label>
+                  <label htmlFor="email" className="text-xs font-bold text-gray-400 ml-1">Email Address</label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                       <Mail className="text-gray-500 group-focus-within:text-purple-400 transition-colors" size={18} />
                     </div>
                     <input 
+                      id="email"
+                      name="email"
                       type="email" 
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
                       placeholder="name@example.com" 
                       className="w-full bg-slate-950/50 border border-gray-700/50 rounded-xl py-3.5 pl-11 pr-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
                     />
@@ -116,13 +142,18 @@ const AuthForm = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-400 ml-1">Password</label>
+                  <label htmlFor="password" className="text-xs font-bold text-gray-400 ml-1">Password</label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                       <Lock className="text-gray-500 group-focus-within:text-purple-400 transition-colors" size={18} />
                     </div>
                     <input 
+                      id="password"
+                      name="password"
                       type={showPassword ? "text" : "password"} 
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
                       placeholder="••••••••" 
                       className="w-full bg-slate-950/50 border border-gray-700/50 rounded-xl py-3.5 pl-11 pr-12 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
                     />
@@ -142,7 +173,7 @@ const AuthForm = () => {
                   </div>
                 )}
 
-                <button className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-900/30 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2 group/btn">
+                <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-900/30 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2 group/btn">
                   {isLogin ? 'Sign In' : 'Create Account'} 
                   <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
                 </button>

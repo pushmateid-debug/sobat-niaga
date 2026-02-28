@@ -2,7 +2,8 @@
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}", // Pastikan ini nge-scan semua file di src
-    "./public/index.html"
+    "./public/index.html",
+    "./*.{js,jsx,ts,tsx}"
   ],
   theme: {
     extend: {
@@ -12,5 +13,5 @@ module.exports = {
       }
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 }
