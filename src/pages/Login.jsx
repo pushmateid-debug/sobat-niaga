@@ -143,6 +143,7 @@ const Login = () => {
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 required
+                                autoComplete="name"
                             />
                         </div>
                         <div className="relative">
@@ -154,6 +155,7 @@ const Login = () => {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
+                                autoComplete="email"
                             />
                         </div>
                         <div className="relative">
@@ -165,6 +167,7 @@ const Login = () => {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
+                                autoComplete="new-password"
                             />
                         </div>
                     </div>
@@ -203,6 +206,7 @@ const Login = () => {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
+                                autoComplete="email"
                             />
                         </div>
                         <div className="relative">
@@ -214,6 +218,7 @@ const Login = () => {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
+                                autoComplete="current-password"
                             />
                         </div>
                     </div>

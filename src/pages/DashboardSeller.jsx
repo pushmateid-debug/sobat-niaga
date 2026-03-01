@@ -105,16 +105,17 @@ const DashboardSeller = ({ user, onBack }) => {
   useEffect(() => {
     if (user?.uid) {
       // 1. Cek Status Seller (REALTIME LISTENER)
-      const sellerRef = ref(db, `users/${user.uid}/sellerInfo`);
+      const userRef = ref(db, `users/${user.uid}`); // Listen to root user for balance
       const compRef = ref(db, 'admin/competitionSettings');
 
-      const unsubscribeSeller = onValue(sellerRef, (snapshot) => {
+      const unsubscribeSeller = onValue(userRef, (snapshot) => {
         if (snapshot.exists()) {
-          const data = snapshot.val();
+          const userData = snapshot.val();
+          const data = userData.sellerInfo || {};
           setIsVerifiedSeller(data.isVerifiedSeller || false);
           setSellerInfo(data);
           isCompetitorRef.current = data.isCompetitor || false; // Sync Ref
-          setSaldoSiapCair(data.balance || 0); // Real-time Balance dari TransactionHistory
+          setSaldoSiapCair(userData.balance || 0); // Real-time Unified Balance
           
           // Sync Progress Bar & Stats dari Database (Bukan Hitung Manual)
           setMonthlyRevenue(data.competitionRevenue || 0);
@@ -608,15 +609,17 @@ const DashboardSeller = ({ user, onBack }) => {
 
     if (result.isConfirmed) {
         // Cek Saldo Seller
-        const currentBalance = sellerInfo?.balance || 0;
+        const currentBalance = saldoSiapCair; // Use unified balance
         const ticketPrice = 25000;
 
         if (currentBalance >= ticketPrice) {
             try {
                 // Potong Saldo & Join
+                await update(ref(db, `users/${user.uid}`), { 
+                    balance: currentBalance - ticketPrice
+                });
                 await update(ref(db, `users/${user.uid}/sellerInfo`), { 
                     isCompetitor: true,
-                    balance: currentBalance - ticketPrice,
                     hasPaidTicket: true,
                     competitionJoinedAt: new Date().toISOString()
                 });
@@ -729,7 +732,7 @@ const DashboardSeller = ({ user, onBack }) => {
 
   // Handle Request Withdrawal (Tarik Saldo)
   const handleRequestWithdrawal = () => {
-    const currentBalance = sellerInfo?.balance || 0;
+    const currentBalance = saldoSiapCair; // Use unified balance
     
     if (currentBalance < 10000) {
         Swal.fire('Saldo Kurang', 'Minimal penarikan Rp 10.000', 'warning');

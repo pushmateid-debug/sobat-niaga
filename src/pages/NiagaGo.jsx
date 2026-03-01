@@ -881,7 +881,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
 
     // Cek Saldo (Proteksi Cekak)
-    if ((userProfile?.saldo || 0) < parseInt(price)) {
+    if ((userProfile?.balance || 0) < parseInt(price)) {
       Swal.fire({
         title: 'Saldo Tidak Cukup',
         text: `Saldo Anda kurang dari Rp ${parseInt(price).toLocaleString('id-ID')}. Silakan isi saldo dulu.`,
@@ -1109,8 +1109,8 @@ const NiagaGo = ({ onOpenProfile }) => {
                 
                 const driverRef = ref(realDb, `users/${driverId}`);
                 const driverSnap = await get(driverRef);
-                const currentDriverSaldo = driverSnap.exists() ? (parseInt(driverSnap.val().saldo) || 0) : 0;
-                updates[`users/${driverId}/saldo`] = currentDriverSaldo + deliveryFee;
+                const currentDriverBalance = driverSnap.exists() ? (parseInt(driverSnap.val().balance) || 0) : 0;
+                updates[`users/${driverId}/balance`] = currentDriverBalance + deliveryFee;
 
                 // 3. Trigger Saldo Seller (Harga Makanan)
                 let sellerId = null;
@@ -1124,11 +1124,11 @@ const NiagaGo = ({ onOpenProfile }) => {
                 }
 
                 if (sellerId) {
-                    const sellerRef = ref(realDb, `users/${sellerId}/sellerInfo`);
+                    const sellerRef = ref(realDb, `users/${sellerId}`);
                     const sellerSnap = await get(sellerRef);
                     if (sellerSnap.exists()) {
                         const currentSellerBalance = parseInt(sellerSnap.val().balance) || 0;
-                        updates[`users/${sellerId}/sellerInfo/balance`] = currentSellerBalance + foodPrice;
+                        updates[`users/${sellerId}/balance`] = currentSellerBalance + foodPrice;
                     }
                 }
 
@@ -1185,28 +1185,46 @@ const NiagaGo = ({ onOpenProfile }) => {
   // 2.5 User Menerima Tawaran Driver
   const handleAcceptOffer = async (order, offer) => {
       try {
-        // 1. Potong Saldo User (Escrow / Locking)
-        const currentSaldo = userProfile?.saldo || 0;
+        const currentBalance = parseInt(userProfile?.balance || 0);
         let useSaldo = false;
 
-        // Cek Cukup Saldo atau Tidak
-        if (currentSaldo >= order.price) {
-            useSaldo = true;
-        } else {
-            // Fallback ke Manual jika saldo kurang
-            const confirm = await Swal.fire({
-                title: 'Saldo Tidak Cukup',
-                text: 'Saldo Anda kurang. Lanjutkan dengan pembayaran manual (Transfer/QRIS)?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Ya, Bayar Manual',
-                cancelButtonText: 'Batal'
-            });
-            if (!confirm.isConfirmed) return;
+        // Opsi Pembayaran (Super Wallet)
+        const inputOptions = {};
+        if (currentBalance >= order.price) {
+            inputOptions.saldo = `Saldo SobatNiaga (Rp ${currentBalance.toLocaleString('id-ID')})`;
         }
+        inputOptions.manual = 'Transfer Manual / QRIS (Verifikasi Admin)';
 
-        if (useSaldo) {
-            await update(ref(realDb, `users/${userProfile.uid}`), { saldo: currentSaldo - order.price });
+        const { value: paymentMethod } = await Swal.fire({
+            title: 'Pilih Metode Pembayaran',
+            text: `Total Tagihan: Rp ${order.price.toLocaleString('id-ID')}`,
+            input: 'radio',
+            inputOptions: inputOptions,
+            inputValue: currentBalance >= order.price ? 'saldo' : 'manual',
+            inputValidator: (value) => {
+                if (!value) return 'Pilih salah satu metode pembayaran!';
+            },
+            confirmButtonText: 'Lanjut Bayar',
+            confirmButtonColor: '#0ea5e9',
+            showCancelButton: true,
+            cancelButtonText: 'Batal'
+        });
+
+        if (!paymentMethod) return; // User cancel
+
+        if (paymentMethod === 'saldo') {
+            useSaldo = true;
+            // 1. Potong Saldo User (Instant)
+            await update(ref(realDb, `users/${userProfile.uid}`), { balance: currentBalance - order.price });
+            
+            // Notifikasi Saldo Terpotong
+            await push(ref(realDb, 'notifications'), {
+                userId: userProfile.uid,
+                title: 'Pembayaran Berhasil',
+                message: `Saldo terpotong Rp ${order.price.toLocaleString('id-ID')} untuk pembayaran NiagaGo.`,
+                type: 'success',
+                createdAt: new Date().toISOString()
+            });
         }
 
         // 2. Update Status Order
@@ -1304,7 +1322,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         const driverSnap = await get(driverRef);
         if (driverSnap.exists()) {
             const driverData = driverSnap.val();
-            const currentDriverSaldo = parseInt(driverData.saldo || 0);
+            const currentDriverBalance = parseInt(driverData.balance || 0);
             
             // Hitung Pendapatan Bersih (Potong Fee Admin)
             const appFee = calculateAdminFee(order.price);
@@ -1312,7 +1330,7 @@ const NiagaGo = ({ onOpenProfile }) => {
 
             // Update Saldo Driver
             await update(driverRef, {
-                saldo: currentDriverSaldo + netIncome
+                balance: currentDriverBalance + netIncome
             });
         }
         
@@ -1327,7 +1345,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // 6. Driver Tarik Saldo
   const handleWithdraw = async (e) => {
     e.preventDefault();
-    if ((userProfile.saldo || 0) < parseInt(withdrawData.amount)) {
+    if ((userProfile.balance || 0) < parseInt(withdrawData.amount)) {
       Swal.fire('Gagal', 'Saldo tidak cukup.', 'error');
       return;
     }
@@ -1343,7 +1361,7 @@ const NiagaGo = ({ onOpenProfile }) => {
       
       // Kurangi saldo (Simulasi)
       await update(ref(realDb, `users/${userProfile.uid}`), {
-        saldo: (userProfile.saldo || 0) - parseInt(withdrawData.amount)
+        balance: (userProfile.balance || 0) - parseInt(withdrawData.amount)
       });
 
       Swal.fire('Permintaan Terkirim', 'Admin akan memproses penarikanmu.', 'success');
@@ -1411,7 +1429,14 @@ const NiagaGo = ({ onOpenProfile }) => {
         title: 'Pendaftaran Berhasil!',
         text: 'Data kamu sudah masuk. Tunggu verifikasi Admin ya (1x24 Jam).',
         icon: 'success',
-        confirmButtonColor: '#0ea5e9'
+        confirmButtonText: 'OK',
+        buttonsStyling: false,
+        customClass: {
+            popup: `rounded-2xl w-auto max-w-sm p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`,
+            title: `text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`,
+            htmlContainer: `text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`,
+            confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/30 transition-all !opacity-100'
+        }
       });
       setViewMode('main');
       setKtmFile(null);
@@ -1575,23 +1600,23 @@ const NiagaGo = ({ onOpenProfile }) => {
                 <div className="space-y-1">
                   <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Layanan yang Diambil</label>
                   <div className="space-y-2 pt-2">
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${regForm.services.niagaGo ? 'border-sky-500 bg-sky-50 dark:bg-slate-700' : 'dark:border-slate-600'}`}>
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaGo ? 'border-green-500 bg-white dark:bg-slate-800 ring-1 ring-green-500' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
                       <input 
                         type="checkbox" 
                         checked={regForm.services.niagaGo}
                         onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaGo: e.target.checked}})}
-                        className="w-5 h-5 text-sky-600 rounded focus:ring-sky-500"
+                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600"
                       />
-                      <span className="font-medium text-sm">Niaga Go (Antar Penumpang)</span>
+                      <span className={`font-medium text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Niaga Go (Antar Penumpang)</span>
                     </label>
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${regForm.services.niagaFood ? 'border-sky-500 bg-sky-50 dark:bg-slate-700' : 'dark:border-slate-600'}`}>
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaFood ? 'border-green-500 bg-white dark:bg-slate-800 ring-1 ring-green-500' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
                       <input 
                         type="checkbox" 
                         checked={regForm.services.niagaFood}
                         onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaFood: e.target.checked}})}
-                        className="w-5 h-5 text-sky-600 rounded focus:ring-sky-500"
+                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600"
                       />
-                      <span className="font-medium text-sm">Niaga Food (Antar Makanan)</span>
+                      <span className={`font-medium text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Niaga Food (Antar Makanan)</span>
                     </label>
                   </div>
                 </div>
@@ -1697,7 +1722,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <p className="text-sky-100 text-xs font-medium">Saldo Niaga (Virtual)</p>
-                <h2 className="text-2xl font-bold">Rp {(userProfile?.saldo || 0).toLocaleString()}</h2>
+                <h2 className="text-2xl font-bold">Rp {(userProfile?.balance || 0).toLocaleString()}</h2>
               </div>
               <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                 <Wallet size={24} className="text-white" />
@@ -1735,7 +1760,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   </div>
                   <div>
                      <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo Anda</p>
-                     <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {(userProfile?.saldo || 0).toLocaleString('id-ID')}</p>
+                     <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {(userProfile?.balance || 0).toLocaleString('id-ID')}</p>
                   </div>
                </div>
             </div>

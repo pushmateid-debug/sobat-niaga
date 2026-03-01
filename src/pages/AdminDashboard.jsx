@@ -4,7 +4,8 @@ import {
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
-  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown
+  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown,
+  Eye, Mail
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
@@ -411,12 +412,12 @@ const AdminDashboard = ({ onBack }) => {
 
         const seller = sellers.find(s => s.uid === group.sellerId);
         if (seller) {
-            currentBalance = parseInt(seller.balance || 0);
+            currentBalance = parseInt(seller.balance || 0); // Unified Balance
             sellerData = seller;
         } else {
             const driver = drivers.find(d => d.uid === group.sellerId);
             if (driver) {
-                currentBalance = parseInt(driver.saldo || 0);
+                currentBalance = parseInt(driver.balance || 0); // Unified Balance
                 sellerData = driver;
             }
         }
@@ -667,11 +668,20 @@ const AdminDashboard = ({ onBack }) => {
   const handleApproveDriver = async (req) => {
     const result = await Swal.fire({
       title: 'Verifikasi Driver?',
-      text: `Yakin ingin menerima ${req.name} sebagai driver?`,
+      html: `<p class="text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}">Yakin ingin menerima <b>${req.name}</b> sebagai driver?</p>`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Ya, Terima',
-      confirmButtonColor: '#10b981'
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#64748b',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-2xl w-auto max-w-sm p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`,
+        title: `text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`,
+        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/30 transition-all !opacity-100 z-50',
+        cancelButton: `px-6 py-2.5 rounded-xl text-sm font-bold ${isDarkMode ? 'text-gray-300 bg-slate-700 hover:bg-slate-600' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'} transition-all mr-3 !opacity-100 z-50`
+      }
     });
 
     if (result.isConfirmed) {
@@ -779,9 +789,9 @@ const AdminDashboard = ({ onBack }) => {
         const driverSnap = await get(driverRef);
         
         if (driverSnap.exists()) {
-          const currentSaldo = parseInt(driverSnap.val().saldo) || 0;
+          const currentBalance = parseInt(driverSnap.val().balance) || 0;
           await update(driverRef, {
-            saldo: currentSaldo + netIncome
+            balance: currentBalance + netIncome
           });
         }
 
@@ -812,8 +822,8 @@ const AdminDashboard = ({ onBack }) => {
       if (result.isConfirmed) {
           try {
               // 1. Cek Saldo Seller Lagi (Double Check)
-              const sellerRef = ref(realDb, `users/${req.sellerId}/sellerInfo`);
-              const snapshot = await get(sellerRef);
+              const userRef = ref(realDb, `users/${req.sellerId}`);
+              const snapshot = await get(userRef);
               const currentBalance = snapshot.val()?.balance || 0;
 
               if (currentBalance < req.amount) {
@@ -822,7 +832,7 @@ const AdminDashboard = ({ onBack }) => {
               }
 
               // 2. Potong Saldo
-              await update(sellerRef, { balance: currentBalance - req.amount });
+              await update(userRef, { balance: currentBalance - req.amount });
 
               // 3. Masukkan ke Riwayat Payouts
               await push(ref(realDb, 'admin/payouts'), {
@@ -928,7 +938,7 @@ const AdminDashboard = ({ onBack }) => {
 
     const withdrawAmount = parseInt(payoutAmount);
     // Cek apakah ini Seller (balance) atau Driver (saldo)
-    const currentBalance = payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0);
+    const currentBalance = parseInt(payoutModal.balance || 0);
 
     if (!withdrawAmount || withdrawAmount <= 0) {
         Swal.fire('Error', 'Masukkan nominal yang valid', 'warning');
@@ -943,13 +953,8 @@ const AdminDashboard = ({ onBack }) => {
     try {
         const remainingBalance = currentBalance - withdrawAmount;
 
-        // 1. Potong Saldo Seller
-        if (payoutModal.balance !== undefined) {
-            await update(ref(realDb, `users/${payoutModal.uid}/sellerInfo`), { balance: remainingBalance });
-        } else {
-            // Potong Saldo Driver
-            await update(ref(realDb, `users/${payoutModal.uid}`), { saldo: remainingBalance });
-        }
+        // 1. Potong Saldo (Unified)
+        await update(ref(realDb, `users/${payoutModal.uid}`), { balance: remainingBalance });
 
         // 2. Catat di Riwayat Pencairan (Admin Payouts)
         await push(ref(realDb, 'admin/payouts'), {
@@ -1049,12 +1054,11 @@ const AdminDashboard = ({ onBack }) => {
         if (snapshot.exists()) {
             const data = snapshot.val();
             const uid = Object.keys(data)[0];
-            const userData = data[uid];
-            const currentSaldo = parseInt(userData.saldo || 0);
             const amount = parseInt(topUpForm.amount);
 
-            await update(ref(realDb, `users/${uid}`), {
-                saldo: currentSaldo + amount
+            // Gunakan Transaction untuk update saldo (Lebih aman & atomik)
+            await runTransaction(ref(realDb, `users/${uid}/balance`), (currentBalance) => {
+                return (currentBalance || 0) + amount;
             });
 
             // Log Transaksi (Arsip Admin)
@@ -1486,9 +1490,10 @@ const AdminDashboard = ({ onBack }) => {
                             <td className="px-6 py-4 text-right">
                               <button 
                                 onClick={() => setSelectedDriverRequest(req)} 
-                                className="bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                className="bg-sky-50 hover:bg-sky-100 text-sky-600 p-2 rounded-lg transition-colors"
+                                title="Lihat Detail"
                               >
-                                Lihat Detail
+                                <Eye size={18} />
                               </button>
                             </td>
                           </tr>
@@ -1846,7 +1851,7 @@ const AdminDashboard = ({ onBack }) => {
                             <div className="text-xs text-gray-500">{item.email}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-green-600">
-                            Rp {(sellerTabMode === 'sellers' ? (item.balance || 0) : (item.saldo || 0)).toLocaleString('id-ID')}
+                            Rp {(item.balance || 0).toLocaleString('id-ID')}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {sellerTabMode === 'sellers' ? (
@@ -2660,10 +2665,10 @@ const AdminDashboard = ({ onBack }) => {
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <div className="space-y-6">
                 {/* Foto KTM */}
-                <div>
-                  <p className="text-xs font-bold mb-2 text-gray-500 uppercase">Foto KTM</p>
-                  <div className="w-full h-64 bg-gray-100 dark:bg-slate-900 rounded-xl overflow-hidden border dark:border-slate-700 flex items-center justify-center cursor-pointer group relative" onClick={() => setSelectedImage(selectedDriverRequest.ktmUrl)}>
-                    <img src={selectedDriverRequest.ktmUrl} alt="KTM" className="w-full h-full object-contain" />
+                <div className={`p-3 rounded-2xl border ${isDarkMode ? 'bg-slate-700/30 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
+                  <p className="text-xs font-bold mb-3 text-gray-500 uppercase tracking-wider ml-1">Foto KTM / KTP</p>
+                  <div className={`w-full h-56 rounded-xl overflow-hidden border flex items-center justify-center cursor-pointer group relative shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-gray-200'}`} onClick={() => setSelectedImage(selectedDriverRequest.ktmUrl)}>
+                    <img src={selectedDriverRequest.ktmUrl} alt="KTM" className="w-full h-full object-contain p-2" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                       <ZoomIn className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -2671,27 +2676,57 @@ const AdminDashboard = ({ onBack }) => {
                 </div>
 
                 {/* Data Driver */}
-                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between border-b dark:border-slate-600 pb-2">
-                      <span className="text-gray-500">Nama Lengkap</span>
-                      <span className="font-bold">{selectedDriverRequest.name}</span>
+                <div className={`p-5 rounded-2xl shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                  <h4 className={`text-sm font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Informasi Pendaftar</h4>
+                  <div className="space-y-4">
+                    
+                    <div className="flex items-center gap-4">
+                        <div className={`p-2.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                            <User size={18} />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Nama Lengkap</p>
+                            <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{selectedDriverRequest.name}</p>
+                        </div>
                     </div>
-                    <div className="flex justify-between border-b dark:border-slate-600 pb-2">
-                      <span className="text-gray-500">Gmail</span>
-                      <span className="font-bold">{selectedDriverRequest.email}</span>
+
+                    <div className="flex items-center gap-4">
+                        <div className={`p-2.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                            <Mail size={18} />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Email</p>
+                            <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{selectedDriverRequest.email}</p>
+                        </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">WhatsApp</span>
-                      <a 
-                        href={`https://wa.me/${selectedDriverRequest.phone.replace(/^0/, '62')}`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="font-bold text-green-500 hover:underline flex items-center gap-1"
-                      >
-                        {selectedDriverRequest.phone} <MessageCircle size={14}/>
-                      </a>
+
+                    <div className="flex items-center gap-4">
+                        <div className={`p-2.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                            <Bike size={18} />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Plat Nomor</p>
+                            <p className={`text-sm font-bold font-mono uppercase ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{selectedDriverRequest.plateNumber || '-'}</p>
+                        </div>
                     </div>
+
+                    <div className="flex items-center gap-4">
+                        <div className={`p-2.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                            <MessageCircle size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">WhatsApp</p>
+                            <a 
+                                href={`https://wa.me/${selectedDriverRequest.phone.replace(/^0/, '62')}`} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-sm font-bold text-green-500 hover:underline flex items-center gap-1"
+                            >
+                                {selectedDriverRequest.phone}
+                            </a>
+                        </div>
+                    </div>
+
                   </div>
                 </div>
               </div>
@@ -2701,7 +2736,7 @@ const AdminDashboard = ({ onBack }) => {
             <div className="p-4 border-t dark:border-slate-700 flex gap-3 bg-gray-50 dark:bg-slate-800/50">
               <button 
                 onClick={() => { handleRejectDriver(selectedDriverRequest); setSelectedDriverRequest(null); }} 
-                className="flex-1 py-3 rounded-xl border border-red-100 bg-red-50 text-red-600 font-bold text-sm hover:bg-red-100 transition-colors"
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-sm hover:bg-red-700 shadow-lg shadow-red-500/20 transition-colors"
               >
                 Tolak
               </button>
@@ -2728,7 +2763,7 @@ const AdminDashboard = ({ onBack }) => {
             <form onSubmit={handleProcessPayout} className="p-5 space-y-3">
               <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
                 <p className="text-[10px] text-gray-500 mb-0.5 font-bold uppercase tracking-wider">Saldo Tersedia</p>
-                <p className="text-xl font-bold font-mono text-green-600">Rp {(payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0)).toLocaleString('id-ID')}</p>
+                <p className="text-xl font-bold font-mono text-green-600">Rp {(payoutModal.balance || 0).toLocaleString('id-ID')}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5 truncate">{payoutModal.storeName || payoutModal.displayName}</p>
               </div>
 
@@ -2750,7 +2785,7 @@ const AdminDashboard = ({ onBack }) => {
               <div className="flex justify-end">
                 <button 
                     type="button"
-                    onClick={() => setPayoutAmount(payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0))}
+                    onClick={() => setPayoutAmount(payoutModal.balance || 0)}
                     className="text-[10px] font-bold text-sky-600 hover:bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors"
                 >
                     ⚡ Cairkan Semua
