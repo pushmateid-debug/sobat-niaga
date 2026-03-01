@@ -1,55 +1,62 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "users": {
-      ".indexOn": ["email"],
       "$uid": {
-        ".read": "$uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com'",
-        ".write": "$uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com'"
+        ".read": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
+        ".write": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
+        ".validate": "auth.token.email === 'pushmate.id@gmail.com' || (!newData.hasChild('saldo') && !data.hasChild('saldo')) || (newData.child('saldo').val() === (data.child('saldo').exists() ? data.child('saldo').val() : 0))",
+        "sellerInfo": {
+          ".validate": "auth.token.email === 'pushmate.id@gmail.com' || ((!newData.hasChild('balance') && !data.hasChild('balance')) || (newData.child('balance').val() === (data.child('balance').exists() ? data.child('balance').val() : 0))) && ((!newData.hasChild('points_event') && !data.hasChild('points_event')) || (newData.child('points_event').val() === (data.child('points_event').exists() ? data.child('points_event').val() : 0)))"
+        }
       }
     },
-
+    "products": {
+      ".read": true,
+      "$productId": {
+        ".write": "auth != null && (newData.child('sellerId').val() === auth.uid || data.child('sellerId').val() === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
+        ".validate": "newData.hasChildren(['name', 'price']) && newData.child('price').isNumber()"
+      }
+    },
     "orders": {
-      ".indexOn": ["userId", "driverId"],
+      ".read": "auth != null",
+      "$orderId": {
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['buyerId', 'totalPrice'])"
+      }
+    },
+    "admin": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email === 'pushmate.id@gmail.com'"
+    },
+    "chats": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
+        ".write": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')"
+      }
+    },
+    "notifications": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
-    "chats": {
-      ".read": "auth != null",
-      ".write": "auth != null",
-      "$chatId": {
-        ".indexOn": ["senderId", "receiverId"]
-      }
-    },
-
-    "notifications": {
-      ".indexOn": ["userId"],
-      "$notifId": {
-        ".read": "data.child('userId').val() === auth.uid",
-        ".write": "auth.token.email === 'pushmate.id@gmail.com' || (data.exists() && data.child('userId').val() === auth.uid)"
-      }
-    },
-
     "drivers_locations": {
       ".read": "auth != null",
-      "$driverId": {
-        ".write": "$driverId === auth.uid"
+      "$uid": {
+        ".write": "auth != null && $uid === auth.uid"
       }
     },
-
     "food_delivery_pool": {
       ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'driver'"
+      ".write": "auth != null"
     },
-
-    "admin": {
-      ".read": "auth.token.email === 'pushmate.id@gmail.com'",
-      ".write": "auth.token.email === 'pushmate.id@gmail.com'"
+    "reviews": {
+      ".read": true,
+      ".write": "auth != null"
     },
-
-    "products": {
-      ".read": "true",
-      ".write": "auth.token.email === 'pushmate.id@gmail.com'"
+    "withdrawals": {
+      ".read": "auth != null && (data.child('userId').val() === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
+      ".write": "auth != null"
     }
   }
 }

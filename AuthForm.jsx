@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { auth, db } from '../config/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { ref, set, serverTimestamp } from 'firebase/database';
+import Swal from 'sweetalert2';
 
 const AuthForm = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -15,10 +20,57 @@ const AuthForm = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Form Submitted:', { type: isLogin ? 'Login' : 'Register', data: formData });
-    // Tambahkan logika autentikasi di sini
+    setIsLoading(true);
+
+    try {
+      if (isLogin) {
+        // Login Logic
+        await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        Swal.fire({
+          icon: 'success',
+          title: 'Login Berhasil!',
+          text: 'Selamat datang kembali.',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      } else {
+        // Register Logic
+        const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+        const user = userCredential.user;
+
+        // Update Profile (Display Name)
+        await updateProfile(user, { displayName: formData.username });
+
+        // Save to Realtime DB
+        await set(ref(db, `users/${user.uid}`), {
+          email: user.email,
+          displayName: formData.username,
+          role: 'user',
+          saldo: 0,
+          createdAt: serverTimestamp()
+        });
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Akun Berhasil Dibuat!',
+          text: 'Silakan login.',
+          timer: 1500,
+          showConfirmButton: false
+        });
+        setIsLogin(true);
+      }
+    } catch (error) {
+      console.error("Auth Error:", error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: error.message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -77,13 +129,13 @@ const AuthForm = () => {
               <div className="flex bg-slate-950/50 p-1 rounded-xl mb-8 border border-white/5">
                 <button 
                   onClick={() => setIsLogin(true)}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all duration-300 ${isLogin ? 'bg-slate-800 text-white shadow-lg shadow-purple-900/20' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all duration-300 ${isLogin ? 'bg-slate-800 text-white shadow-lg shadow-purple-900/20' : 'text-gray-500 hover:text-gray-300'}`}
                 >
                   Login
                 </button>
                 <button 
                   onClick={() => setIsLogin(false)}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all duration-300 ${!isLogin ? 'bg-slate-800 text-white shadow-lg shadow-purple-900/20' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all duration-300 ${!isLogin ? 'bg-slate-800 text-white shadow-lg shadow-purple-900/20' : 'text-gray-500 hover:text-gray-300'}`}
                 >
                   Sign Up
                 </button>
@@ -173,9 +225,9 @@ const AuthForm = () => {
                   </div>
                 )}
 
-                <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-900/30 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2 group/btn">
-                  {isLogin ? 'Sign In' : 'Create Account'} 
-                  <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
+                <button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-bold py-2.5 rounded-xl shadow-lg shadow-purple-900/30 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2 group/btn disabled:opacity-70 disabled:cursor-not-allowed">
+                  {isLoading ? <Loader2 className="animate-spin" size={18} /> : (isLogin ? 'Sign In' : 'Create Account')}
+                  {!isLoading && <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />}
                 </button>
 
               </form>
@@ -192,24 +244,3 @@ const AuthForm = () => {
 };
 
 export default AuthForm;
-```
-
-### Penjelasan Teknis "The Magic Move":
-
-1.  **Struktur Container**:
-    *   Gue pake `w-[200%]` di dalem overlay (`bg-gradient`). Ini kuncinya. Pas container overlay geser ke kanan, background di dalemnya geser ke kiri. Efeknya? Background kelihatan *stay in place* atau bergerak parallax, bukan cuma kotak biru yang geser kaku.
-
-2.  **Manipulasi Z-Index & Opacity**:
-    *   Form yang lagi nggak aktif gue set `opacity-0` dan `z-index` rendah.
-    *   Gue tambahin `translate-x-[20%]` pada teks di dalam overlay yang sedang sembunyi. Jadi pas dia muncul (fade in), dia juga agak geser sedikit ke posisi tengah. Ini ngasih kesan "masuk" yang smooth banget.
-
-3.  **Diagonal/Curved Edge**:
-    *   Gue pake `rounded-r-[100px]` dan `rounded-l-[100px]` yang berubah dinamis tergantung state `isSignUp`. Ini ngasih efek lengkungan modern pas transisi, mirip efek "cairan" atau potongan diagonal yang halus.
-    *   Plus, ada elemen dekoratif `bg-white/10` yang miring (`rotate-15deg`) yang ikut geser buat nambah aksen "speed".
-
-Cobain render komponen ini, Bro. Transisinya bakal kerasa *fluid* banget!
-
-<!--
-[PROMPT_SUGGESTION]Buatin unit test sederhana pakai Jest/React Testing Library buat mastiin tombol switch-nya berfungsi.[/PROMPT_SUGGESTION]
-[PROMPT_SUGGESTION]Gimana caranya integrasiin form Login ini sama fungsi auth Firebase yang ada di file config tadi?[/PROMPT_SUGGESTION]
--->

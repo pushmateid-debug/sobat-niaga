@@ -139,7 +139,8 @@ const DashboardSeller = ({ user, onBack }) => {
       });
 
       // 1.5 Load Leaderboard dari Users (Biar Sinkron sama Reset)
-      const usersRef = ref(db, 'users');
+      // OPTIMASI: Gunakan query untuk hanya ambil user yang ikut kompetisi, jangan download semua user!
+      const usersRef = query(ref(db, 'users'), orderByChild('sellerInfo/isCompetitor'), equalTo(true));
       const unsubscribeUsers = onValue(usersRef, (snap) => {
         const usersData = snap.val();
         if (usersData) {
@@ -719,39 +720,73 @@ const DashboardSeller = ({ user, onBack }) => {
   // Handle Lihat Riwayat Saldo
   const handleShowHistory = () => {
     const historyOrders = sellerOrders.filter(o => o.payoutCompleted);
-    const historyHtml = historyOrders.length > 0 
-        ? `<div class="space-y-2 text-left max-h-60 overflow-y-auto pr-1">
-            ${historyOrders.map(o => `
-                <div class="flex justify-between items-center border-b border-gray-100 pb-2">
-                    <div>
+    
+    const listItems = historyOrders.length > 0 
+        ? historyOrders.map(o => {
+            const items = Array.isArray(o.items) ? o.items : Object.values(o.items);
+            const revenue = items.filter(i => i.sellerId === user.uid).reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const net = revenue - calculateAdminFee(revenue);
+            return `
+                <div class="flex justify-between items-center border-b border-gray-100 pb-2 mb-2 last:border-0">
+                    <div class="text-left">
                         <p class="text-xs text-gray-500">${new Date(o.payoutAt || Date.now()).toLocaleDateString('id-ID')}</p>
                     </div>
                     <div class="text-right">
-                        <p class="text-sm font-bold text-green-600">+ Rp ${(() => {
-                            const items = Array.isArray(o.items) ? o.items : Object.values(o.items);
-                            const revenue = items.filter(i => i.sellerId === user.uid).reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                            return (revenue - calculateAdminFee(revenue)).toLocaleString('id-ID');
-                        })()}</p>
+                        <p class="text-sm font-bold text-green-600">+ Rp ${net.toLocaleString('id-ID')}</p>
                         <p class="text-[10px] text-gray-400">Sudah Cair</p>
                     </div>
                 </div>
-            `).join('')}
-           </div>`
-        : '<p class="text-gray-500 text-sm text-center py-4">Belum ada riwayat pencairan dana.</p>';
+            `;
+        }).join('')
+        : '<div class="text-center py-6 text-gray-400 text-sm">Belum ada riwayat pencairan dana.</div>';
 
     Swal.fire({
-        title: 'Riwayat Saldo Cair',
-        html: historyHtml,
-        showCancelButton: true,
-        cancelButtonText: 'Tutup',
-        confirmButtonText: 'Hubungi Admin (WA)',
-        confirmButtonColor: '#0ea5e9',
-        footer: '<div class="text-center"><p class="text-xs text-gray-400 mb-1">Dana "Siap Cair" adalah total yang sudah ditransfer Admin.</p><p class="text-[10px] text-orange-500 font-bold">⚠️ Pencairan saldo menggunakan kurs nasional. Biaya admin pihak ketiga (Bank/E-Wallet) ditanggung oleh Seller.</p></div>'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const storeName = sellerInfo?.storeName || 'Toko Saya';
-            const message = `Halo Admin SobatNiaga, saya Seller ${storeName} ingin mencairkan saldo Rp________.\n\n(Saya memahami bahwa biaya admin transfer antar bank/e-wallet ditanggung sepenuhnya oleh Seller dan akan dipotong langsung oleh pihak penyedia layanan).`;
-            window.open(`https://wa.me/6289517587498?text=${encodeURIComponent(message)}`, '_blank');
+        title: '',
+        html: `
+            <div class="flex flex-col text-left font-sans">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 text-center">Riwayat Saldo Cair</h3>
+                
+                <div class="bg-gray-50 rounded-xl p-3 border border-gray-200 mb-3 max-h-60 overflow-y-auto custom-scrollbar">
+                    ${listItems}
+                </div>
+
+                <div class="text-center mb-4">
+                    <p class="text-xs text-gray-400 mb-1">Dana "Siap Cair" adalah total yang sudah ditransfer Admin.</p>
+                    <p class="text-[10px] text-orange-500 font-bold bg-orange-50 p-2 rounded-lg border border-orange-100">
+                        ⚠️ Pencairan saldo menggunakan kurs nasional. Biaya admin pihak ketiga (Bank/E-Wallet) ditanggung oleh Seller.
+                    </p>
+                </div>
+
+                <div class="flex gap-2 mt-1">
+                    <button id="btnCloseHistory" class="flex-1 py-2 rounded-lg font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors text-xs">
+                        Tutup
+                    </button>
+                    <button id="btnContactAdmin" class="flex-1 py-2 rounded-lg font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-200 transition-colors text-xs flex items-center justify-center gap-2">
+                        Hubungi Admin (WA)
+                    </button>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: false,
+        width: '400px',
+        padding: '1rem',
+        didOpen: () => {
+            const btnClose = document.getElementById('btnCloseHistory');
+            const btnContact = document.getElementById('btnContactAdmin');
+
+            if (btnClose) {
+                btnClose.addEventListener('click', () => Swal.close());
+            }
+
+            if (btnContact) {
+                btnContact.addEventListener('click', () => {
+                    const storeName = sellerInfo?.storeName || 'Toko Saya';
+                    const message = `Halo Admin SobatNiaga, saya Seller ${storeName} ingin mencairkan saldo Rp________.\n\n(Saya memahami bahwa biaya admin transfer antar bank/e-wallet ditanggung sepenuhnya oleh Seller dan akan dipotong langsung oleh pihak penyedia layanan).`;
+                    window.open(`https://wa.me/6289517587498?text=${encodeURIComponent(message)}`, '_blank');
+                    Swal.close();
+                });
+            }
         }
     });
   };
@@ -1882,7 +1917,7 @@ const DashboardSeller = ({ user, onBack }) => {
       {/* Modal Pengaturan Pembayaran */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className={`rounded-2xl w-full max-w-md p-6 relative shadow-2xl animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+          <div className={`rounded-2xl w-full max-w-md p-6 relative shadow-2xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
             <button onClick={() => setIsPaymentModalOpen(false)} className={`absolute top-4 right-4 ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}><X size={24} /></button>
             
             <h2 className={`text-xl font-bold mb-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Atur Info Pencairan</h2>
@@ -1921,8 +1956,8 @@ const DashboardSeller = ({ user, onBack }) => {
                 <input type="number" placeholder="Contoh: 1234567890" value={paymentForm.bankAccount} onChange={e => setPaymentForm({...paymentForm, bankAccount: e.target.value})} className={`w-full px-3 py-2 rounded-lg border text-sm focus:border-sky-500 outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'border-gray-200'}`} required />
               </div>
 
-              <button disabled={isUploading} type="submit" className="w-full py-3 rounded-xl font-bold text-white bg-sky-600 hover:bg-sky-700 mt-4 flex items-center justify-center gap-2">
-                {isUploading ? <Loader2 size={20} className="animate-spin" /> : 'Simpan Pengaturan'}
+              <button disabled={isUploading} type="submit" className="w-full py-2.5 rounded-xl font-bold text-sm text-white bg-sky-600 hover:bg-sky-700 mt-6 flex items-center justify-center gap-2 shadow-lg shadow-sky-200/50 transition-all active:scale-[0.98]">
+                {isUploading ? <Loader2 size={18} className="animate-spin" /> : 'Simpan Pengaturan'}
               </button>
             </form>
           </div>

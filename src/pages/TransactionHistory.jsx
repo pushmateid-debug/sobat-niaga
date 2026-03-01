@@ -201,6 +201,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
   // Logic Inti Penyelesaian Pesanan (Dipisah biar bisa dipanggil Auto-Update)
   const completeOrderTransaction = async (order, isAuto = false) => {
+      console.log("Processing Order Completion:", order.id); // Debug Log
       try {
           // 1. Update Status Order
           await update(ref(db, `orders/${order.id}`), { 
@@ -217,8 +218,11 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
             const itemsArray = Array.isArray(order.items) ? order.items : Object.values(order.items);
             itemsArray.forEach(item => {
               if(item && item.sellerId) {
-                sellerRevenue[item.sellerId] = (sellerRevenue[item.sellerId] || 0) + (item.price * item.quantity);
-                sellerQty[item.sellerId] = (sellerQty[item.sellerId] || 0) + item.quantity;
+                const qty = parseInt(item.quantity) || 1; // Ensure Integer
+                const price = parseInt(item.price) || 0;
+                
+                sellerRevenue[item.sellerId] = (sellerRevenue[item.sellerId] || 0) + (price * qty);
+                sellerQty[item.sellerId] = (sellerQty[item.sellerId] || 0) + qty;
 
                 // UPDATE SOLD COUNT PRODUK (Real-time Sync)
                 const targetProductId = item.productId || item.id;
@@ -227,9 +231,9 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                     get(productRef).then((snap) => {
                         if (snap.exists()) {
                             const currentSold = parseInt(snap.val().sold) || 0;
-                            update(productRef, { sold: currentSold + item.quantity });
+                            update(productRef, { sold: currentSold + qty });
                         }
-                    });
+                    }).catch(err => console.error("Error updating product sold count:", err));
                 }
               }
             });
@@ -240,8 +244,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
             const snap = await get(sellerRef);
             if(snap.exists()) {
               const data = snap.val();
-              const currentBalance = data.balance || 0;
-              const isCompetitor = data.isCompetitor || false;
+              const currentBalance = parseInt(data.balance) || 0;
 
               // Hitung Potongan Admin
               const adminFee = calculateAdminFee(amount);
@@ -249,22 +252,30 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
               // Cek Kompetisi Aktif untuk Poin
               const now = new Date();
-              const start = new Date(compSettings.startDate);
-              const end = new Date(compSettings.endDate);
-              const isCompActive = compSettings.isActive && now >= start && now <= end;
+              let isCompActive = false;
+              if (compSettings?.isActive && compSettings?.startDate && compSettings?.endDate) {
+                  const start = new Date(compSettings.startDate);
+                  const end = new Date(compSettings.endDate);
+                  // Set hours to cover full day
+                  start.setHours(0,0,0,0);
+                  end.setHours(23,59,59,999);
+                  isCompActive = now >= start && now <= end;
+              }
               
               // RUMUS BARU: (Omzet / 10.000) + (Qty * 5)
               const qtySold = sellerQty[sellerId] || 0;
               const eventPointsToAdd = isCompActive ? Math.floor((amount / 10000) + (qtySold * 5)) : 0;
               const loyaltyPointsToAdd = 10; // Flat 10 Poin per Transaksi Selesai
               
-              await update(sellerRef, { 
+              const updates = { 
                   balance: currentBalance + netIncome, 
-                  points_loyalty: (data.points_loyalty || 0) + loyaltyPointsToAdd,
-                  points_event: (data.points_event || 0) + eventPointsToAdd,
-                  competitionRevenue: (data.competitionRevenue || 0) + amount,
-                  competitionQty: (data.competitionQty || 0) + (sellerQty[sellerId] || 0)
-              });
+                  points_loyalty: (parseInt(data.points_loyalty) || 0) + loyaltyPointsToAdd,
+                  points_event: (parseInt(data.points_event) || 0) + eventPointsToAdd,
+                  competitionRevenue: (parseInt(data.competitionRevenue) || 0) + amount,
+                  competitionQty: (parseInt(data.competitionQty) || 0) + qtySold
+              };
+              
+              await update(sellerRef, updates);
 
               // Kirim Notifikasi ke Seller
               await push(ref(db, 'notifications'), {
@@ -317,7 +328,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
           }
       } catch (error) {
           console.error("Error completing order:", error);
-          if (!isAuto) Swal.fire('Error', 'Gagal memproses data.', 'error');
+          if (!isAuto) Swal.fire('Error', `Gagal memproses data: ${error.message}`, 'error');
       }
   };
 
@@ -331,11 +342,12 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
       confirmButtonColor: '#16a34a', // Hijau Green-600 (Solid)
       cancelButtonColor: '#dc2626', // Merah Red-600
       confirmButtonText: 'Ya, Terima',
-      cancelButtonText: 'Batal'
-    }).then(async (result) => {
-      if (result.isConfirmed) {
-        await completeOrderTransaction(order, false);
-      }
+      cancelButtonText: 'Batal',
+      showLoaderOnConfirm: true, // Loading Spinner
+      preConfirm: async () => {
+        return await completeOrderTransaction(order, false);
+      },
+      allowOutsideClick: () => !Swal.isLoading()
     });
   };
 
