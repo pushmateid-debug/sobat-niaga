@@ -4,11 +4,11 @@ import {
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
-  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target
+  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown
 } from 'lucide-react';
-import { dbFirestore, db as realDb, storage } from '../config/firebase';
+import { dbFirestore, db as realDb, storage, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
-import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo } from 'firebase/database';
+import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction } from 'firebase/database';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import Cropper from 'react-cropper';
@@ -87,6 +87,7 @@ const AdminDashboard = ({ onBack }) => {
   
   // State Drivers
   const [driverRequests, setDriverRequests] = useState([]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]); // State Antrean Pencairan
   const [drivers, setDrivers] = useState([]); // State Daftar Driver (Saldo)
   const [sellers, setSellers] = useState([]); // State Daftar Penjual
   const [payouts, setPayouts] = useState([]); // State Riwayat Pencairan
@@ -136,6 +137,7 @@ const AdminDashboard = ({ onBack }) => {
   const [niagaSales, setNiagaSales] = useState([]);
   const [financeFilter, setFinanceFilter] = useState('today'); // today, week, month
   
+  const [expandedGroup, setExpandedGroup] = useState(null); // State Expand Detail Transaksi
   const [saldoSearch, setSaldoSearch] = useState(''); // State Pencarian Saldo
   // State Tabs Internal
   const [sellerTabMode, setSellerTabMode] = useState('sellers'); // 'sellers' | 'drivers'
@@ -283,12 +285,38 @@ const AdminDashboard = ({ onBack }) => {
     return () => unsubscribe();
   }, []);
 
+  // Fetch Withdrawal Requests (Antrean Pencairan)
+  useEffect(() => {
+    const wdRef = ref(realDb, 'withdrawal_requests');
+    const unsubscribe = onValue(wdRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setWithdrawalRequests(list.sort((a, b) => a.createdAt - b.createdAt));
+      } else {
+        setWithdrawalRequests([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Gabung & Filter Data Keuangan (Termasuk Payouts)
   const financialRecords = useMemo(() => {
     let records = [];
     
     // 1. Marketplace Sales (Masuk)
     marketplaceSales.forEach(s => {
+        // Extract Seller Info
+        let sellerId = null;
+        let storeName = 'Unknown';
+        if (s.items) {
+             const items = Array.isArray(s.items) ? s.items : Object.values(s.items);
+             if (items.length > 0) {
+                 sellerId = items[0].sellerId;
+                 storeName = items[0].storeName || 'Toko';
+             }
+        }
+
         records.push({
             id: s.id,
             title: s.items ? (Array.isArray(s.items) ? s.items[0].name : Object.values(s.items)[0].name) : 'Order Marketplace',
@@ -296,7 +324,9 @@ const AdminDashboard = ({ onBack }) => {
             date: s.createdAt,
             type: 'in',
             category: 'Marketplace',
-            adminFee: calculateAdminFee(parseInt(s.totalPrice || 0))
+            adminFee: calculateAdminFee(parseInt(s.totalPrice || 0)),
+            sellerId, 
+            storeName
         });
     });
 
@@ -309,7 +339,9 @@ const AdminDashboard = ({ onBack }) => {
             date: s.createdAt,
             type: 'in',
             category: 'NiagaGo',
-            adminFee: s.adminFee ? parseInt(s.adminFee) : 2000
+            adminFee: s.adminFee ? parseInt(s.adminFee) : 2000,
+            sellerId: s.driverId,
+            storeName: s.driverName || 'Driver'
         });
     });
 
@@ -349,6 +381,50 @@ const AdminDashboard = ({ onBack }) => {
     const totalProfit = financialRecords.filter(r => r.type === 'in').reduce((acc, curr) => acc + curr.adminFee, 0);
     return { totalIn, totalOut, totalProfit };
   }, [financialRecords]);
+
+  // NEW: Grouped Income Logic (Smart Table per Toko)
+  const groupedIncomeRecords = useMemo(() => {
+    const incomeRecords = financialRecords.filter(r => r.type === 'in');
+    const groups = {};
+
+    incomeRecords.forEach(record => {
+        const key = record.sellerId || 'unknown';
+        if (!groups[key]) {
+            groups[key] = {
+                sellerId: record.sellerId,
+                storeName: record.storeName,
+                lastDate: record.date,
+                transactionCount: 0,
+                details: []
+            };
+        }
+        if (new Date(record.date) > new Date(groups[key].lastDate)) {
+            groups[key].lastDate = record.date;
+        }
+        groups[key].transactionCount += 1;
+        groups[key].details.push(record);
+    });
+
+    return Object.values(groups).map(group => {
+        let currentBalance = 0;
+        let sellerData = null;
+
+        const seller = sellers.find(s => s.uid === group.sellerId);
+        if (seller) {
+            currentBalance = parseInt(seller.balance || 0);
+            sellerData = seller;
+        } else {
+            const driver = drivers.find(d => d.uid === group.sellerId);
+            if (driver) {
+                currentBalance = parseInt(driver.saldo || 0);
+                sellerData = driver;
+            }
+        }
+
+        group.details.sort((a, b) => new Date(b.date) - new Date(a.date));
+        return { ...group, currentBalance, sellerData };
+    }).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  }, [financialRecords, sellers, drivers]);
 
   // Inject Cropper CSS via CDN (Solusi Error Module Not Found)
   useEffect(() => {
@@ -722,10 +798,127 @@ const AdminDashboard = ({ onBack }) => {
     }
   };
 
+  // Fungsi Setujui Pencairan (Admin)
+  const handleApproveWithdrawal = async (req) => {
+      const result = await Swal.fire({
+          title: 'Setujui Pencairan?',
+          text: `Transfer Rp ${req.amount.toLocaleString()} ke ${req.storeName}? Saldo seller akan dipotong.`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Ya, Selesaikan',
+          confirmButtonColor: '#10b981'
+      });
+
+      if (result.isConfirmed) {
+          try {
+              // 1. Cek Saldo Seller Lagi (Double Check)
+              const sellerRef = ref(realDb, `users/${req.sellerId}/sellerInfo`);
+              const snapshot = await get(sellerRef);
+              const currentBalance = snapshot.val()?.balance || 0;
+
+              if (currentBalance < req.amount) {
+                  Swal.fire('Gagal', 'Saldo seller tidak cukup saat ini.', 'error');
+                  return;
+              }
+
+              // 2. Potong Saldo
+              await update(sellerRef, { balance: currentBalance - req.amount });
+
+              // 3. Masukkan ke Riwayat Payouts
+              await push(ref(realDb, 'admin/payouts'), {
+                  sellerId: req.sellerId,
+                  storeName: req.storeName,
+                  amount: req.amount,
+                  createdAt: serverTimestamp(),
+                  adminId: 'admin',
+                  note: 'Pencairan via Request'
+              });
+
+              // FIX: Masukkan ke Riwayat Penarikan Seller (agar muncul di dashboard seller)
+              // Untuk saat ini, proofUrl diisi catatan teks karena belum ada UI upload bukti transfer dari admin
+              const proofNote = `Dana ditransfer oleh Admin pada ${new Date().toLocaleString('id-ID')}`;
+              await push(ref(realDb, 'withdrawals'), {
+                  sellerId: req.sellerId,
+                  amount: req.amount,
+                  createdAt: serverTimestamp(),
+                  note: 'Otomatis by Admin',
+                  proofUrl: proofNote 
+              });
+
+              // 4. Hapus dari Antrean Request
+              await remove(ref(realDb, `withdrawal_requests/${req.id}`));
+
+              // 5. Notifikasi ke Seller
+              await push(ref(realDb, 'notifications'), {
+                  userId: req.sellerId,
+                  title: 'Dana Cair',
+                  message: `Penarikan Rp ${req.amount.toLocaleString()} berhasil diproses Admin.`,
+                  type: 'success',
+                  createdAt: serverTimestamp()
+              });
+
+              Swal.fire('Berhasil', 'Pencairan disetujui & saldo dipotong.', 'success');
+          } catch (error) {
+              console.error(error);
+              Swal.fire('Error', error.message, 'error');
+          }
+      }
+  };
+
+  // Fungsi Tolak Pencairan
+  const handleRejectWithdrawal = async (req) => {
+      const result = await Swal.fire({
+          title: 'Tolak Pencairan?',
+          text: "Permintaan akan dihapus dan saldo seller tidak dipotong.",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Tolak',
+          confirmButtonColor: '#ef4444'
+      });
+
+      if (result.isConfirmed) {
+          try {
+              await remove(ref(realDb, `withdrawal_requests/${req.id}`));
+              
+              await push(ref(realDb, 'notifications'), {
+                  userId: req.sellerId,
+                  title: 'Penarikan Ditolak',
+                  message: `Permintaan penarikan Rp ${req.amount.toLocaleString()} ditolak. Hubungi admin untuk info lebih lanjut.`,
+                  type: 'error',
+                  createdAt: serverTimestamp()
+              });
+              
+              Swal.fire('Ditolak', 'Permintaan dihapus.', 'info');
+          } catch (error) {
+              Swal.fire('Error', error.message, 'error');
+          }
+      }
+  };
+
   // Fungsi Buka Modal Pencairan
   const handlePayout = (seller) => {
     setPayoutModal(seller);
     setPayoutAmount('');
+  };
+
+  // Fungsi Shortcut Cairkan dari Tabel Keuangan
+  const handlePayoutFromRecord = async (record) => {
+    if (!record.sellerId) return;
+    
+    // Cari data seller di state yang sudah ada
+    let seller = sellers.find(s => s.uid === record.sellerId);
+    if (!seller) seller = drivers.find(d => d.uid === record.sellerId);
+    
+    if (seller) {
+        handlePayout(seller);
+    } else {
+        // Fallback fetch jika tidak ada di list
+        const snap = await get(ref(realDb, `users/${record.sellerId}`));
+        if (snap.exists()) {
+            const data = snap.val();
+            handlePayout({ uid: record.sellerId, ...data, ...data.sellerInfo });
+        }
+    }
   };
 
   // Fungsi Proses Pencairan (Logic Baru)
@@ -805,11 +998,43 @@ const AdminDashboard = ({ onBack }) => {
   const handleManualTopUp = async (e) => {
     e.preventDefault();
     if (!topUpForm.email || !topUpForm.amount) return;
+
+    // Cek Auth Admin
+    if (!auth.currentUser) {
+        Swal.fire('Error', 'Sesi admin kadaluarsa. Silakan refresh halaman.', 'error');
+        return;
+    }
     
     if (!topUpProof) {
         Swal.fire('Bukti Wajib', 'Harap upload bukti transfer/mutasi untuk dokumentasi admin.', 'warning');
         return;
     }
+
+    // Konfirmasi Top Up (Fix UI & Transparansi Tombol)
+    const confirmResult = await Swal.fire({
+        title: 'Konfirmasi Top Up',
+        html: `
+            <div class="text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}">
+                Top up saldo ke <b>${topUpForm.email}</b><br/>
+                Sebesar: <b class="text-green-600">Rp ${parseInt(topUpForm.amount).toLocaleString('id-ID')}</b>?
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Proses',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#8b5cf6', // Purple
+        cancelButtonColor: '#64748b',
+        buttonsStyling: false, // PENTING: Matikan style bawaan SweetAlert biar Tailwind jalan
+        customClass: {
+            popup: `rounded-2xl w-auto max-w-sm p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`,
+            title: `text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`,
+            confirmButton: 'px-6 py-2 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-md transition-colors mr-2 !opacity-100',
+            cancelButton: `px-4 py-2 rounded-lg text-xs font-bold ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'} transition-colors`
+        }
+    });
+
+    if (!confirmResult.isConfirmed) return;
 
     try {
         Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
@@ -838,7 +1063,7 @@ const AdminDashboard = ({ onBack }) => {
                 userEmail: topUpForm.email,
                 amount: amount,
                 proofUrl: proofUrl,
-                adminId: 'admin',
+                adminId: auth.currentUser.uid, // Fix Permission Denied (Use Real UID)
                 createdAt: serverTimestamp()
             });
 
@@ -853,7 +1078,19 @@ const AdminDashboard = ({ onBack }) => {
                 isRead: false
             });
 
-            Swal.fire('Berhasil', `Saldo masuk & Email notifikasi terkirim ke ${topUpForm.email}`, 'success');
+            Swal.fire({
+                title: 'Berhasil',
+                text: `Saldo masuk & Email notifikasi terkirim ke ${topUpForm.email}`,
+                icon: 'success',
+                confirmButtonText: 'OK',
+                buttonsStyling: false,
+                customClass: {
+                    popup: `rounded-2xl w-auto max-w-sm p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`,
+                    title: `text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`,
+                    htmlContainer: `text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`,
+                    confirmButton: 'px-6 py-2 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-md transition-colors !opacity-100'
+                }
+            });
             setTopUpForm({ email: '', amount: '' });
             setTopUpProof(null);
         } else {
@@ -1691,34 +1928,82 @@ const AdminDashboard = ({ onBack }) => {
                             <table className="w-full text-sm text-left relative">
                                 <thead className={`text-xs uppercase sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
                                     <tr>
-                                        <th className="px-4 py-3 whitespace-nowrap">Tanggal</th>
-                                        <th className="px-4 py-3 whitespace-nowrap">Keterangan</th>
-                                        <th className="px-4 py-3 whitespace-nowrap">Tipe</th>
-                                        <th className="px-4 py-3 whitespace-nowrap text-right">Nominal</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Tanggal Terakhir</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Nama Toko</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Detail</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">Total Saldo</th>
+                                        <th className="px-4 py-3 whitespace-nowrap text-right">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                                    {financialRecords.filter(r => r.type === 'in').length === 0 ? (
-                                        <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500 text-xs">Belum ada pemasukan periode ini.</td></tr>
+                                    {groupedIncomeRecords.length === 0 ? (
+                                        <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500 text-xs">Belum ada pemasukan periode ini.</td></tr>
                                     ) : (
-                                        financialRecords.filter(r => r.type === 'in').map((item) => (
-                                            <tr key={item.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
+                                        groupedIncomeRecords.map((item, idx) => (
+                                            <React.Fragment key={idx}>
+                                            <tr className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer`} onClick={() => setExpandedGroup(expandedGroup === (item.sellerId || idx) ? null : (item.sellerId || idx))}>
                                                 <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
-                                                    {new Date(item.date).toLocaleDateString('id-ID')} <br/>
-                                                    <span className="text-[10px] opacity-70">{new Date(item.date).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                    {new Date(item.lastDate).toLocaleDateString('id-ID')} <br/>
+                                                    <span className="text-[10px] opacity-70">{new Date(item.lastDate).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
                                                 </td>
-                                                <td className={`px-4 py-3 whitespace-nowrap font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                                                    {item.title}
+                                                <td className={`px-4 py-3 whitespace-nowrap font-bold text-xs ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                                    {item.storeName}
                                                 </td>
-                                                <td className="px-4 py-3 whitespace-nowrap">
-                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${item.category === 'Marketplace' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                        {item.category}
-                                                    </span>
+                                                <td className={`px-4 py-3 whitespace-nowrap text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    <button 
+                                                        className={`px-2 py-1 rounded font-bold flex items-center gap-1 transition-colors ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                                    >
+                                                        {item.transactionCount} Transaksi
+                                                        <ChevronDown size={12} className={`transition-transform duration-200 ${expandedGroup === (item.sellerId || idx) ? 'rotate-180' : ''}`}/>
+                                                    </button>
                                                 </td>
-                                                <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-green-600">
-                                                    + Rp {item.amount.toLocaleString('id-ID')}
+                                                <td className="px-4 py-3 whitespace-nowrap font-bold text-green-600 text-xs">
+                                                    Rp {item.currentBalance.toLocaleString('id-ID')}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                    {item.currentBalance > 0 ? (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); item.sellerData && handlePayout(item.sellerData); }}
+                                                            className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors shadow-sm"
+                                                        >
+                                                            Cairkan
+                                                        </button>
+                                                    ) : (
+                                                        <span className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 cursor-default">
+                                                            LUNAS
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
+                                            {expandedGroup === (item.sellerId || idx) && (
+                                                <tr>
+                                                    <td colSpan="5" className="p-0">
+                                                        <div className={`px-4 py-3 border-b border-dashed ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                            <table className="w-full text-xs">
+                                                                <thead className={`text-[10px] uppercase opacity-70 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                    <tr>
+                                                                        <th className="py-1 text-left">Waktu</th>
+                                                                        <th className="py-1 text-left">Produk</th>
+                                                                        <th className="py-1 text-right">Nominal</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                    {item.details.map((detail, dIdx) => (
+                                                                        <tr key={dIdx} className="border-b border-dashed border-gray-200 dark:border-slate-700 last:border-0">
+                                                                            <td className="py-2">
+                                                                                {new Date(detail.date).toLocaleDateString('id-ID')} <span className="opacity-60">| {new Date(detail.date).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                                            </td>
+                                                                            <td className="py-2 font-medium">{detail.title}</td>
+                                                                            <td className="py-2 text-right font-mono">Rp {detail.amount.toLocaleString('id-ID')}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            </React.Fragment>
                                         ))
                                     )}
                                 </tbody>
@@ -2434,55 +2719,55 @@ const AdminDashboard = ({ onBack }) => {
       {/* MODAL PENCAIRAN DANA (PAYOUT) */}
       {payoutModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center">
-              <h3 className="font-bold text-lg">Pencairan Dana Seller</h3>
+          <div className={`w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50">
+              <h3 className="font-bold text-base">Pencairan Dana Seller</h3>
               <button onClick={() => setPayoutModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full"><X size={20}/></button>
             </div>
             
-            <form onSubmit={handleProcessPayout} className="p-6 space-y-4">
-              <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
-                <p className="text-xs text-gray-500 mb-1">Saldo Tersedia</p>
-                <p className="text-2xl font-bold font-mono text-green-500">Rp {(payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0)).toLocaleString('id-ID')}</p>
-                <p className="text-xs text-gray-400 mt-1">{payoutModal.storeName || payoutModal.displayName}</p>
+            <form onSubmit={handleProcessPayout} className="p-5 space-y-3">
+              <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
+                <p className="text-[10px] text-gray-500 mb-0.5 font-bold uppercase tracking-wider">Saldo Tersedia</p>
+                <p className="text-xl font-bold font-mono text-green-600">Rp {(payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0)).toLocaleString('id-ID')}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{payoutModal.storeName || payoutModal.displayName}</p>
               </div>
 
               <div>
-                <label className="text-sm font-bold mb-2 block">Nominal Pencairan</label>
+                <label className="text-xs font-bold mb-1 block text-gray-500">Nominal Pencairan</label>
                 <div className="relative">
-                    <span className="absolute left-3 top-3 text-gray-500 font-bold">Rp</span>
+                    <span className="absolute left-3 top-2.5 text-gray-500 font-bold text-xs">Rp</span>
                     <input 
                         type="number" 
                         value={payoutAmount}
                         onChange={(e) => setPayoutAmount(e.target.value)}
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none font-bold ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-200 text-gray-800'}`}
+                        className={`w-full pl-9 pr-4 py-2 rounded-xl border outline-none font-bold text-sm ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-200 text-gray-800'}`}
                         placeholder="0"
                         autoFocus
                     />
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex justify-end">
                 <button 
                     type="button"
                     onClick={() => setPayoutAmount(payoutModal.balance !== undefined ? payoutModal.balance : (payoutModal.saldo || 0))}
-                    className="text-xs font-bold text-sky-600 hover:bg-sky-50 px-3 py-2 rounded-lg border border-sky-200 transition-colors w-full"
+                    className="text-[10px] font-bold text-sky-600 hover:bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors"
                 >
                     ⚡ Cairkan Semua
                 </button>
               </div>
 
-              <div className="pt-2 flex gap-3">
+              <div className="pt-2 flex gap-2">
                 <button 
                     type="button"
                     onClick={() => setPayoutModal(null)}
-                    className="flex-1 py-3 rounded-xl border font-bold text-sm hover:bg-gray-50 transition-colors dark:border-slate-600 dark:hover:bg-slate-700"
+                    className="flex-1 py-2 rounded-xl border font-bold text-xs hover:bg-gray-50 transition-colors dark:border-slate-600 dark:hover:bg-slate-700"
                 >
                     Batal
                 </button>
                 <button 
                     type="submit"
-                    className="flex-1 py-3 rounded-xl bg-green-500 text-white font-bold text-sm hover:bg-green-600 shadow-lg shadow-green-500/20 transition-colors"
+                    className="flex-1 py-2 rounded-xl bg-green-600 text-white font-bold text-xs hover:bg-green-700 shadow-sm transition-colors"
                 >
                     Proses Pencairan
                 </button>

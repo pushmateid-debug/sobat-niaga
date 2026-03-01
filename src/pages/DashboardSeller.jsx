@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle } from 'lucide-react';
 import { db } from '../config/firebase';
 import { useTheme } from '../context/ThemeContext';
-import { ref, get, set, push, remove, onValue, query, orderByChild, equalTo, update } from 'firebase/database';
+import { ref, get, set, push, remove, onValue, query, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
 import confetti from 'canvas-confetti';
 import SellerVerification from './SellerVerification';
 import Swal from 'sweetalert2';
@@ -66,6 +66,7 @@ const DashboardSeller = ({ user, onBack }) => {
   });
   const [sellerOrders, setSellerOrders] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]); // State Riwayat Penarikan
+  const [pendingWithdrawals, setPendingWithdrawals] = useState([]); // State Penarikan Pending
   const [incomingOrdersCount, setIncomingOrdersCount] = useState(0);
   const [saldoTertahan, setSaldoTertahan] = useState(0);
   const [saldoSiapCair, setSaldoSiapCair] = useState(0);
@@ -247,6 +248,14 @@ const DashboardSeller = ({ user, onBack }) => {
         setWithdrawals(loaded.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
       });
 
+      // 5. Load Pending Withdrawals (Request)
+      const pendingWithdrawalsRef = query(ref(db, 'withdrawal_requests'), orderByChild('sellerId'), equalTo(user.uid));
+      const unsubscribePendingWithdrawals = onValue(pendingWithdrawalsRef, (snap) => {
+        const data = snap.val();
+        const loaded = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+        setPendingWithdrawals(loaded);
+      });
+
       return () => {
         unsubscribeSeller();
         unsubscribeProducts();
@@ -254,6 +263,7 @@ const DashboardSeller = ({ user, onBack }) => {
         unsubscribeComp();
         unsubscribeWithdrawals();
         unsubscribeUsers();
+        unsubscribePendingWithdrawals();
       };
     }
   }, [user, compSettings.isActive, compSettings.startDate, compSettings.endDate]);
@@ -714,6 +724,94 @@ const DashboardSeller = ({ user, onBack }) => {
           Swal.fire('Error', 'Gagal mengupdate status pesanan.', 'error');
         }
       }
+    });
+  };
+
+  // Handle Request Withdrawal (Tarik Saldo)
+  const handleRequestWithdrawal = () => {
+    const currentBalance = sellerInfo?.balance || 0;
+    
+    if (currentBalance < 10000) {
+        Swal.fire('Saldo Kurang', 'Minimal penarikan Rp 10.000', 'warning');
+        return;
+    }
+
+    Swal.fire({
+      title: 'Tarik Saldo',
+      html: `
+        <div class="text-left font-sans">
+            <p class="text-xs text-gray-500 mb-2">Saldo Tersedia: <span class="font-bold text-green-600">Rp ${currentBalance.toLocaleString('id-ID')}</span></p>
+            <label class="text-xs font-bold text-gray-700">Nominal Penarikan</label>
+            <div class="relative mt-1">
+                <span class="absolute left-3 top-2.5 text-gray-500 text-xs font-bold">Rp</span>
+                <input type="number" id="withdrawAmount" class="w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:border-sky-500 outline-none" placeholder="0">
+            </div>
+            <div class="mt-2 flex justify-end">
+                <button type="button" id="btnWithdrawAll" class="px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">
+                    Tarik Semua Saldo
+                </button>
+            </div>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <p class="text-[10px] text-blue-800 leading-tight">
+                    ⚠️ Pastikan Nomor Rekening di "Pengaturan" sudah benar.
+                </p>
+            </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Konfirmasi',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#0ea5e9',
+      cancelButtonColor: '#64748b',
+      customClass: {
+          confirmButton: 'px-4 py-2 rounded-lg text-xs font-bold', // Slim button
+          cancelButton: 'px-4 py-2 rounded-lg text-xs font-bold',
+          popup: 'rounded-2xl'
+      },
+      didOpen: () => {
+          const input = document.getElementById('withdrawAmount');
+          const btnAll = document.getElementById('btnWithdrawAll');
+          if(btnAll && input) {
+            btnAll.addEventListener('click', () => {
+                input.value = currentBalance;
+            });
+          }
+      },
+      preConfirm: () => {
+          const amount = document.getElementById('withdrawAmount').value;
+          if (!amount || amount < 10000) {
+              Swal.showValidationMessage('Minimal penarikan Rp 10.000');
+              return false;
+          }
+          if (amount > currentBalance) {
+              Swal.showValidationMessage('Saldo tidak mencukupi');
+              return false;
+          }
+          return amount;
+      }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const amount = parseInt(result.value);
+            try {
+                await push(ref(db, 'withdrawal_requests'), {
+                    sellerId: user.uid,
+                    storeName: sellerInfo?.storeName || 'Toko',
+                    amount: amount,
+                    bankDetails: sellerInfo?.paymentDetails || {},
+                    status: 'pending',
+                    createdAt: serverTimestamp()
+                });
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Permintaan Terkirim',
+                    text: 'Admin akan memproses pencairanmu.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } catch (error) {
+                Swal.fire('Error', error.message, 'error');
+            }
+        }
     });
   };
 
@@ -1188,12 +1286,12 @@ const DashboardSeller = ({ user, onBack }) => {
 
             {/* Banner Join Competition (Jika Belum Join) */}
             {statusKompetisi && !sellerInfo?.isCompetitor && (
-              <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6 animate-in fade-in duration-700">
+              <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-700">
                 <div className="relative z-10">
-                  <h2 className="text-xl font-bold mb-1 flex items-center gap-2"><Trophy className="text-yellow-400" /> SobatNiaga Monthly Race</h2>
-                  <p className="text-indigo-200 text-sm">Jadilah Top Seller dan menangkan Total Hadiah <strong>Rp 300.000</strong> + Promosi Gratis!</p>
+                  <h2 className="text-lg font-bold mb-1 flex items-center gap-2"><Trophy className="text-yellow-400" size={20} /> SobatNiaga Monthly Race</h2>
+                  <p className="text-indigo-200 text-xs md:text-sm">Jadilah Top Seller dan menangkan Total Hadiah <strong>Rp 300.000</strong> + Promosi Gratis!</p>
                 </div>
-                <button onClick={handleJoinCompetition} className="relative z-10 bg-yellow-400 text-indigo-900 px-6 py-3 rounded-xl font-bold hover:bg-yellow-300 transition-all shadow-lg shadow-yellow-400/20 whitespace-nowrap">
+                <button onClick={handleJoinCompetition} className="relative z-10 bg-yellow-400 text-indigo-900 px-5 py-2 rounded-xl font-bold text-sm hover:bg-yellow-300 transition-all shadow-lg shadow-yellow-400/20 whitespace-nowrap active:scale-95">
                   Join Kompetisi
                 </button>
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
@@ -1332,10 +1430,17 @@ const DashboardSeller = ({ user, onBack }) => {
                         <span className="text-xs font-bold text-gray-400">Siap Cair</span>
                         <span className="font-price text-lg md:text-2xl font-bold text-green-600 tracking-wide whitespace-nowrap">Rp {saldoSiapCair.toLocaleString('id-ID')}</span>
                     </div>
+                    {/* Pending Withdrawal Indicator */}
+                    {pendingWithdrawals.length > 0 && (
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-slate-700">
+                            <span className="text-[10px] font-bold text-yellow-600 dark:text-yellow-500 flex items-center gap-1"><Timer size={12}/> Proses Cair</span>
+                            <span className="font-price text-sm font-bold text-yellow-600 dark:text-yellow-500 tracking-wide whitespace-nowrap">Rp {pendingWithdrawals.reduce((acc, curr) => acc + parseInt(curr.amount || 0), 0).toLocaleString('id-ID')}</span>
+                        </div>
+                    )}
                   </div>
                 </div>
                 <button 
-                    onClick={handleShowHistory}
+                    onClick={handleRequestWithdrawal}
                     className="mt-3 w-full py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center justify-center gap-1"
                 >
                     <DollarSign size={14} /> Tarik Saldo
@@ -1972,13 +2077,22 @@ const DashboardSeller = ({ user, onBack }) => {
             
             <h3 className={`text-lg font-bold mb-4 text-center ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Bukti Transfer Penarikan</h3>
             
-            <div className="bg-gray-100 rounded-xl overflow-hidden mb-4 flex-shrink-0 relative h-64 border border-gray-200">
-              <img 
-                src={selectedWithdrawalProof.proofUrl} 
-                alt="Bukti Transfer" 
-                className="w-full h-full object-contain" 
-              />
-            </div>
+            {/* FIX: Tampilkan gambar jika URL valid, jika tidak, tampilkan sebagai teks/catatan */}
+            {selectedWithdrawalProof.proofUrl && selectedWithdrawalProof.proofUrl.startsWith('http') ? (
+              <div className="bg-gray-100 rounded-xl overflow-hidden mb-4 flex-shrink-0 relative h-64 border border-gray-200">
+                <img 
+                  src={selectedWithdrawalProof.proofUrl} 
+                  alt="Bukti Transfer" 
+                  className="w-full h-full object-contain" 
+                />
+              </div>
+            ) : (
+              <div className={`p-4 rounded-xl mb-4 border text-center ${isDarkMode ? 'bg-slate-700 border-slate-600 text-gray-300' : 'bg-blue-50 border-blue-100 text-blue-800'}`}>
+                <Info size={20} className="mx-auto mb-2" />
+                <p className="text-sm font-bold">Catatan dari Admin:</p>
+                <p className="text-xs mt-1">{selectedWithdrawalProof.proofUrl || 'Tidak ada bukti/catatan.'}</p>
+              </div>
+            )}
 
             <div className="space-y-3 overflow-y-auto">
               <div className={`flex justify-between items-center border-b pb-2 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>

@@ -1,12 +1,12 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
+    ".read": "auth != null",
+    ".write": "auth != null",
     "users": {
+      ".indexOn": ["email"],
       "$uid": {
-        ".read": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
-        ".write": "auth != null && ($uid === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
-        ".validate": "auth.token.email === 'pushmate.id@gmail.com' || (!newData.hasChild('saldo') && !data.hasChild('saldo')) || (newData.child('saldo').val() === (data.child('saldo').exists() ? data.child('saldo').val() : 0))",
+        ".read": "auth != null && ($uid === auth.uid || root.child('admins').child(auth.uid).exists() || auth.token.email === 'pushmate.id@gmail.com')",
+        ".write": "auth != null && ($uid === auth.uid || root.child('admins').child(auth.uid).exists() || auth.token.email === 'pushmate.id@gmail.com')",
         "sellerInfo": {
           ".validate": "auth.token.email === 'pushmate.id@gmail.com' || ((!newData.hasChild('balance') && !data.hasChild('balance')) || (newData.child('balance').val() === (data.child('balance').exists() ? data.child('balance').val() : 0))) && ((!newData.hasChild('points_event') && !data.hasChild('points_event')) || (newData.child('points_event').val() === (data.child('points_event').exists() ? data.child('points_event').val() : 0)))"
         }
@@ -15,8 +15,8 @@
     "products": {
       ".read": true,
       "$productId": {
-        ".write": "auth != null && (newData.child('sellerId').val() === auth.uid || data.child('sellerId').val() === auth.uid || auth.token.email === 'pushmate.id@gmail.com')",
-        ".validate": "newData.hasChildren(['name', 'price']) && newData.child('price').isNumber()"
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['name', 'price'])"
       }
     },
     "orders": {
@@ -38,7 +38,8 @@
     },
     "notifications": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      ".write": "auth != null",
+      ".indexOn": ["userId"]
     },
     "drivers_locations": {
       ".read": "auth != null",

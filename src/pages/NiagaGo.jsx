@@ -582,23 +582,6 @@ const NiagaGo = ({ onOpenProfile }) => {
   // --- FETCH ACTIVE FOOD ORDERS (DRIVER) ---
   useEffect(() => {
     if (isDriverMode && userProfile?.uid) {
-      const ordersRef = query(ref(realDb, 'orders'), orderByChild('driverId'), equalTo(userProfile.uid));
-      const unsubscribe = onValue(ordersRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            const myOrders = Object.keys(data).map(key => ({ id: key, ...data[key], type: 'food' }));
-            setActiveFoodOrders(myOrders.filter(o => !o.hiddenForDriver));
-        } else {
-            setActiveFoodOrders([]);
-        }
-      });
-      return () => unsubscribe();
-    }
-  }, [isDriverMode, userProfile?.uid]);
-
-  // --- FETCH ACTIVE FOOD ORDERS (DRIVER) ---
-  useEffect(() => {
-    if (isDriverMode && userProfile?.uid) {
       // FIX: Gunakan realQuery (alias) untuk Realtime DB, bukan query (Firestore)
       const ordersRef = realQuery(ref(realDb, 'orders'), orderByChild('driverId'), equalTo(userProfile.uid));
       const unsubscribe = onValue(ordersRef, (snapshot) => {
@@ -721,9 +704,9 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // Helper: Upload ke Cloudinary (Optimasi Upload Gambar)
   const uploadToCloudinary = async (file, folder = 'sobatniaga/drivers') => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY;
-    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET;
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
+    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
     const timestamp = Math.round((new Date()).getTime() / 1000);
     
     const params = { folder: folder, timestamp: timestamp };
@@ -1376,7 +1359,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     e.preventDefault();
     
     // Cek Koneksi Database
-    if (!storage || !dbFirestore) {
+    if (!dbFirestore) {
       Swal.fire('System Error', 'Koneksi ke database terputus. Coba refresh halaman.', 'error');
       return;
     }
