@@ -796,13 +796,37 @@ const NiagaGo = ({ onOpenProfile }) => {
     
     // Cek HTTPS (Penting buat HP)
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        Swal.fire('Keamanan Browser', 'Fitur lokasi butuh koneksi aman (HTTPS). Coba refresh atau gunakan browser lain.', 'warning');
+        Swal.fire({
+            title: 'Keamanan Browser',
+            text: 'Fitur lokasi butuh koneksi aman (HTTPS). Coba refresh atau gunakan browser lain.',
+            icon: 'warning',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                title: 'text-lg font-bold text-gray-800',
+                htmlContainer: 'text-sm text-gray-600',
+                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+            }
+        });
         setIsLocating(false);
         return;
     }
 
     if (!("geolocation" in navigator)) {
-        Swal.fire('Error', 'Browser tidak mendukung Geolocation.', 'error');
+        Swal.fire({
+            title: 'Error',
+            text: 'Browser tidak mendukung Geolocation.',
+            icon: 'error',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                title: 'text-lg font-bold text-gray-800',
+                htmlContainer: 'text-sm text-gray-600',
+                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+            }
+        });
         setIsLocating(false);
         return;
     }
@@ -825,7 +849,19 @@ const NiagaGo = ({ onOpenProfile }) => {
                 setMapPickerMode(null);
             } catch (error) {
                 console.error("Error processing location:", error);
-                Swal.fire('Gagal', 'Terjadi kesalahan saat memproses lokasi.', 'error');
+                Swal.fire({
+                    title: 'Gagal',
+                    text: 'Terjadi kesalahan saat memproses lokasi.',
+                    icon: 'error',
+                    confirmButtonText: 'Oke',
+                    buttonsStyling: false,
+                    customClass: {
+                        popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                        title: 'text-lg font-bold text-gray-800',
+                        htmlContainer: 'text-sm text-gray-600',
+                        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+                    }
+                });
             } finally {
                 setIsLocating(false);
             }
@@ -843,7 +879,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                 text: msg,
                 icon: 'warning',
                 confirmButtonText: 'Oke',
-                confirmButtonColor: '#0ea5e9'
+                buttonsStyling: false,
+                customClass: {
+                    popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                    title: 'text-lg font-bold text-gray-800',
+                    htmlContainer: 'text-sm text-gray-600',
+                    confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+                }
             });
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Timeout dinaikkan jadi 15s buat HP
@@ -900,20 +942,54 @@ const NiagaGo = ({ onOpenProfile }) => {
       }
     }
 
-    // Cek Saldo (Proteksi Cekak)
-    if ((userProfile?.balance || 0) < parseInt(price)) {
-      Swal.fire({
-        title: 'Saldo Tidak Cukup',
-        text: `Saldo Anda kurang dari Rp ${parseInt(price).toLocaleString('id-ID')}. Silakan isi saldo dulu.`,
-        icon: 'warning',
-        confirmButtonText: 'Isi Saldo Sekarang',
-        cancelButtonText: 'Nanti Saja',
-        showCancelButton: true
-      }).then((result) => {
-        if (result.isConfirmed) {
-           if (onOpenProfile) onOpenProfile(); // Arahkan ke profil/topup
-        }
-      });
+    // --- NEW: Pilih Metode Pembayaran Sebelum Cari Driver ---
+    const { value: selectedPaymentMethod } = await Swal.fire({
+      title: 'Metode Pembayaran',
+      html: `<div class="text-left">
+              <p class="text-sm text-gray-600 mb-3">Total Tagihan: <b class="text-gray-800">Rp ${parseInt(price).toLocaleString('id-ID')}</b></p>
+             </div>`,
+      input: 'radio',
+      inputOptions: {
+        'saldo': `Saldo SobatNiaga (Sisa: Rp ${(userProfile?.balance || 0).toLocaleString('id-ID')})`,
+        'cash': 'Tunai / Cash (Bayar ke Driver)'
+      },
+      inputValue: 'saldo',
+      confirmButtonText: 'Lanjut Cari Driver',
+      confirmButtonColor: '#0ea5e9',
+      showCancelButton: true,
+      cancelButtonText: 'Batal',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`, // Force White Mode
+        title: `text-lg font-bold text-gray-800`,
+        input: 'text-sm text-gray-600',
+        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100 mt-4',
+        cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100 mt-4'
+      }
+    });
+
+    if (!selectedPaymentMethod) return;
+
+    // Cek Saldo (Hanya jika pilih Saldo)
+    if (selectedPaymentMethod === 'saldo' && (userProfile?.balance || 0) < parseInt(price)) {
+       Swal.fire({
+          title: 'Saldo Tidak Cukup',
+          text: `Saldo Anda kurang dari Rp ${parseInt(price).toLocaleString('id-ID')}.`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Isi Saldo Sekarang',
+          cancelButtonText: 'Nanti Saja',
+          buttonsStyling: false,
+          customClass: {
+              popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`,
+              title: `text-lg font-bold text-gray-800`,
+              htmlContainer: `text-sm text-gray-600`,
+              confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
+              cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+          }
+       }).then((result) => {
+          if (result.isConfirmed && onOpenProfile) onOpenProfile();
+       });
       return;
     }
 
@@ -939,10 +1015,23 @@ const NiagaGo = ({ onOpenProfile }) => {
         notes,
         status: 'pending',
         createdAt: serverTimestamp(),
-        driverId: null
+        driverId: null,
+        paymentMethod: selectedPaymentMethod // Simpan metode pembayaran
       });
       
-      Swal.fire('Order Terkirim!', 'Tunggu driver mengambil pesananmu.', 'success');
+      Swal.fire({
+        title: 'Order Terkirim!',
+        text: 'Tunggu driver mengambil pesananmu.',
+        icon: 'success',
+        confirmButtonText: 'Oke',
+        buttonsStyling: false,
+        customClass: {
+          popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+          title: 'text-lg font-bold text-gray-800',
+          htmlContainer: 'text-sm text-gray-600',
+          confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+        }
+      });
       setPickup('');
       setDestination('');
       setPrice('');
@@ -1207,37 +1296,35 @@ const NiagaGo = ({ onOpenProfile }) => {
       try {
         const currentBalance = parseInt(userProfile?.balance || 0);
         let useSaldo = false;
+        let paymentMethod = order.paymentMethod; // Ambil dari order yg dibuat
 
-        // Opsi Pembayaran (Super Wallet)
-        const inputOptions = {};
-        if (currentBalance >= order.price) {
-            inputOptions.saldo = `Saldo SobatNiaga (Rp ${currentBalance.toLocaleString('id-ID')})`;
+        // Fallback untuk order lama (Legacy)
+        if (!paymentMethod) {
+            const inputOptions = {};
+            if (currentBalance >= order.price) inputOptions.saldo = `Saldo (Rp ${currentBalance.toLocaleString('id-ID')})`;
+            inputOptions.manual = 'Transfer Manual';
+            
+            const { value: selected } = await Swal.fire({
+                title: 'Pilih Pembayaran',
+                input: 'radio',
+                inputOptions: inputOptions,
+                inputValue: currentBalance >= order.price ? 'saldo' : 'manual',
+                confirmButtonText: 'Lanjut',
+                showCancelButton: true
+            });
+            if (!selected) return;
+            paymentMethod = selected;
         }
-        inputOptions.manual = 'Transfer Manual / QRIS (Verifikasi Admin)';
 
-        const { value: paymentMethod } = await Swal.fire({
-            title: 'Pilih Metode Pembayaran',
-            text: `Total Tagihan: Rp ${order.price.toLocaleString('id-ID')}`,
-            input: 'radio',
-            inputOptions: inputOptions,
-            inputValue: currentBalance >= order.price ? 'saldo' : 'manual',
-            inputValidator: (value) => {
-                if (!value) return 'Pilih salah satu metode pembayaran!';
-            },
-            confirmButtonText: 'Lanjut Bayar',
-            confirmButtonColor: '#0ea5e9',
-            showCancelButton: true,
-            cancelButtonText: 'Batal'
-        });
-
-        if (!paymentMethod) return; // User cancel
-
+        // Proses Pembayaran
         if (paymentMethod === 'saldo') {
+            if (currentBalance < order.price) {
+                Swal.fire('Saldo Tidak Cukup', 'Silakan top up dulu.', 'error');
+                return;
+            }
             useSaldo = true;
-            // 1. Potong Saldo User (Instant)
             await update(ref(realDb, `users/${userProfile.uid}`), { balance: currentBalance - order.price });
             
-            // Notifikasi Saldo Terpotong
             await push(ref(realDb, 'notifications'), {
                 userId: userProfile.uid,
                 title: 'Pembayaran Berhasil',
@@ -1245,23 +1332,50 @@ const NiagaGo = ({ onOpenProfile }) => {
                 type: 'success',
                 createdAt: new Date().toISOString()
             });
+        } else if (paymentMethod === 'cash') {
+            useSaldo = false;
+            // Konfirmasi Cash
+            const confirm = await Swal.fire({
+                 title: 'Konfirmasi Driver',
+                 text: `Bayar Tunai Rp ${order.price.toLocaleString('id-ID')} ke Driver?`,
+                 icon: 'question',
+                 showCancelButton: true,
+                 confirmButtonText: 'Ya, Lanjut',
+                 cancelButtonText: 'Batal',
+                 buttonsStyling: false,
+                 customClass: {
+                    popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`,
+                    title: `text-lg font-bold text-gray-800`,
+                    confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
+                    cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+                 }
+            });
+            if (!confirm.isConfirmed) return;
         }
 
         // 2. Update Status Order
         await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
-            status: useSaldo ? 'verified' : 'accepted', // Verified = Langsung jalan (Saldo), Accepted = Bayar dulu (Manual)
+            status: (useSaldo || paymentMethod === 'cash') ? 'verified' : 'accepted', // Cash & Saldo langsung Verified (Jalan)
             driverId: offer.driverId,
             driverName: offer.driverName,
             driverPhone: offer.driverPhone,
             isPaid: useSaldo, // Tandai sudah dibayar jika pakai saldo
-            paymentMethod: useSaldo ? 'saldo' : 'manual'
+            paymentMethod: paymentMethod
         });
         
-        Swal.fire(
-            useSaldo ? 'Pembayaran Berhasil!' : 'Driver Dipilih!', 
-            useSaldo ? `Saldo terpotong. ${offer.driverName} akan segera menjemputmu.` : 'Silakan selesaikan pembayaran agar driver menjemput.', 
-            useSaldo ? 'success' : 'info'
-        );
+        Swal.fire({
+            title: (useSaldo || paymentMethod === 'cash') ? 'Driver Menuju Lokasi!' : 'Driver Dipilih!',
+            text: (useSaldo || paymentMethod === 'cash') ? `${offer.driverName} akan segera menjemputmu.` : 'Silakan selesaikan pembayaran.',
+            icon: 'success',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                title: 'text-lg font-bold text-gray-800',
+                htmlContainer: 'text-sm text-gray-600',
+                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+            }
+        });
       } catch (error) {
         console.error(error);
         Swal.fire('Error', 'Gagal memilih driver.', 'error');
@@ -1299,7 +1413,19 @@ const NiagaGo = ({ onOpenProfile }) => {
             paymentProof: url,
             status: 'paid'
         });
-        Swal.fire('Berhasil', 'Bukti pembayaran terkirim. Tunggu verifikasi Admin ya!', 'success');
+        Swal.fire({
+            title: 'Berhasil',
+            text: 'Bukti pembayaran terkirim. Tunggu verifikasi Admin ya!',
+            icon: 'success',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                title: 'text-lg font-bold text-gray-800',
+                htmlContainer: 'text-sm text-gray-600',
+                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+            }
+        });
         setPaymentModalOpen(false);
     } catch (error) {
         console.error(error);
@@ -1324,7 +1450,15 @@ const NiagaGo = ({ onOpenProfile }) => {
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Ya, Selesai',
-      cancelButtonText: 'Belum'
+      cancelButtonText: 'Belum',
+      buttonsStyling: false,
+      customClass: {
+        popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+        title: 'text-lg font-bold text-gray-800',
+        htmlContainer: 'text-sm text-gray-600',
+        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/30 transition-all !opacity-100',
+        cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+      }
     });
 
     if (result.isConfirmed) {
@@ -1354,7 +1488,19 @@ const NiagaGo = ({ onOpenProfile }) => {
             });
         }
         
-        Swal.fire('Terima kasih!', 'Perjalanan selesai. Jangan lupa kasih bintang 5!', 'success');
+        Swal.fire({
+            title: 'Terima kasih!',
+            text: 'Perjalanan selesai. Jangan lupa kasih bintang 5!',
+            icon: 'success',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+                title: 'text-lg font-bold text-gray-800',
+                htmlContainer: 'text-sm text-gray-600',
+                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+            }
+        });
       } catch (error) {
         console.error(error);
         Swal.fire('Error', 'Gagal menyelesaikan order.', 'error');
@@ -1384,7 +1530,19 @@ const NiagaGo = ({ onOpenProfile }) => {
         balance: (userProfile.balance || 0) - parseInt(withdrawData.amount)
       });
 
-      Swal.fire('Permintaan Terkirim', 'Admin akan memproses penarikanmu.', 'success');
+      Swal.fire({
+        title: 'Permintaan Terkirim',
+        text: 'Admin akan memproses penarikanmu.',
+        icon: 'success',
+        confirmButtonText: 'Oke',
+        buttonsStyling: false,
+        customClass: {
+            popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+            title: 'text-lg font-bold text-gray-800',
+            htmlContainer: 'text-sm text-gray-600',
+            confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+        }
+      });
       setShowWithdraw(false);
       setWithdrawData({ bank: '', number: '', name: '', amount: '' });
     } catch (error) {
@@ -1452,9 +1610,9 @@ const NiagaGo = ({ onOpenProfile }) => {
         confirmButtonText: 'OK',
         buttonsStyling: false,
         customClass: {
-            popup: `rounded-2xl w-auto max-w-sm p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`,
-            title: `text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`,
-            htmlContainer: `text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`,
+            popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`,
+            title: `text-lg font-bold text-gray-900`,
+            htmlContainer: `text-sm text-gray-600`,
             confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/30 transition-all !opacity-100'
         }
       });
