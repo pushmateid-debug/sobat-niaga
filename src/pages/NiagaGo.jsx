@@ -151,21 +151,28 @@ const MapSearchControl = () => {
   const [results, setResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query) return;
-    setIsSearching(true);
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=id&addressdetails=1`);
-      if (!response.ok) throw new Error("Gagal mengambil data lokasi");
-      const data = await response.json();
-      setResults(data);
-    } catch (err) {
-      console.debug("Search Error (Nominatim):", err.message);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  // Debounce Search Effect (Autocomplete)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (query.trim().length >= 3) { // Minimal 3 karakter
+        setIsSearching(true);
+        try {
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=id&addressdetails=1`);
+          if (!response.ok) throw new Error("Gagal mengambil data lokasi");
+          const data = await response.json();
+          setResults(data);
+        } catch (err) {
+          console.debug("Search Error:", err.message);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setResults([]);
+      }
+    }, 800); // Delay 800ms biar gak spam API
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
 
   const handleSelect = (lat, lon) => {
     map.flyTo([lat, lon], 16);
@@ -175,24 +182,26 @@ const MapSearchControl = () => {
 
   return (
     <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2">
-      <form onSubmit={handleSearch} className="relative shadow-lg rounded-xl">
+      <div className="relative shadow-lg rounded-xl bg-white">
         <input 
           type="text" 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Cari lokasi (cth: Kampus, Stasiun)..." 
-          className="w-full p-3 pl-10 pr-10 rounded-2xl border-none outline-none text-sm font-medium bg-white/95 backdrop-blur-sm focus:bg-white transition-all text-gray-800 shadow-lg placeholder:text-gray-400"
+          className="w-full py-2.5 pl-10 pr-10 rounded-xl border-none outline-none text-sm font-medium bg-transparent focus:bg-white transition-all text-gray-800 placeholder:text-gray-400"
         />
-        <div className="absolute left-3 top-3 text-gray-400"><LocateFixed size={18} /></div>
+        <div className="absolute left-3 top-2.5 text-gray-400">
+            {isSearching ? <Loader2 size={18} className="animate-spin text-sky-500" /> : <LocateFixed size={18} />}
+        </div>
         {query && (
-            <button type="button" onClick={() => {setQuery(''); setResults([]);}} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+            <button type="button" onClick={() => {setQuery(''); setResults([]);}} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
                 <X size={18} />
             </button>
         )}
-      </form>
+      </div>
       
       {results.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto border border-gray-100">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto border border-gray-100 animate-in fade-in slide-in-from-top-2">
           {results.map((res, idx) => (
             <div 
               key={idx} 
@@ -784,6 +793,14 @@ const NiagaGo = ({ onOpenProfile }) => {
   // Handle Gunakan Lokasi Saat Ini (GPS)
   const handleUseCurrentLocation = () => {
     setIsLocating(true);
+    
+    // Cek HTTPS (Penting buat HP)
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        Swal.fire('Keamanan Browser', 'Fitur lokasi butuh koneksi aman (HTTPS). Coba refresh atau gunakan browser lain.', 'warning');
+        setIsLocating(false);
+        return;
+    }
+
     if (!("geolocation" in navigator)) {
         Swal.fire('Error', 'Browser tidak mendukung Geolocation.', 'error');
         setIsLocating(false);
@@ -792,41 +809,44 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
-            const { latitude, longitude } = pos.coords;
-            const address = await fetchAddress(latitude, longitude);
-            
-            if (mapPickerMode === 'pickup') {
-                setPickup(address);
-                setPickupCoords({ lat: latitude, lng: longitude });
-                if (destCoords) calculateEstimatedPrice({ lat: latitude, lng: longitude }, destCoords, vehicleType);
-            } else {
-                setDestination(address);
-                setDestCoords({ lat: latitude, lng: longitude });
-                if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat: latitude, lng: longitude }, vehicleType);
+            try {
+                const { latitude, longitude } = pos.coords;
+                const address = await fetchAddress(latitude, longitude);
+                
+                if (mapPickerMode === 'pickup') {
+                    setPickup(address);
+                    setPickupCoords({ lat: latitude, lng: longitude });
+                    if (destCoords) calculateEstimatedPrice({ lat: latitude, lng: longitude }, destCoords, vehicleType);
+                } else {
+                    setDestination(address);
+                    setDestCoords({ lat: latitude, lng: longitude });
+                    if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat: latitude, lng: longitude }, vehicleType);
+                }
+                setMapPickerMode(null);
+            } catch (error) {
+                console.error("Error processing location:", error);
+                Swal.fire('Gagal', 'Terjadi kesalahan saat memproses lokasi.', 'error');
+            } finally {
+                setIsLocating(false);
             }
-            setMapPickerMode(null);
-            setIsLocating(false);
         },
         (err) => {
             setIsLocating(false);
             console.error(err);
-            if (err.code === 1) { // PERMISSION_DENIED
-                Swal.fire({
-                    title: 'Izin Lokasi Ditolak',
-                    text: 'Mohon aktifkan izin lokasi di pengaturan browser (klik icon gembok di address bar) agar fitur ini bisa berjalan.',
-                    icon: 'warning',
-                    confirmButtonText: 'Oke, Paham',
-                    confirmButtonColor: '#0ea5e9'
-                });
-            } else if (err.code === 2) { // POSITION_UNAVAILABLE
-                 Swal.fire('Gagal', 'Sinyal GPS lemah atau tidak tersedia.', 'error');
-            } else if (err.code === 3) { // TIMEOUT
-                 Swal.fire('Timeout', 'Waktu permintaan lokasi habis. Coba lagi.', 'error');
-            } else {
-                Swal.fire('Gagal', 'Terjadi kesalahan saat mengambil lokasi.', 'error');
-            }
+            let msg = 'Gagal mengambil lokasi.';
+            if (err.code === 1) msg = 'Izin lokasi ditolak. Aktifkan di pengaturan browser.';
+            else if (err.code === 2) msg = 'Sinyal GPS tidak tersedia.';
+            else if (err.code === 3) msg = 'Waktu permintaan habis (Timeout).';
+            
+            Swal.fire({
+                title: 'Gagal Ambil Lokasi',
+                text: msg,
+                icon: 'warning',
+                confirmButtonText: 'Oke',
+                confirmButtonColor: '#0ea5e9'
+            });
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Timeout dinaikkan jadi 15s buat HP
     );
   };
 
@@ -2170,18 +2190,18 @@ const NiagaGo = ({ onOpenProfile }) => {
               <MapPin size={40} className="text-red-600 fill-current drop-shadow-xl" />
             </div>
 
-            <div className="p-4 border-t bg-white flex flex-col gap-3">
+            <div className="p-3 border-t bg-white flex flex-col gap-2">
               <button 
                 onClick={handleUseCurrentLocation} 
                 disabled={isLocating}
-                className={`w-full py-3 bg-white border-2 border-sky-600 text-sky-600 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-sky-50 ${isLocating ? 'opacity-70 cursor-wait' : ''}`}
+                className={`w-full py-2 bg-white border border-sky-600 text-sky-600 rounded-lg font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-sky-50 transition-all !opacity-100 ${isLocating ? 'cursor-wait' : ''}`}
               >
-                {isLocating ? <Loader2 size={18} className="animate-spin" /> : <LocateFixed size={18} />} 
-                {isLocating ? 'Mencari Lokasi...' : 'Gunakan Lokasi Saat Ini'}
+                {isLocating ? <Loader2 size={16} className="animate-spin" /> : <LocateFixed size={16} />} 
+                <span className="text-xs">{isLocating ? 'Mencari Lokasi...' : 'Gunakan Lokasi Saat Ini'}</span>
               </button>
-              <div className="flex gap-3">
-                <button onClick={() => setMapPickerMode(null)} className="flex-1 py-3 border rounded-xl font-bold text-gray-600 hover:bg-gray-50">Batal</button>
-                <button onClick={handleConfirmLocation} className="flex-1 py-3 bg-sky-600 text-white rounded-xl font-bold shadow-lg hover:bg-sky-700">Konfirmasi Lokasi Ini</button>
+              <div className="flex gap-2">
+                <button onClick={() => setMapPickerMode(null)} className="flex-1 py-2 border rounded-lg font-bold text-gray-600 hover:bg-gray-50 text-xs !opacity-100">Batal</button>
+                <button onClick={handleConfirmLocation} className="flex-1 py-2 bg-sky-600 text-white rounded-lg font-bold shadow-lg hover:bg-sky-700 text-xs !opacity-100">Konfirmasi Lokasi Ini</button>
               </div>
             </div>
           </div>
