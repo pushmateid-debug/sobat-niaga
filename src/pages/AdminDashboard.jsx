@@ -695,7 +695,8 @@ const AdminDashboard = ({ onBack }) => {
         // 2. Update role user di Realtime Database (Biar tombol Mode Driver muncul di user)
         await update(ref(realDb, `users/${req.userId}`), {
           role: 'driver',
-          plateNumber: req.plateNumber || 'N/A' // Simpan plat nomor
+          plateNumber: req.plateNumber || 'N/A', // Simpan plat nomor
+          vehicles: req.vehicles || null // Simpan data armada (Motor/Mobil)
         });
 
         Swal.fire('Berhasil', 'Driver berhasil diverifikasi!', 'success');

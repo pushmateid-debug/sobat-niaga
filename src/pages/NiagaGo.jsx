@@ -253,7 +253,7 @@ const AutoLocate = () => {
 };
 
 // Helper: Nearby Drivers Layer (Live Standby Drivers)
-const NearbyDrivers = ({ driversLocations, center }) => {
+const NearbyDrivers = ({ driversLocations, center, filterType }) => {
   if (!driversLocations || !center) return null;
 
   const activeDrivers = Object.keys(driversLocations).map(key => ({
@@ -267,6 +267,9 @@ const NearbyDrivers = ({ driversLocations, center }) => {
 
       // Check valid coordinates
       if (!d.lat || !d.lng) return false;
+
+      // 3. Cek Tipe Kendaraan (Filter Penumpang)
+      if (filterType && d.vehicleType !== filterType) return false;
 
       // 2. Cek Jarak (Zona)
       // Pastikan icon motor hanya muncul jika dalam radius ZONE_RADIUS
@@ -293,7 +296,7 @@ const NearbyDrivers = ({ driversLocations, center }) => {
 };
 
 // --- KOMPONEN LIVE TRACKING MAP ---
-const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
+const TrackingMap = ({ driverId, pickupCoords, status, driversLocations, passengerVehicleType }) => {
   const [driverPos, setDriverPos] = useState(null);
   const [driverInfo, setDriverInfo] = useState(null);
   const [userPos, setUserPos] = useState(null);
@@ -346,7 +349,7 @@ const TrackingMap = ({ driverId, pickupCoords, status, driversLocations }) => {
                     <Circle center={pickupCoords || userPos} radius={2000} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.1, weight: 1 }} />
                   </>
                 )}
-                <NearbyDrivers driversLocations={driversLocations} center={pickupCoords || userPos} />
+                <NearbyDrivers driversLocations={driversLocations} center={pickupCoords || userPos} filterType={passengerVehicleType} />
             </>
         )}
 
@@ -444,6 +447,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // State User & Role
   const [userProfile, setUserProfile] = useState(null);
   const [isDriverMode, setIsDriverMode] = useState(false);
+  const [activeVehicle, setActiveVehicle] = useState('motor'); // 'motor' | 'mobil' (Status Driver saat ini)
   const [driverService, setDriverService] = useState('ojek'); // 'ojek' | 'food'
   const [userLocation, setUserLocation] = useState(null); // Lokasi GPS User (Untuk proteksi order jauh)
 
@@ -481,6 +485,10 @@ const NiagaGo = ({ onOpenProfile }) => {
     email: '', 
     phone: '', 
     plateNumber: '', // Plat nomor
+    vehicles: {
+      motor: { active: true, plate: '' },
+      mobil: { active: false, plate: '' }
+    },
     services: { niagaGo: true, niagaFood: false } // Default NiagaGo dicentang
   });
   const [ktmFile, setKtmFile] = useState(null);
@@ -696,7 +704,7 @@ const NiagaGo = ({ onOpenProfile }) => {
               status: isBusy ? 'busy' : 'standby', // Kirim status driver
               updatedAt: Date.now(),
               name: userProfile.displayName || 'Driver',
-              vehicleType: 'motor' // Default
+              vehicleType: activeVehicle // Kirim tipe kendaraan aktif
             });
           }, 
           (err) => { 
@@ -709,7 +717,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     return () => {
       if (watchId) navigator.geolocation.clearWatch(watchId);
     };
-  }, [isDriverMode, orders, userProfile]);
+  }, [isDriverMode, orders, userProfile, activeVehicle]);
 
   // Helper: Upload ke Cloudinary (Optimasi Upload Gambar)
   const uploadToCloudinary = async (file, folder = 'sobatniaga/drivers') => {
@@ -901,6 +909,54 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // --- ACTIONS ---
   
+  // 0. Handle Toggle Driver Mode (Dengan Pilihan Armada)
+  const handleToggleDriverMode = async () => {
+    if (isDriverMode) {
+      setIsDriverMode(false);
+      // Set offline di DB
+      if (userProfile?.uid) {
+        update(ref(realDb, `drivers_locations/${userProfile.uid}`), { status: 'offline' });
+      }
+      return;
+    }
+
+    // Cek kendaraan yang terdaftar
+    const vehicles = userProfile?.vehicles || {};
+    const hasMotor = vehicles.motor?.active;
+    const hasMobil = vehicles.mobil?.active;
+
+    const inputOptions = {};
+    if (hasMotor) inputOptions.motor = `Motor (${vehicles.motor.plate})`;
+    if (hasMobil) inputOptions.mobil = `Mobil (${vehicles.mobil.plate})`;
+
+    // Fallback jika data lama (belum ada object vehicles)
+    if (!hasMotor && !hasMobil) {
+        if (userProfile?.plateNumber) {
+             inputOptions.motor = `Kendaraan (${userProfile.plateNumber})`;
+        } else {
+             Swal.fire('Data Kendaraan Tidak Ditemukan', 'Silakan hubungi admin.', 'error');
+             return;
+        }
+    }
+
+    const { value } = await Swal.fire({
+      title: 'Hari ini narik pakai apa?',
+      text: 'Pilih kendaraan yang kamu gunakan hari ini.',
+      input: 'radio',
+      inputOptions: inputOptions,
+      inputValue: hasMotor ? 'motor' : (hasMobil ? 'mobil' : 'motor'),
+      confirmButtonText: 'Lanjut On-Bid',
+      showCancelButton: true,
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#0ea5e9'
+    });
+
+    if (value) {
+      setActiveVehicle(value);
+      setIsDriverMode(true);
+    }
+  };
+
   // 1. User Membuat Order
   const handleCreateOrder = async (e) => {
     e.preventDefault();
@@ -1582,6 +1638,18 @@ const NiagaGo = ({ onOpenProfile }) => {
       return;
     }
 
+    // Validasi Kendaraan untuk NiagaGo
+    if (regForm.services.niagaGo) {
+        if (!regForm.vehicles.motor.active && !regForm.vehicles.mobil.active) {
+            Swal.fire('Pilih Kendaraan', 'Untuk layanan Niaga Go, wajib pilih minimal satu kendaraan (Motor/Mobil).', 'warning');
+            return;
+        }
+        if ((regForm.vehicles.motor.active && !regForm.vehicles.motor.plate) || (regForm.vehicles.mobil.active && !regForm.vehicles.mobil.plate)) {
+            Swal.fire('Plat Nomor Wajib', 'Mohon isi plat nomor kendaraan yang dipilih.', 'warning');
+            return;
+        }
+    }
+
     setIsRegistering(true);
     try {
       console.log("Memulai proses pendaftaran...");
@@ -1596,7 +1664,11 @@ const NiagaGo = ({ onOpenProfile }) => {
         name: regForm.name,
         email: regForm.email,
         phone: regForm.phone,
-        plateNumber: regForm.plateNumber,
+        plateNumber: regForm.vehicles.motor.active ? regForm.vehicles.motor.plate : regForm.vehicles.mobil.plate, // Legacy fallback
+        vehicles: {
+          motor: regForm.vehicles.motor.active ? { active: true, plate: regForm.vehicles.motor.plate } : { active: false },
+          mobil: regForm.vehicles.mobil.active ? { active: true, plate: regForm.vehicles.mobil.plate } : { active: false }
+        },
         services: regForm.services, // Simpan layanan yang dipilih
         ktmUrl: ktmUrl,
         status: 'pending',
@@ -1770,9 +1842,52 @@ const NiagaGo = ({ onOpenProfile }) => {
                   <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="08xxxxxxxxxx" required />
                 </div>
 
-                <div className="space-y-1">
-                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Plat Nomor Kendaraan</label>
-                  <input type="text" value={regForm.plateNumber} onChange={(e) => setRegForm({...regForm, plateNumber: e.target.value.toUpperCase()})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="Contoh: P 1234 AA" required />
+                <div className="space-y-2">
+                  <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Jenis Armada & Plat Nomor</label>
+                  
+                  {/* Motor */}
+                  <div className={`p-3 rounded-xl border transition-all ${regForm.vehicles.motor.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className="flex items-center gap-3 mb-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={regForm.vehicles.motor.active} 
+                        onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, motor: {...regForm.vehicles.motor, active: e.target.checked}}})} 
+                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600" 
+                      />
+                      <span className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Motor</span>
+                    </label>
+                    {regForm.vehicles.motor.active && (
+                      <input 
+                        type="text" 
+                        placeholder="Plat Nomor Motor (P 1234 AB)" 
+                        value={regForm.vehicles.motor.plate} 
+                        onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, motor: {...regForm.vehicles.motor, plate: e.target.value.toUpperCase()}}})} 
+                        className={`w-full p-2 rounded-lg border text-sm mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-800'}`} 
+                      />
+                    )}
+                  </div>
+
+                  {/* Mobil */}
+                  <div className={`p-3 rounded-xl border transition-all ${regForm.vehicles.mobil.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className="flex items-center gap-3 mb-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={regForm.vehicles.mobil.active} 
+                        onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, mobil: {...regForm.vehicles.mobil, active: e.target.checked}}})} 
+                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600" 
+                      />
+                      <span className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Mobil</span>
+                    </label>
+                    {regForm.vehicles.mobil.active && (
+                      <input 
+                        type="text" 
+                        placeholder="Plat Nomor Mobil (P 1234 AB)" 
+                        value={regForm.vehicles.mobil.plate} 
+                        onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, mobil: {...regForm.vehicles.mobil, plate: e.target.value.toUpperCase()}}})} 
+                        className={`w-full p-2 rounded-lg border text-sm mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-800'}`} 
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -1838,7 +1953,7 @@ const NiagaGo = ({ onOpenProfile }) => {
           {/* Toggle Role Button (Hanya jika user adalah Driver) */}
           {userProfile?.role === 'driver' ? (
             <button 
-              onClick={() => setIsDriverMode(!isDriverMode)}
+              onClick={handleToggleDriverMode}
               className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDriverMode ? 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/30' : (isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100')}`}
             >
               {isDriverMode ? '👨‍✈️ Mode Driver Aktif' : '👤 Mode Penumpang'}
@@ -1847,7 +1962,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             // Tombol Daftar Driver
             latestReg?.status === 'approved' ? (
               <button 
-                onClick={() => setIsDriverMode(true)}
+                onClick={handleToggleDriverMode}
                 className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100'}`}
               >
                 Masuk Mode Driver
@@ -1886,6 +2001,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 }`}
               >
                 <Bike size={16} /> Ojek
+                {activeVehicle === 'mobil' ? <Car size={16} /> : <Bike size={16} />} Ojek ({activeVehicle === 'mobil' ? 'Mobil' : 'Motor'})
               </button>
               <button
                 onClick={() => setDriverService('food')}
@@ -2130,7 +2246,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 {/* 0. STATUS PENDING: User Cari Driver */}
                 {!isDriverMode && order.status === 'pending' && order.type !== 'food' && (
                     <div className="flex flex-col gap-3 w-full mb-3">
-                        <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" driversLocations={driversLocations} />
+                        <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" driversLocations={driversLocations} passengerVehicleType={order.vehicleType} />
                         <p className="text-xs text-center text-gray-500 animate-pulse">Sedang mencari driver di sekitarmu...</p>
                     </div>
                 )}
@@ -2341,6 +2457,7 @@ const NiagaGo = ({ onOpenProfile }) => {
               <MyLocationControl />
               {/* Scan Driver di Lokasi Pilihan (Visual Feedback) */}
               {tempPickerCenter && <NearbyDrivers driversLocations={driversLocations} center={tempPickerCenter} />}
+              {tempPickerCenter && <NearbyDrivers driversLocations={driversLocations} center={tempPickerCenter} filterType={vehicleType} />}
             </MapContainer>
             
             {/* Center Pin Icon (Overlay) */}
