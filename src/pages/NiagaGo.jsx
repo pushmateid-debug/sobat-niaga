@@ -1846,13 +1846,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                   <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Jenis Armada & Plat Nomor</label>
                   
                   {/* Motor */}
-                  <div className={`p-3 rounded-xl border transition-all ${regForm.vehicles.motor.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
-                    <label className="flex items-center gap-3 mb-2 cursor-pointer">
+                  <div className={`p-2.5 rounded-xl border transition-all shadow-sm ${regForm.vehicles.motor.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className="flex items-center gap-3 mb-1 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={regForm.vehicles.motor.active} 
                         onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, motor: {...regForm.vehicles.motor, active: e.target.checked}}})} 
-                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600" 
+                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500 accent-green-600" 
                       />
                       <span className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Motor</span>
                     </label>
@@ -1862,19 +1862,19 @@ const NiagaGo = ({ onOpenProfile }) => {
                         placeholder="Plat Nomor Motor (P 1234 AB)" 
                         value={regForm.vehicles.motor.plate} 
                         onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, motor: {...regForm.vehicles.motor, plate: e.target.value.toUpperCase()}}})} 
-                        className={`w-full p-2 rounded-lg border text-sm mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-800'}`} 
+                        className={`w-full py-1.5 px-3 rounded-lg border text-xs mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`} 
                       />
                     )}
                   </div>
 
                   {/* Mobil */}
-                  <div className={`p-3 rounded-xl border transition-all ${regForm.vehicles.mobil.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
-                    <label className="flex items-center gap-3 mb-2 cursor-pointer">
+                  <div className={`p-2.5 rounded-xl border transition-all shadow-sm ${regForm.vehicles.mobil.active ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className="flex items-center gap-3 mb-1 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={regForm.vehicles.mobil.active} 
                         onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, mobil: {...regForm.vehicles.mobil, active: e.target.checked}}})} 
-                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600" 
+                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500 accent-green-600" 
                       />
                       <span className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Mobil</span>
                     </label>
@@ -1884,7 +1884,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                         placeholder="Plat Nomor Mobil (P 1234 AB)" 
                         value={regForm.vehicles.mobil.plate} 
                         onChange={e => setRegForm({...regForm, vehicles: {...regForm.vehicles, mobil: {...regForm.vehicles.mobil, plate: e.target.value.toUpperCase()}}})} 
-                        className={`w-full p-2 rounded-lg border text-sm mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-800'}`} 
+                        className={`w-full py-1.5 px-3 rounded-lg border text-xs mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`} 
                       />
                     )}
                   </div>
@@ -1893,21 +1893,21 @@ const NiagaGo = ({ onOpenProfile }) => {
                 <div className="space-y-1">
                   <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Layanan yang Diambil</label>
                   <div className="space-y-2 pt-2">
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaGo ? 'border-green-500 bg-white dark:bg-slate-800 ring-1 ring-green-500' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaGo ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
                       <input 
                         type="checkbox" 
                         checked={regForm.services.niagaGo}
                         onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaGo: e.target.checked}})}
-                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600"
+                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500 accent-green-600"
                       />
                       <span className={`font-medium text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Niaga Go (Antar Penumpang)</span>
                     </label>
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaFood ? 'border-green-500 bg-white dark:bg-slate-800 ring-1 ring-green-500' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+                    <label className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all shadow-sm ${regForm.services.niagaFood ? 'border-green-500 bg-white ring-1 ring-green-500 dark:bg-slate-800' : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
                       <input 
                         type="checkbox" 
                         checked={regForm.services.niagaFood}
                         onChange={(e) => setRegForm({...regForm, services: {...regForm.services, niagaFood: e.target.checked}})}
-                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500 accent-green-600"
+                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500 accent-green-600"
                       />
                       <span className={`font-medium text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Niaga Food (Antar Makanan)</span>
                     </label>
