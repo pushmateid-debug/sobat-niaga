@@ -142,8 +142,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
   const displayAddress = sellerData?.sellerInfo?.storeAddress || 'Lokasi tidak tersedia';
   // Fallback ke placeholder jika photoURL kosong/null/undefined
   const displayPhoto = sellerData?.photoURL && sellerData.photoURL !== '' 
-    ? sellerData.photoURL 
-    : 'https://via.placeholder.com/150?text=SobatNiaga';
+    ? sellerData.photoURL
+    : '/placeholder.png'; // Ganti ke path lokal
   const isTrusted = sellerData?.sellerInfo?.isTrustedSeller || false;
 
   return (
@@ -193,7 +193,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
                         src={displayPhoto} 
                         alt="Store Profile" 
                         className="w-full h-full object-cover rounded-full"
-                        onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=SobatNiaga'; }} 
+                        onError={(e) => { e.target.src = '/placeholder.png'; }} // Ganti ke path lokal
                     />
                 </div>
                 {isTrusted && (
@@ -319,9 +319,10 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
                         >
                             <div className="relative aspect-square bg-gray-50 overflow-hidden">
                                 <img 
-                                    src={product.mediaUrl || 'https://via.placeholder.com/150'} 
+                                    src={product.mediaUrl || '/placeholder.png'} // Ganti ke path lokal
                                     alt={product.name} 
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                                    loading="lazy" // Tambahkan lazy loading
                                 />
                                 {product.voucherCode && (
                                     <div className="absolute bottom-2 left-2 bg-sky-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
