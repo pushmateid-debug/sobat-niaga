@@ -21,7 +21,6 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
         const userSnap = await get(ref(db, `users/${sellerId}`));
         if (userSnap.exists()) {
           const data = userSnap.val();
-          console.log("DEBUG: Data Seller (Cek photoURL):", data); // Debugging: Cek di Console Browser
           setSellerData(data);
         }
 

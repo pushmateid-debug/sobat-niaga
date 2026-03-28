@@ -41,7 +41,7 @@ ChartJS.register(
 
 const ImageUploader = ({ label, currentUrl, onFileSelect }) => {
   const imgSrc = typeof currentUrl === 'object' ? currentUrl?.url : currentUrl;
-  return (
+    return (
   <div className="space-y-2">
     <label className="block text-xs font-bold opacity-70">{label}</label>
     <div className="relative aspect-square w-full rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-slate-700 transition-all group">
@@ -71,7 +71,7 @@ const ImageUploader = ({ label, currentUrl, onFileSelect }) => {
       )}
     </div>
   </div>
-  );
+    );
 };
 
 // Helper: Hitung Biaya Admin (Sama dengan logic di Seller)
@@ -107,10 +107,12 @@ const AdminDashboard = ({ onBack }) => {
   const [flashDeal, setFlashDeal] = useState({ isActive: false, endTime: '', bannerUrl: '', selectedProducts: {}, discountLabel: '' });
   const [transactions, setTransactions] = useState([]);
   const [niagaOrdersToVerify, setNiagaOrdersToVerify] = useState([]); // Order NiagaGo status 'paid'
+  const [verificationQueue, setVerificationQueue] = useState([]); // State khusus untuk verifikasi marketplace
 
   // State Chat
   const [chatList, setChatList] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
+  const [selectedChatName, setSelectedChatName] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [adminMessage, setAdminMessage] = useState('');
   const messagesEndRef = useRef(null);
@@ -205,15 +207,35 @@ const AdminDashboard = ({ onBack }) => {
   }, []);
 
   // Fetch Marketplace Orders (Realtime DB) untuk Laporan Keuangan
+  // Menggabungkan listener untuk 'transactions' dan 'marketplaceSales' untuk efisiensi
   useEffect(() => {
     const ordersRef = ref(realDb, 'orders');
     const unsubscribe = onValue(ordersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const completedOrders = Object.keys(data)
-          .map(key => ({ id: key, ...data[key], type: 'Marketplace' }))
-          .filter(o => o.status === 'completed');
-        setMarketplaceSales(completedOrders);
+        const allOrders = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // Urutkan dan set ke state utama
+        const sortedOrders = [...allOrders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setTransactions(sortedOrders);
+
+        // Filter untuk antrean verifikasi
+        const queue = allOrders.filter(o => o.status === 'waiting_verification').sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        setVerificationQueue(queue);
+
+        // Filter untuk pesanan selesai (Laporan Keuangan)
+        const completedOrders = allOrders.filter(o => o.status === 'completed');
+        setMarketplaceSales(completedOrders.map(o => ({ ...o, type: 'Marketplace' })));
+
+        // Update Stats
+        const total = completedOrders.reduce((acc, curr) => acc + (parseInt(curr.totalPrice) || 0), 0);
+        const pending = queue.length;
+        setStats(prev => ({ ...prev, totalSales: total, pendingTransactions: pending }));
+      } else {
+        setTransactions([]);
+        setVerificationQueue([]);
+        setMarketplaceSales([]);
+        setStats(prev => ({ ...prev, totalSales: 0, pendingTransactions: 0 }));
       }
     });
     return () => unsubscribe();
@@ -236,18 +258,20 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fetch Sellers (Realtime DB - Users with sellerInfo)
   useEffect(() => {
-    const usersRef = ref(realDb, 'users');
+    // OPTIMASI: Query hanya user yang merupakan seller terverifikasi
+    const usersRef = realQuery(ref(realDb, 'users'), orderByChild('sellerInfo/isVerifiedSeller'), equalTo(true));
     const unsubscribe = onValue(usersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
         const sellerList = Object.keys(data)
-          .filter(key => data[key].sellerInfo)
           .map(key => ({
             uid: key,
             ...data[key],
             ...data[key].sellerInfo // Flatten sellerInfo biar gampang akses balance
           }));
         setSellers(sellerList);
+      } else {
+        setSellers([]);
       }
     });
     return () => unsubscribe();
@@ -255,17 +279,18 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fetch Drivers (Realtime DB - Users with role driver)
   useEffect(() => {
-    const usersRef = ref(realDb, 'users');
+    // OPTIMASI: Query hanya user yang memiliki role 'driver'
+    const usersRef = realQuery(ref(realDb, 'users'), orderByChild('role'), equalTo('driver'));
     const unsubscribe = onValue(usersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const driverList = Object.keys(data)
-          .filter(key => data[key].role === 'driver')
-          .map(key => ({
-            uid: key,
-            ...data[key]
-          }));
+        const driverList = Object.keys(data).map(key => ({
+          uid: key,
+          ...data[key]
+        }));
         setDrivers(driverList);
+      } else {
+        setDrivers([]);
       }
     });
     return () => unsubscribe();
@@ -639,6 +664,7 @@ const AdminDashboard = ({ onBack }) => {
   useEffect(() => {
     if (selectedChat) {
       const msgsRef = ref(realDb, `chats/${selectedChat.uid}/messages`);
+      setSelectedChatName(selectedChat.userName)
       const unsubscribe = onValue(msgsRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.val();
@@ -750,7 +776,7 @@ const AdminDashboard = ({ onBack }) => {
         title: isApproved ? 'Pembayaran Diterima' : 'Pembayaran Ditolak',
         message: isApproved ? 'Pesananmu sedang diproses seller.' : 'Bukti pembayaran tidak valid. Silakan upload ulang.',
         type: isApproved ? 'success' : 'error',
-        targetView: 'history',
+              targetView: 'history',
         orderId: order.id,
         createdAt: serverTimestamp(),
         isRead: false
@@ -1087,6 +1113,7 @@ const AdminDashboard = ({ onBack }) => {
                 title: 'Berhasil',
                 text: `Saldo masuk & Email notifikasi terkirim ke ${topUpForm.email}`,
                 icon: 'success',
+                    iconColor: '#8b5cf6',
                 confirmButtonText: 'OK',
                 buttonsStyling: false,
                 customClass: {
@@ -1109,6 +1136,22 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fungsi Handle File Select (Buka Editor)
   const handleFileSelect = (file, key, type = 'banners') => {
+    // Filter Ekstensi & MIME: Cuma boleh JPG dan PNG untuk keamanan
+    const allowedTypes = ['image/jpeg', 'image/png'];
+    if (!allowedTypes.includes(file.type)) {
+      Swal.fire({
+        title: 'Format Ditolak',
+        text: 'Hanya file .jpg atau .png yang diperbolehkan demi keamanan sistem!',
+        icon: 'error',
+        confirmButtonText: 'Oke Sip',
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200 transition-all !opacity-100'
+        }
+      });
+      return;
+    }
+
     const url = URL.createObjectURL(file);
     setEditingImage({ 
         file, 
@@ -1138,12 +1181,36 @@ const AdminDashboard = ({ onBack }) => {
             imageSmoothingQuality: 'high',
         });
 
+        // --- FITUR WATERMARK OTOMATIS ---
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // 1. Watermark Pojok Kanan Bawah (Branding)
+        const fontSize = Math.round(width * 0.025);
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Warna hitam transparan soft
+        ctx.textAlign = 'right';
+        ctx.fillText('SobatNiaga Official', width - 20, height - 20);
+
+        // 2. Watermark Menyilang Tengah (Khusus QRIS untuk cegah fraud)
+        if (editingImage.key === 'qrisUrl') {
+          ctx.translate(width / 2, height / 2);
+          ctx.rotate(-45 * Math.PI / 180);
+          ctx.font = `bold ${Math.round(width * 0.08)}px Arial`;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'; // Sangat transparan agar tidak ganggu scan
+          ctx.textAlign = 'center';
+          ctx.fillText('SOBAT NIAGA QRIS', 0, 0);
+          ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset posisi canvas
+        }
+
         canvas.toBlob((blob) => {
             if (blob) {
                 handleFileUpload(blob, editingImage.key, editingImage.type);
                 setEditingImage(null); // Close modal
             }
-        }, 'image/jpeg', 0.85); // Quality 85% (Optimization)
+        }, (editingImage.key.includes('icon') || editingImage.key.includes('logo')) ? 'image/png' : 'image/jpeg', 0.85); 
+        // Pakai PNG untuk icon/logo supaya transparansi tetap aman
     }
   };
 
@@ -1207,12 +1274,35 @@ const AdminDashboard = ({ onBack }) => {
       else if (type === 'settings') {
         await update(ref(realDb, 'admin/settings'), { [key]: url });
         setAdminSettings(prev => ({ ...prev, [key]: url }));
+        
+        // Auto-sync QRIS ke paymentInfo agar langsung muncul di sisi pembeli
+        if (key === 'qrisUrl') {
+          await update(ref(realDb, 'admin/paymentInfo'), { qrisUrl: url });
+        }
       }
 
-      Swal.fire('Berhasil', 'Gambar berhasil diupload', 'success');
+      Swal.fire({
+        title: 'Berhasil',
+        text: 'Gambar berhasil diupload',
+        icon: 'success',
+        confirmButtonText: 'Mantap',
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100'
+        }
+      });
     } catch (error) {
       console.error("Upload error:", error);
-      Swal.fire('Gagal', `Terjadi kesalahan: ${error.message}`, 'error');
+      Swal.fire({
+        title: 'Gagal',
+        text: `Terjadi kesalahan: ${error.message}`,
+        icon: 'error',
+        confirmButtonText: 'Coba Lagi',
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-gray-600 hover:bg-gray-700 shadow-lg transition-all !opacity-100'
+        }
+      });
     }
   };
 
@@ -1225,7 +1315,16 @@ const AdminDashboard = ({ onBack }) => {
   const handleSaveBanners = async () => {
     try {
       await update(ref(realDb, 'admin/banners'), banners);
-      Swal.fire('Sukses', 'Banner berhasil diperbarui!', 'success');
+      Swal.fire({
+        title: 'Sukses',
+        text: 'Banner berhasil diperbarui!',
+        icon: 'success',
+        confirmButtonText: 'Oke',
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100'
+        }
+      });
     } catch (error) {
       Swal.fire('Error', 'Gagal menyimpan banner.', 'error');
     }
@@ -1561,6 +1660,20 @@ const AdminDashboard = ({ onBack }) => {
                   />
                 </div>
               </div>
+
+              {/* 5. ICON MENU UTAMA (HOME) */}
+              <div>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-emerald-500"/> Icon Menu Utama (Home)</h3>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+                  <ImageUploader label="Populer" currentUrl={banners['icon_populer']} onFileSelect={(file) => handleFileSelect(file, 'icon_populer')} />
+                  <ImageUploader label="Isi Pulsa" currentUrl={banners['icon_pulsa']} onFileSelect={(file) => handleFileSelect(file, 'icon_pulsa')} />
+                  <ImageUploader label="Fashion" currentUrl={banners['icon_fashion']} onFileSelect={(file) => handleFileSelect(file, 'icon_fashion')} />
+                  <ImageUploader label="Makanan" currentUrl={banners['icon_makanan']} onFileSelect={(file) => handleFileSelect(file, 'icon_makanan')} />
+                  <ImageUploader label="Jasa / Cetak" currentUrl={banners['icon_jasa']} onFileSelect={(file) => handleFileSelect(file, 'icon_jasa')} />
+                  <ImageUploader label="NiagaGo / Niagaku" currentUrl={banners['icon_niagago']} onFileSelect={(file) => handleFileSelect(file, 'icon_niagago')} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-2">*Gunakan format PNG Transparan atau WebP agar tampilan rapi di Mobile.</p>
+              </div>
             </div>
           )}
 
@@ -1603,27 +1716,41 @@ const AdminDashboard = ({ onBack }) => {
                           <td className="px-6 py-4">
                             <div className="text-sm font-bold">{trx.buyerName || 'User'}</div>
                           </td>
-                          <td className="px-6 py-4 font-bold text-sky-500">Rp {parseInt(trx.totalPrice || 0).toLocaleString('id-ID')}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${trx.status === 'waiting_verification' ? 'bg-yellow-100 text-yellow-700' : trx.status === 'processed' ? 'bg-blue-100 text-blue-700' : trx.status === 'completed' ? 'bg-green-100 text-green-700' : trx.status === 'payment_rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                                {trx.status === 'waiting_verification' ? 'Perlu Cek' : trx.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-gray-500 text-xs">{new Date(trx.createdAt).toLocaleDateString('id-ID')}</td>
-                          <td className="px-6 py-4">
-                            {trx.status === 'waiting_verification' ? (
-                                <div className="flex gap-2">
-                                    {trx.proofUrl && (
-                                        <button onClick={() => setSelectedTransaction(trx)} className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Lihat Bukti"><ImageIcon size={16} /></button>
-                                    )}
-                                    <button onClick={() => handleVerifyTransaction(trx, true)} className="p-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded font-bold text-xs">Terima</button>
-                                    <button onClick={() => handleVerifyTransaction(trx, false)} className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded font-bold text-xs">Tolak</button>
-                                </div>
-                            ) : (<span className="text-xs text-gray-400">-</span>)}
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+  {trx.status === 'pending' ? (
+    <div className="flex justify-end gap-2 items-center">
+      <button 
+        onClick={() => setSelectedTransaction(trx)} 
+        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" 
+        title="Lihat Bukti"
+      >
+        <ImageIcon size={16} />
+      </button>
+      
+      <button 
+        onClick={() => handleVerifyTransaction(trx, true)} 
+        className="p-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded font-bold text-xs"
+      >
+        Terima
+      </button>
+
+      <button 
+        onClick={() => handleVerifyTransaction(trx, false)} 
+        className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded font-bold text-xs"
+      >
+        Tolak
+      </button>
+    </div>
+  ) : (
+    <span className="text-gray-400 text-sm">Tidak ada bukti</span>
+  )}
+</td>
                         </tr>
-                      ))}
-                    </tbody>
+                      ))} 
+                      {verificationQueue.length === 0 && (
+                      <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Hore! Semua transaksi sudah diverifikasi.</td></tr>
+                      )}
+                      </tbody>
                   </table>
                 </div>
               </div>
@@ -1715,7 +1842,7 @@ const AdminDashboard = ({ onBack }) => {
                       <button onClick={() => setSelectedChat(null)} className={`md:hidden p-1 rounded-full ${isDarkMode ? 'hover:bg-slate-700 text-white' : 'hover:bg-gray-100 text-slate-800'}`}>
                         <ArrowLeft size={24} />
                       </button>
-                      <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
                          {selectedChat.userPhoto ? <img src={selectedChat.userPhoto} className="w-full h-full object-cover" /> : <User size={16} className="m-2 text-gray-500" />}
                       </div>
                       <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{selectedChat.userName}</h3>
@@ -2170,7 +2297,7 @@ const AdminDashboard = ({ onBack }) => {
               {settingsView === 'flash_deal' && (
               <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                   <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2"><Zap size={20} className="text-yellow-500"/> Pengaturan Flash Deal</h3>
+                    <h3 className="font-bold text-lg flex items-center gap-2"><Zap size={20} className="text-yellow-500"/> Pengaturan Flash Deal</h3>
                       <div className="flex items-center gap-2">
                           <span className="text-xs font-bold">Status:</span>
                           <button 
@@ -2535,7 +2662,7 @@ const AdminDashboard = ({ onBack }) => {
             {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <div className="flex flex-col gap-6">
-                {/* Image Preview (Small/Medium) */}
+                  {/* Image Preview (Small/Medium) */}
                 <div 
                   className="w-full h-48 bg-gray-100 dark:bg-slate-900 rounded-xl overflow-hidden border dark:border-slate-700 flex items-center justify-center cursor-pointer group relative"
                   onClick={() => setSelectedImage(selectedTransaction.proofUrl)}
@@ -2554,7 +2681,7 @@ const AdminDashboard = ({ onBack }) => {
 
                 {/* Details List */}
                 <div className="space-y-3 text-sm">
-                  <div className="flex justify-between border-b dark:border-slate-700 pb-2">
+                  {/* <div className="flex justify-between border-b dark:border-slate-700 pb-2">
                     <span className="text-gray-500">Produk</span>
                     <span className="font-bold text-right max-w-[60%] truncate">
                        {selectedTransaction.items ? (Array.isArray(selectedTransaction.items) ? selectedTransaction.items[0].name : Object.values(selectedTransaction.items)[0].name) : 'Produk'}
@@ -2573,7 +2700,8 @@ const AdminDashboard = ({ onBack }) => {
                     <span className="text-gray-500">Waktu</span>
                     <span className="font-bold">{new Date(selectedTransaction.createdAt).toLocaleString('id-ID')}</span>
                   </div>
-                   <div className="flex justify-between">
+                   <div className="flex justify-between"> */}
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Status</span>
                     <span className="font-bold text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded text-xs">Sedang Dicek</span>
                   </div>
@@ -2660,8 +2788,8 @@ const AdminDashboard = ({ onBack }) => {
             <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center">
               <h3 className="font-bold text-lg">Detail Pendaftaran Driver</h3>
               <button onClick={() => setSelectedDriverRequest(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full"><X size={20}/></button>
-            </div>
-
+              </div>
+          
             {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <div className="space-y-6">
@@ -2731,8 +2859,8 @@ const AdminDashboard = ({ onBack }) => {
                   </div>
                 </div>
               </div>
-            </div>
-
+              </div>
+          
             {/* Footer Actions */}
             <div className="p-4 border-t dark:border-slate-700 flex gap-3 bg-gray-50 dark:bg-slate-800/50">
               <button 
@@ -2752,14 +2880,14 @@ const AdminDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL PENCAIRAN DANA (PAYOUT) */}
+          {/* MODAL PENCAIRAN DANA (PAYOUT) */}
       {payoutModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
             <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50">
               <h3 className="font-bold text-base">Pencairan Dana Seller</h3>
               <button onClick={() => setPayoutModal(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full"><X size={20}/></button>
-            </div>
+              </div>
             
             <form onSubmit={handleProcessPayout} className="p-5 space-y-3">
               <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>

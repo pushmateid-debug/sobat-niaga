@@ -121,14 +121,14 @@ const Home = () => {
 
   // Kategori Navigasi Baru (Sticky)
   const navCategories = [
-    { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50' },
-    { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50' },
-    { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50' },
+    { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
+    { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50', key: 'icon_pulsa' },
+    { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50', key: 'icon_makanan' },
     { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50' },
-    { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50' },
-    { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50' },
+    { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
+    { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
     { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50' },
-    { name: 'NiagaGo', icon: <Bike size={20} />, color: 'shadow-emerald-500/50' },
+    { name: 'NiagaGo', icon: <Bike size={20} />, color: 'shadow-emerald-500/50', key: 'icon_niagago' },
   ];
 
   // Fetch Real Products from Firebase
@@ -775,17 +775,17 @@ const Home = () => {
       {/* MOBILE: NiagaGo Banner (Tetap di Atas Kategori) */}
       <div className="md:hidden mt-8 mb-6 w-full">
         <div className="max-w-7xl mx-auto px-4">
-          <div className={`w-full rounded-xl p-3 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
-          <div className="relative z-10 text-left flex-1">
-            <div className="flex items-center gap-2 mb-0">
-              <Bike className={`w-5 h-5 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
-              <h2 className={`text-base font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+          <div className={`w-full rounded-xl p-2.5 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+          <div className="relative z-10 text-left flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Bike className={`w-5 h-5 shrink-0 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-sm font-bold whitespace-nowrap ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
             </div>
-            <p className={`text-[10px] max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+            <p className={`text-[10px] max-w-md leading-tight truncate ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
               Ojek mahasiswa hemat & aman!
             </p>
           </div>
-          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-4 py-2 bg-white text-emerald-600 font-bold text-xs rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-3 py-1.5 bg-white text-emerald-600 font-bold text-[11px] rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap shrink-0">
             Buka NiagaGo
           </button>
           <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
@@ -808,7 +808,11 @@ const Home = () => {
               className="flex flex-col items-center gap-2 group"
             >
               <div className={`p-3 rounded-2xl shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
-                {cat.icon}
+                {cat.key && bannerImages[cat.key] ? (
+                  <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-5 h-5 object-contain" />
+                ) : (
+                  cat.icon
+                )}
               </div>
               <span className={`text-[10px] font-medium text-center leading-tight ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{cat.name}</span>
             </button>

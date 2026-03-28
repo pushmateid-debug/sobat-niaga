@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Minus, Plus, ShoppingCart, Share2, Star, CheckCircle, MapPin, Tag, Store, User, PlayCircle, X, MessageCircle, Image as ImageIcon } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { db } from '../config/firebase';
-import { ref, push, query, orderByChild, equalTo, onValue } from 'firebase/database';
+import { ref, push, query, orderByChild, equalTo, onValue, get, update } from 'firebase/database';
 
 const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
   const [quantity, setQuantity] = useState(1);
@@ -88,6 +88,41 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
     setIsAdding(true);
     try {
       const cartRef = ref(db, `users/${user.uid}/cart`);
+      
+      // LOGIKA ANTI-DUPLICATE
+      const cartSnap = await get(cartRef);
+      if (cartSnap.exists()) {
+        const currentCart = cartSnap.val();
+        // Cari apakah produk dengan ID yang sama sudah ada
+        const existingItemKey = Object.keys(currentCart).find(key => {
+          const item = currentCart[key];
+          // Cek ID Produk & Varian (Jika ada sistem varian di masa depan, tambahkan di sini)
+          return item.productId === product.id;
+        });
+
+        if (existingItemKey) {
+          Swal.fire({
+            title: 'Sudah di Keranjang',
+            text: 'Produk ini sudah ada di keranjangmu. Mau lihat keranjang sekarang?',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Lihat Keranjang',
+            cancelButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+              confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
+              cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+            }
+          }).then((result) => {
+            if (result.isConfirmed && onGoToCart) {
+              onGoToCart();
+            }
+          });
+          setIsAdding(false);
+          return; // Batalkan proses tambah baru
+        }
+      }
+
       await push(cartRef, {
         productId: product.id,
         name,

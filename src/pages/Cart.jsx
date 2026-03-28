@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Minus, Plus, ShoppingBag, TicketPercent, Loader2 } from 'lucide-react';
+import { Trash2, Minus, Plus, ShoppingBag, TicketPercent, Loader2, ChevronLeft, ChevronRight, MapPin, NotebookPen } from 'lucide-react';
 import { db } from '../config/firebase';
 import { ref, onValue, remove, update, push } from 'firebase/database';
+import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
 const SummaryComponent = ({ 
@@ -14,10 +15,12 @@ const SummaryComponent = ({
   appliedVoucher, 
   orderNote, 
   setOrderNote, 
-  handleCheckout,
+  handleFinalCheckout,
   isNiagaFoodInCart, // Prop baru
   deliveryAddress,    // Prop baru
-  setDeliveryAddress  // Prop baru
+  setDeliveryAddress,  // Prop baru
+  onBackToStep1,
+  selectedItems
 }) => (
   <>
       <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Ringkasan Belanja</h3>
@@ -44,7 +47,7 @@ const SummaryComponent = ({
       {/* Alamat Pengiriman (Khusus Niaga Food) */}
       {isNiagaFoodInCart && (
         <div className="mb-4">
-          <label className={`block text-xs font-bold mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Alamat Pengiriman</label>
+          <label className={`block text-xs font-bold mb-2 flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}><MapPin size={14}/> Alamat Pengiriman</label>
           <input 
             type="text" 
             placeholder="Cth: Kamar 203, Gedung Rusunawa B" 
@@ -57,15 +60,19 @@ const SummaryComponent = ({
       )}
       <div className="space-y-2 mb-4 text-sm">
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span>Produk Selektif</span>
+              <span className={`font-bold ${isDarkMode ? 'text-gray-100' : ''}`}>{totalItems} Barang</span>
+          </div>
+          <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               <span>Total Harga ({totalItems} barang)</span>
               <span className={`font-price font-bold ${isDarkMode ? 'text-gray-100' : ''}`}>Rp {totalPrice.toLocaleString('id-ID')}</span>
           </div>
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              <span>Catatan</span>
+              <span className="flex items-center gap-1"><NotebookPen size={14}/> Catatan</span>
               <div className="w-full max-w-[150px] text-right">
                   <input 
                       type="text" 
-                      placeholder="Tulis catatan..." 
+                      placeholder="Contoh: Pedas ya.." 
                       value={orderNote}
                       onChange={(e) => setOrderNote(e.target.value)}
                       className={`w-full text-right text-xs border-b focus:border-indigo-500 outline-none bg-transparent ${isDarkMode ? 'border-slate-600' : 'border-gray-300'}`}
@@ -91,17 +98,25 @@ const SummaryComponent = ({
           </div>
       </div>
 
-      <button 
-          className={`w-full py-3 rounded-xl font-bold text-white transition-all shadow-lg ${
-              totalItems > 0 
-              ? (isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200') 
-              : (isDarkMode ? 'bg-slate-700 text-gray-500 cursor-not-allowed shadow-none' : 'bg-gray-300 cursor-not-allowed shadow-none')
-          }`}
-          disabled={totalItems === 0}
-          onClick={handleCheckout}
-      >
-          Beli Sekarang ({totalItems})
-      </button>
+      <div className="flex gap-3">
+          <button 
+              onClick={onBackToStep1}
+              className={`flex-1 py-3 rounded-xl font-bold border transition-all ${isDarkMode ? 'border-slate-600 text-gray-300 hover:bg-slate-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+              Kembali
+          </button>
+          <button 
+              className={`flex-[2] py-3 rounded-xl font-bold text-white transition-all shadow-lg ${
+                  totalItems > 0 
+                  ? (isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200') 
+                  : (isDarkMode ? 'bg-slate-700 text-gray-500 cursor-not-allowed shadow-none' : 'bg-gray-300 cursor-not-allowed shadow-none')
+              }`}
+              disabled={totalItems === 0}
+              onClick={handleFinalCheckout}
+          >
+              Beli Sekarang
+          </button>
+      </div>
   </>
 );
 
@@ -109,6 +124,7 @@ const Cart = ({ onBack, user, onCheckout }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [cartItems, setCartItems] = useState([]);
+  const [checkoutStep, setCheckoutStep] = useState(1); // 1: List, 2: Summary
   const [isLoading, setIsLoading] = useState(true);
   const [selectAll, setSelectAll] = useState(false);
   const [promoCode, setPromoCode] = useState('');
@@ -176,6 +192,35 @@ const Cart = ({ onBack, user, onCheckout }) => {
     remove(ref(db, `users/${user.uid}/cart/${id}`));
   };
 
+  // Handle Clear Cart (Hapus Semua)
+  const handleClearCart = () => {
+    Swal.fire({
+      title: 'Kosongkan Keranjang?',
+      text: 'Apakah Anda yakin ingin menghapus semua produk dari keranjang?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Hapus Semua',
+      cancelButtonText: 'Batal',
+      buttonsStyling: false,
+      customClass: {
+        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all !opacity-100',
+        cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        remove(ref(db, `users/${user.uid}/cart`));
+        Swal.fire({
+          icon: 'success',
+          title: 'Keranjang Dikosongkan',
+          timer: 1500,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top'
+        });
+      }
+    });
+  };
+
   // Handle Apply Voucher
   const handleApplyVoucher = () => {
     // Cek apakah ada produk di keranjang yang punya kode voucher ini
@@ -187,9 +232,22 @@ const Cart = ({ onBack, user, onCheckout }) => {
         amount: parseInt(validItem.voucherAmount),
         itemId: validItem.id
       });
-      alert(`Voucher ${promoCode} berhasil digunakan!`);
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil!',
+        text: `Voucher ${promoCode} berhasil digunakan.`,
+        timer: 1500,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top'
+      });
     } else {
-      alert('Kode voucher tidak valid atau produk tidak dipilih.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: 'Kode voucher tidak valid atau produk belum dicentang.',
+        confirmButtonColor: '#0284c7'
+      });
       setAppliedVoucher(null);
     }
   };
@@ -200,10 +258,10 @@ const Cart = ({ onBack, user, onCheckout }) => {
 
   const totalItems = cartItems.filter(item => item.selected).reduce((acc, item) => acc + item.quantity, 0);
   let subtotal = cartItems.filter(item => item.selected).reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  let totalPrice = subtotal + deliveryFee;
+  let totalPrice = totalItems > 0 ? subtotal + deliveryFee : 0;
   
   // Kurangi total dengan voucher jika ada
-  if (appliedVoucher) {
+  if (appliedVoucher && totalItems > 0) {
     // Pastikan item yang punya voucher masih ada dan dipilih
     const isVoucherItemStillValid = cartItems.some(item => item.id === appliedVoucher.itemId && item.selected);
     if (isVoucherItemStillValid) {
@@ -211,14 +269,24 @@ const Cart = ({ onBack, user, onCheckout }) => {
     }
   }
 
-  const handleCheckout = async () => {
+  const handleFinalCheckout = async () => {
     const selectedItems = cartItems.filter(item => item.selected);
     if (selectedItems.length === 0) {
-      alert('Pilih minimal satu barang untuk dibeli.');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Keranjang Kosong',
+        text: 'Pilih minimal satu barang untuk dibeli.',
+        confirmButtonColor: '#0284c7'
+      });
       return;
     }
-    if (isNiagaFoodInCart && !deliveryAddress) {
-      alert('Mohon isi alamat pengiriman untuk pesanan Niaga Food.');
+    if (isNiagaFoodInCart && !deliveryAddress.trim()) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Alamat Kosong',
+        text: 'Mohon isi alamat pengiriman untuk pesanan Niaga Food.',
+        confirmButtonColor: '#0284c7'
+      });
       return;
     }
 
@@ -275,22 +343,51 @@ const Cart = ({ onBack, user, onCheckout }) => {
 
   return (
     <div className={`min-h-screen pb-80 lg:pb-6 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-      <div className="max-w-7xl mx-auto p-4 lg:p-6">
-        {/* Simple Title */}
-        <h1 className={`text-2xl font-bold mb-6 font-sans ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Keranjang Saya ({totalItems} Barang)</h1>
+      <div className="max-w-5xl mx-auto p-4 lg:p-6">
+        
+        {/* Breadcrumbs Header */}
+        <div className="flex items-center gap-2 mb-6 overflow-x-auto whitespace-nowrap py-2 scrollbar-hide">
+            <button onClick={onBack} className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}><ChevronLeft size={24}/></button>
+            <h1 className={`text-xl font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                <span className={checkoutStep === 1 ? 'text-sky-600' : 'text-gray-400'}>Keranjang</span>
+                <ChevronRight size={16} className="text-gray-300" />
+                <span className={checkoutStep === 2 ? 'text-sky-600' : 'text-gray-400'}>Konfirmasi</span>
+            </h1>
+        </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
-            {/* Left Column: Cart Items */}
-            <div className="flex-1 space-y-4">
+        {checkoutStep === 1 ? (
+            /* STEP 1: FULL LIST KERANJANG */
+            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                {/* Info Bar */}
+                <div className={`p-4 rounded-2xl flex items-center justify-between border ${isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-700'}`}>
+                    <div className="flex items-center gap-2 text-sm font-bold">
+                        <ShoppingBag size={18}/>
+                        <span>{totalItems} barang terpilih</span>
+                    </div>
+                    <div className="text-sm font-bold">
+                        Total: Rp {totalPrice.toLocaleString('id-ID')}
+                    </div>
+                </div>
+
                 {/* Select All Header */}
-                <div className={`p-4 rounded-xl shadow-sm border flex items-center gap-3 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-                    <input
-                        type="checkbox"
-                        checked={selectAll}
-                        onChange={handleSelectAll}
-                        className={`w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'border-gray-300'}`}
-                    />
-                    <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Pilih Semua ({cartItems.length})</span>
+                <div className={`p-4 rounded-xl shadow-sm border flex items-center justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            checked={selectAll}
+                            onChange={handleSelectAll}
+                            className={`w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'border-gray-300'}`}
+                        />
+                        <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Pilih Semua ({cartItems.length})</span>
+                    </div>
+                    {cartItems.length > 0 && (
+                        <button 
+                            onClick={handleClearCart}
+                            className="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 transition-colors"
+                        >
+                            <Trash2 size={14} /> Hapus Semua
+                        </button>
+                    )}
                 </div>
 
                 {/* Items List */}
@@ -360,20 +457,58 @@ const Cart = ({ onBack, user, onCheckout }) => {
                         </div>
                     </div>
                 ))}
-            </div>
-
-            {/* Right Column: Summary (Sticky) */}
-            <div className="hidden lg:block lg:w-80">
-                <div className={`p-5 rounded-xl shadow-sm border sticky top-24 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-                    <SummaryComponent {...{ isDarkMode, promoCode, setPromoCode, handleApplyVoucher, totalItems, totalPrice, appliedVoucher, orderNote, setOrderNote, handleCheckout, isNiagaFoodInCart, deliveryAddress, setDeliveryAddress }} />
+                
+                {/* Bottom Sticky Action Step 1 */}
+                <div className={`fixed bottom-0 left-0 right-0 p-4 border-t z-50 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]'}`}>
+                    <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+                        <div className="hidden md:block">
+                            <p className="text-xs text-gray-400">Total Harga</p>
+                            <p className="text-lg font-bold text-sky-600">Rp {totalPrice.toLocaleString('id-ID')}</p>
+                        </div>
+                        <button 
+                            onClick={() => setCheckoutStep(2)}
+                            disabled={totalItems === 0}
+                            className="flex-1 md:flex-none md:px-12 py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 transition-all disabled:opacity-50 disabled:grayscale"
+                        >
+                            Lanjut ke Ringkasan
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
-      </div>
+        ) : (
+            /* STEP 2: SUMMARY & DETAIL */
+            <div className="flex flex-col lg:flex-row gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="flex-1 space-y-4">
+                    <h3 className={`font-bold px-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Produk yang dibeli:</h3>
+                    {cartItems.filter(i => i.selected).map(item => (
+                        <div key={item.id} className={`flex items-center gap-4 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                            <img src={item.image} className="w-12 h-12 rounded-lg object-cover" alt="" />
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.name}</p>
+                                <p className="text-xs text-gray-500">{item.quantity} x Rp {item.price.toLocaleString('id-ID')}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-sm font-bold text-sky-600">Rp {(item.price * item.quantity).toLocaleString('id-ID')}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
 
-      {/* Mobile Fixed Summary */}
-      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-40 p-5 border-t shadow-[0_-4px_12px_rgba(0,0,0,0.08)] rounded-t-2xl ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white'}`}>
-        <SummaryComponent {...{ isDarkMode, promoCode, setPromoCode, handleApplyVoucher, totalItems, totalPrice, appliedVoucher, orderNote, setOrderNote, handleCheckout, isNiagaFoodInCart, deliveryAddress, setDeliveryAddress }} />
+                <div className="lg:w-96">
+                    <div className={`p-5 rounded-2xl shadow-sm border sticky top-24 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <SummaryComponent 
+                            {...{ 
+                                isDarkMode, promoCode, setPromoCode, handleApplyVoucher, 
+                                totalItems, totalPrice, appliedVoucher, orderNote, 
+                                setOrderNote, handleFinalCheckout, isNiagaFoodInCart, 
+                                deliveryAddress, setDeliveryAddress, 
+                                onBackToStep1: () => setCheckoutStep(1) 
+                            }} 
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );

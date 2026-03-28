@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote } from 'lucide-react';
+import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, get, update } from 'firebase/database';
+import { ref, get, update, onValue } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
@@ -20,6 +20,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('transfer'); // 'transfer' | 'qris'
   const [isZoomed, setIsZoomed] = useState(false);
+  const [countdown, setCountdown] = useState("");
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(null);
 
   useEffect(() => {
@@ -43,14 +44,47 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
   // Fetch Data Rekening Pusat (Admin Rekber) dari Firebase
   useEffect(() => {
-    const fetchAdminInfo = async () => {
-      const snapshot = await get(ref(db, 'admin/paymentInfo'));
+    // Gunakan onValue agar data QRIS/Rekening update Real-time saat Admin ganti
+    const infoRef = ref(db, 'admin/paymentInfo');
+    const unsubscribe = onValue(infoRef, (snapshot) => {
       if (snapshot.exists()) {
         setAdminPaymentInfo(snapshot.val());
+      } else {
+        setAdminPaymentInfo({}); // Inisialisasi object kosong jika data belum diset Admin
       }
-    };
-    fetchAdminInfo();
+    });
+    return () => unsubscribe();
   }, []);
+
+  // Logic Timer 24 Jam
+  useEffect(() => {
+    // Timer hanya jalan jika status masih 'waiting_payment' atau 'payment_rejected'
+    if (!orderData?.createdAt || !['waiting_payment', 'payment_rejected'].includes(orderData?.status)) {
+      setCountdown("");
+      return;
+    }
+
+    // Target: Jam 23:59:59 hari ini (Sesuai instruksi tampilan)
+    const targetDate = new Date();
+    targetDate.setHours(23, 59, 59, 999);
+    
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = targetDate - now;
+
+      if (distance < 0) {
+        setCountdown("EXPIRED");
+        clearInterval(interval);
+      } else {
+        const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((distance % (1000 * 60)) / 1000);
+        setCountdown(`${h}j ${m}m`); // Hapus 'd' dan fokus ke Jam & Menit saja sesuai request
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [orderData]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -145,6 +179,14 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             <ShieldCheck size={24} />
             <p className="text-xs font-bold">Pembayaran aman melalui Rekening Bersama SobatNiaga.</p>
           </div>
+
+          {/* CYBERSECURITY WARNING - HARDCODED */}
+          <div className="mb-4 p-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 flex gap-3 items-start">
+            <ShieldAlert className="text-red-600 shrink-0" size={18} />
+            <p className="text-[10px] font-extrabold text-red-700 dark:text-red-400 leading-tight uppercase">
+              PENTING: Pastikan nama tujuan transfer adalah "SOBAT NIAGA" atau "PUSH MATE". Jika nama berbeda, JANGAN LANJUTKAN PEMBAYARAN!
+            </p>
+          </div>
           
           <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Transfer ke Rekening Pusat:</p>
 
@@ -167,9 +209,22 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           </div>
 
           {/* Detail Pembayaran Dinamis */}
-          <div className={`rounded-xl p-4 border transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
-            {paymentMethod === 'transfer' ? (
-              <div className="flex justify-between items-center">
+          <div className={`rounded-xl p-4 border min-h-[160px] flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
+            {orderData?.status === 'waiting_verification' ? (
+              <div className="text-center py-4">
+                <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3 animate-bounce">
+                  <CheckCircle size={24} />
+                </div>
+                <p className="font-bold text-sm text-green-600">Bukti Sudah Terkirim!</p>
+                <p className="text-[10px] text-gray-500 mt-1">Pembayaranmu sedang diverifikasi admin.</p>
+              </div>
+            ) : !adminPaymentInfo ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="animate-spin text-sky-500" />
+                <p className="text-[10px] text-gray-400">Memuat data pembayaran...</p>
+              </div>
+            ) : paymentMethod === 'transfer' ? (
+              <div className="flex justify-between items-center w-full animate-in fade-in duration-300">
                 <div>
                   <p className={`text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Transfer ke Bank {adminPaymentInfo?.bankName || '...'}</p>
                   <p className={`text-xl font-mono font-bold tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
@@ -185,10 +240,10 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col items-center animate-in fade-in duration-300">
                 {adminPaymentInfo?.qrisUrl ? (
                   <div className="relative group cursor-pointer" onClick={() => setIsZoomed(true)}>
-                    <img 
+                    <img
                       src={adminPaymentInfo.qrisUrl} 
                       alt="QRIS Seller" 
                       className="w-48 h-48 object-contain bg-white rounded-lg border border-gray-200" 
@@ -199,7 +254,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
                   </div>
                 ) : (
                   <div className={`w-48 h-48 rounded-lg flex items-center justify-center text-xs text-center p-4 ${isDarkMode ? 'bg-slate-600 text-gray-300' : 'bg-gray-200 text-gray-400'}`}>
-                    QRIS Admin belum tersedia.<br/>Silakan gunakan Transfer Bank.
+                    QRIS belum tersedia.<br/>Gunakan Transfer Bank.
                   </div>
                 )}
                 <p className={`text-xs mt-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Scan menggunakan GoPay, OVO, Dana, dll</p>
@@ -208,19 +263,24 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           </div>
 
           <div className="mt-6 text-center">
-            <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Tagihan</p>
-            <h2 className={`font-price text-3xl font-bold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {orderData.totalPrice?.toLocaleString('id-ID')}</h2>
+            <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {orderData?.status === 'waiting_verification' ? 'Total Pembayaran' : 'Total Tagihan'}
+            </p>
+            <h2 className={`font-price text-3xl font-bold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(orderData?.totalPrice || 0).toLocaleString('id-ID')}</h2>
             <div className={`mt-2 text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Harga: Rp {(orderData.totalPrice - calculateAdminFee(orderData.totalPrice)).toLocaleString('id-ID')} + 
-              Admin: Rp {calculateAdminFee(orderData.totalPrice).toLocaleString('id-ID')}
+              Harga: Rp {((orderData?.totalPrice || 0) - calculateAdminFee(orderData?.totalPrice || 0)).toLocaleString('id-ID')} +
+              Admin: Rp {calculateAdminFee(orderData?.totalPrice || 0).toLocaleString('id-ID')}
             </div>
-            <div className={`flex items-center justify-center gap-2 mt-2 text-xs py-1 px-3 rounded-full inline-flex ${isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-50 text-orange-600'}`}>
-              <Clock size={12} /> Bayar sebelum 23:59 WIB
-            </div>
+            {['waiting_payment', 'payment_rejected'].includes(orderData?.status) && (
+              <div className={`flex items-center justify-center gap-2 mt-2 text-xs py-1 px-3 rounded-full inline-flex ${isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-50 text-orange-600'}`}>
+                <Clock size={12} /> Bayar sebelum 23:59 WIB
+              </div>
+            )}
           </div>
         </div>
 
         {/* Upload Bukti */}
+        {['waiting_payment', 'payment_rejected'].includes(orderData?.status) && (
         <div className={`p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
           <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Upload Bukti Transfer</h3>
           
@@ -249,9 +309,19 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Bottom Action */}
+      <div className={`fixed bottom-20 left-0 right-0 z-30 flex justify-center pointer-events-none`}>
+          <div className={`px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-bounce pointer-events-auto ${isDarkMode ? 'bg-slate-800 text-yellow-400 border border-slate-700' : 'bg-white text-orange-600 border border-orange-100'}`}>
+              <Timer size={14}/>
+              <span>Selesaikan dalam:</span>
+              <span className="font-mono text-sm">{countdown}</span>
+          </div>
+      </div>
+
+      {['waiting_payment', 'payment_rejected'].includes(orderData?.status) && (
       <div className={`fixed bottom-0 left-0 right-0 border-t p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
         <div className="max-w-3xl mx-auto">
           <button onClick={handleConfirmPayment} disabled={isUploading} className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isUploading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>
@@ -259,6 +329,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           </button>
         </div>
       </div>
+      )}
 
       {/* Modal Zoom QRIS */}
       {isZoomed && adminPaymentInfo?.qrisUrl && (

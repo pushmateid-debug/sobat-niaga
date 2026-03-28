@@ -533,7 +533,7 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // Fetch Admin Payment Info (Rekber)
   useEffect(() => {
-    const infoRef = ref(realDb, 'admin/settings');
+    const infoRef = ref(realDb, 'admin/paymentInfo'); // Sync dengan Marketplace path
     onValue(infoRef, (snap) => {
         if(snap.exists()) setAdminPaymentInfo(snap.val());
     });
@@ -2580,9 +2580,9 @@ const NiagaGo = ({ onOpenProfile }) => {
                             )}
 
                             <div className={`p-3 rounded-xl text-sm ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-blue-50 text-blue-800'}`}>
-                                <p className="font-bold">{adminPaymentInfo.bankName} - {adminPaymentInfo.accountNumber}</p>
+                                <p className="font-bold">{adminPaymentInfo.bankName} - {adminPaymentInfo.bankAccount}</p>
                                 <p className="text-xs opacity-80">a.n {adminPaymentInfo.accountHolder}</p>
-                                <button onClick={() => navigator.clipboard.writeText(adminPaymentInfo.accountNumber)} className="text-xs underline mt-1 hover:text-blue-600">Salin No. Rekening</button>
+                                <button onClick={() => navigator.clipboard.writeText(adminPaymentInfo.bankAccount)} className="text-xs underline mt-1 hover:text-blue-600">Salin No. Rekening</button>
                             </div>
                         </div>
                     )}
