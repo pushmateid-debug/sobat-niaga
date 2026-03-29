@@ -79,6 +79,39 @@ const DashboardSeller = ({ user, onBack }) => {
   const prevIncomingCountRef = useRef(0);
   const isFirstLoad = useRef(true);
   const isCompetitorRef = useRef(false); // Ref untuk akses status di dalam listener
+
+  // LOGIKA GABUNG PESANAN (AUTO-GROUP)
+  const groupedOrders = useMemo(() => {
+    const groups = [];
+    sellerOrders.forEach(order => {
+      // Grouping condition: Status is 'processed' (Belum Di-packing/Dikirim)
+      if (order.status === 'processed') {
+        const group = groups.find(g => g.buyerId === order.buyerId && g.status === 'processed');
+        if (group) {
+          const items = Array.isArray(order.items) ? order.items : Object.values(order.items || {});
+          items.filter(i => i.sellerId === user.uid).forEach(item => {
+            const existing = group.mergedItems.find(mi => (mi.productId || mi.id) === (item.productId || item.id));
+            if (existing) {
+              existing.quantity += parseInt(item.quantity);
+            } else {
+              group.mergedItems.push({ ...item, quantity: parseInt(item.quantity) });
+            }
+          });
+          group.totalPrice += (order.totalPrice || 0);
+          group.orderIds.push(order.id);
+          return;
+        }
+      }
+      
+      const items = Array.isArray(order.items) ? order.items : Object.values(order.items || {});
+      groups.push({
+        ...order,
+        orderIds: [order.id],
+        mergedItems: items.filter(i => i.sellerId === user.uid).map(i => ({ ...i, quantity: parseInt(i.quantity) }))
+      });
+    });
+    return groups;
+  }, [sellerOrders, user.uid]);
   
   // State Pembayaran Toko
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -685,7 +718,8 @@ const DashboardSeller = ({ user, onBack }) => {
   };
 
   // Handle Proses Pesanan & Generate Resi
-  const handleProcessOrder = async (orderId, isJasa = false) => {
+  const handleProcessOrder = async (orderIds, isJasa = false) => {
+    const ids = Array.isArray(orderIds) ? orderIds : [orderIds];
     const newResi = isJasa ? 'JASA-INTERNAL' : generateResi();
 
     Swal.fire({
@@ -701,26 +735,29 @@ const DashboardSeller = ({ user, onBack }) => {
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
-          await update(ref(db, `orders/${orderId}`), {
-            status: 'shipped',
-            resi: newResi,
-            shippedAt: new Date().toISOString()
-          });
-
-          const order = sellerOrders.find(o => o.id === orderId);
-          if (order) {
-            await push(ref(db, 'notifications'), {
-              userId: order.buyerId,
-              title: isJasa ? 'Jasa Selesai Dikerjakan' : 'Paket Dikirim',
-              message: isJasa ? `Seller menandai jasa selesai. Silakan cek hasil dan konfirmasi pesanan!` : `Paketmu sudah diserahkan ke kurir. Lacak dengan resi internal: ${newResi}`,
-              type: 'info',
-              targetView: 'history',
-              targetTab: 'shipped',
-              orderId: orderId,
-              createdAt: new Date().toISOString(),
-              isRead: false
+          const promises = ids.map(async (orderId) => {
+            await update(ref(db, `orders/${orderId}`), {
+              status: 'shipped',
+              resi: newResi,
+              shippedAt: new Date().toISOString()
             });
-          }
+
+            const order = sellerOrders.find(o => o.id === orderId);
+            if (order) {
+              await push(ref(db, 'notifications'), {
+                userId: order.buyerId,
+                title: isJasa ? 'Jasa Selesai Dikerjakan' : 'Paket Dikirim',
+                message: isJasa ? `Seller menandai jasa selesai. Silakan cek hasil dan konfirmasi pesanan!` : `Paketmu sudah diserahkan ke kurir. Lacak dengan resi internal: ${newResi}`,
+                type: 'info',
+                targetView: 'history',
+                targetTab: 'shipped',
+                orderId: orderId,
+                createdAt: new Date().toISOString(),
+                isRead: false
+              });
+            }
+          });
+          await Promise.all(promises);
           Swal.fire('Berhasil!', 'Status pesanan telah diupdate.', 'success');
         } catch (error) {
           console.error("Error processing order:", error);
@@ -893,7 +930,8 @@ const DashboardSeller = ({ user, onBack }) => {
   };
 
   // Handle Terima Pesanan Makanan (Niaga Food)
-  const handleAcceptFoodOrder = async (orderId) => {
+  const handleAcceptFoodOrder = async (orderIds) => {
+    const ids = Array.isArray(orderIds) ? orderIds : [orderIds];
     Swal.fire({
       title: 'Terima Pesanan Ini?',
       text: "Status akan diubah menjadi 'Dimasak'. Pastikan Anda siap menyiapkannya.",
@@ -905,42 +943,44 @@ const DashboardSeller = ({ user, onBack }) => {
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
-          // Update status order di Firebase
-          await update(ref(db, `orders/${orderId}`), {
-            status: 'being_prepared'
-          });
-
-          const order = sellerOrders.find(o => o.id === orderId);
-
-          // --- LOGIKA BARU: Broadcast order ke driver ---
-          if (order && order.deliveryFee > 0) {
-            const deliveryData = {
-              orderId: order.id,
-              storeName: sellerInfo?.storeName,
-              storeLocation: sellerInfo?.storeAddress,
-              buyerName: order.buyerName,
-              buyerLocation: order.deliveryAddress,
-              deliveryFee: order.deliveryFee,
-              createdAt: new Date().toISOString(),
-            };
-            await set(ref(db, `food_delivery_pool/${order.id}`), deliveryData);
-          }
-
-          // Kirim notifikasi ke pembeli
-          if (order) {
-            await push(ref(db, 'notifications'), {
-              userId: order.buyerId,
-              title: 'Pesananmu sedang dimasak! 🍳',
-              message: `Restoran ${sellerInfo?.storeName || 'Toko'} sedang menyiapkan pesananmu. Mohon ditunggu ya.`,
-              type: 'info',
-              targetView: 'history',
-              targetTab: 'being_prepared', // Arahkan ke tab yang benar
-              orderId: orderId,
-              createdAt: new Date().toISOString(),
-              isRead: false
+          const promises = ids.map(async (orderId) => {
+            // Update status order di Firebase
+            await update(ref(db, `orders/${orderId}`), {
+              status: 'being_prepared'
             });
-          }
 
+            const order = sellerOrders.find(o => o.id === orderId);
+
+            // --- LOGIKA BARU: Broadcast order ke driver ---
+            if (order && order.deliveryFee > 0) {
+              const deliveryData = {
+                orderId: order.id,
+                storeName: sellerInfo?.storeName,
+                storeLocation: sellerInfo?.storeAddress,
+                buyerName: order.buyerName,
+                buyerLocation: order.deliveryAddress,
+                deliveryFee: order.deliveryFee,
+                createdAt: new Date().toISOString(),
+              };
+              await set(ref(db, `food_delivery_pool/${order.id}`), deliveryData);
+            }
+
+            // Kirim notifikasi ke pembeli
+            if (order) {
+              await push(ref(db, 'notifications'), {
+                userId: order.buyerId,
+                title: 'Pesananmu sedang dimasak! 🍳',
+                message: `Restoran ${sellerInfo?.storeName || 'Toko'} sedang menyiapkan pesananmu. Mohon ditunggu ya.`,
+                type: 'info',
+                targetView: 'history',
+                targetTab: 'being_prepared', // Arahkan ke tab yang benar
+                orderId: orderId,
+                createdAt: new Date().toISOString(),
+                isRead: false
+              });
+            }
+          });
+          await Promise.all(promises);
           Swal.fire('Pesanan Diterima!', 'Segera siapkan pesanan untuk pelanggan.', 'success');
         } catch (error) {
           console.error("Error accepting food order:", error);
@@ -1907,7 +1947,7 @@ const DashboardSeller = ({ user, onBack }) => {
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700 text-gray-300' : 'divide-gray-100'}`}>
-                    {sellerOrders.length === 0 ? (
+                    {groupedOrders.length === 0 ? (
                         <tr>
                             <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
                                 <div className="flex flex-col items-center justify-center">
@@ -1917,23 +1957,23 @@ const DashboardSeller = ({ user, onBack }) => {
                             </td>
                         </tr>
                     ) : (
-                        sellerOrders.map(order => (
+                        groupedOrders.map(order => (
                             <tr key={order.id} className={`hover:transition-colors ${isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-gray-50'}`}>
                                 {(() => {
-                                    const isJasa = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Jasa');
-                                    const isNiagaFoodOrder = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
+                                    const isJasa = order.mergedItems.some(i => i.category === 'Jasa');
+                                    const isNiagaFoodOrder = order.mergedItems.some(i => i.category === 'Niaga Food');
                                     return (
                                 <>
                                 <td className="px-6 py-4 font-medium text-xs">#{order.id.slice(-6)}</td>
                                 <td className="px-6 py-4">{order.buyerName}</td>
                                 <td className="px-6 py-4">
                                   <div className="space-y-1">
-                                    {(Array.isArray(order.items) ? order.items : Object.values(order.items || {}))
-                                      .filter(i => i.sellerId === user.uid)
-                                      .map((item, idx) => (
+                                    {order.mergedItems.map((item, idx) => (
                                         <div key={idx} className={`text-xs border-b pb-1 last:border-0 ${isDarkMode ? 'border-slate-600' : 'border-gray-100'}`}>
-                                            <p className={`font-bold line-clamp-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.name}</p>
-                                            <p className="text-gray-500">{item.quantity} x Rp {parseInt(item.price).toLocaleString('id-ID')}</p>
+                                            <p className={`font-bold line-clamp-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                {item.name} <span className="text-sky-500 font-black">(x{item.quantity})</span>
+                                            </p>
+                                            <p className="text-gray-500">Rp {parseInt(item.price).toLocaleString('id-ID')}</p>
                                         </div>
                                     ))}
                                   </div>
@@ -1945,7 +1985,7 @@ const DashboardSeller = ({ user, onBack }) => {
                                             {order.verifiedAt && (
                                                 <span className="text-[10px] text-red-500 font-bold flex items-center gap-1">
                                                     <Timer size={10} /> Deadline: {(() => {
-                                                        const item = (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).find(i => i.category === 'Jasa');
+                                                        const item = order.mergedItems.find(i => i.category === 'Jasa');
                                                         const days = parseInt(item?.estimation) || 3;
                                                         const deadline = new Date(new Date(order.verifiedAt).getTime() + (days * 24 * 60 * 60 * 1000));
                                                         return deadline.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
@@ -1959,9 +1999,9 @@ const DashboardSeller = ({ user, onBack }) => {
                                 <td className="px-6 py-4">
                                     {order.status === 'processed' && (
                                         isNiagaFoodOrder ? (
-                                            <button onClick={() => handleAcceptFoodOrder(order.id)} className="text-white bg-green-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition-colors">Terima & Siapkan</button>
+                                            <button onClick={() => handleAcceptFoodOrder(order.orderIds)} className="text-white bg-green-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition-colors">Terima & Siapkan</button>
                                         ) : (
-                                            <button onClick={() => handleProcessOrder(order.id, isJasa)} className="text-white bg-sky-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 shadow-sm transition-colors">{isJasa ? 'Tandai Selesai' : 'Proses & Kirim'}</button>
+                                            <button onClick={() => handleProcessOrder(order.orderIds, isJasa)} className="text-white bg-sky-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 shadow-sm transition-colors">{isJasa ? 'Tandai Selesai' : 'Proses & Kirim'}</button>
                                         )
                                     )}
                                     {order.status === 'waiting_verification' && <span className="text-xs text-gray-400 italic">Menunggu Admin</span>}
