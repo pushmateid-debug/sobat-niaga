@@ -86,6 +86,33 @@ const AdminDashboard = ({ onBack }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   
+  // State Stats (Dipindahkan ke paling atas agar tidak ReferenceError)
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalSales: 0,
+    totalProfit: 0, // Profit Bersih Admin
+    pendingDrivers: 0,
+    unreadMessages: 0,
+    pendingTransactions: 0 // Badge Verifikasi Transaksi
+  });
+
+  const prevPendingTrxRef = useRef(0);
+  const isFirstLoadTrx = useRef(true);
+  const prevPendingNiagaRef = useRef(0);
+  const isFirstLoadNiaga = useRef(true);
+  const prevUnreadMessagesRef = useRef(0);
+  const [showSmartNotif, setShowSmartNotif] = useState(null);
+  const notifTimeoutRef = useRef(null);
+
+  // NOTIFIKASI SUARA PESAN BARU
+  useEffect(() => {
+    if (stats?.unreadMessages > prevUnreadMessagesRef.current) {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+        audio.play().catch(e => console.debug("Sound blocked by browser", e));
+    }
+    prevUnreadMessagesRef.current = stats?.unreadMessages || 0;
+  }, [stats?.unreadMessages]);
+
   // State Drivers
   const [driverRequests, setDriverRequests] = useState([]);
   const [withdrawalRequests, setWithdrawalRequests] = useState([]); // State Antrean Pencairan
@@ -124,16 +151,6 @@ const AdminDashboard = ({ onBack }) => {
   const [editingImage, setEditingImage] = useState(null);
   const [cropper, setCropper] = useState(null);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
-
-  // State Stats
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalSales: 0,
-    totalProfit: 0, // Profit Bersih Admin
-    pendingDrivers: 0,
-    unreadMessages: 0,
-    pendingTransactions: 0 // Badge Verifikasi Transaksi
-  });
 
   // State Laporan Keuangan
   const [marketplaceSales, setMarketplaceSales] = useState([]);
@@ -231,6 +248,19 @@ const AdminDashboard = ({ onBack }) => {
         const total = completedOrders.reduce((acc, curr) => acc + (parseInt(curr.totalPrice) || 0), 0);
         const pending = queue.length;
         setStats(prev => ({ ...prev, totalSales: total, pendingTransactions: pending }));
+
+        // --- NOTIFIKASI SUARA (CTING!) ---
+        if (!isFirstLoadTrx.current && pending > prevPendingTrxRef.current) {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.play().catch(e => console.log("Audio play failed", e));
+
+            // Pemicu Smart Notification
+            if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
+            setShowSmartNotif({ type: 'Marketplace', count: pending });
+            notifTimeoutRef.current = setTimeout(() => setShowSmartNotif(null), 5000);
+        }
+        prevPendingTrxRef.current = pending;
+        isFirstLoadTrx.current = false;
       } else {
         setTransactions([]);
         setVerificationQueue([]);
@@ -572,6 +602,20 @@ const AdminDashboard = ({ onBack }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setNiagaOrdersToVerify(data);
+
+      // --- NOTIFIKASI SUARA NIAGAGO (DING!) ---
+      const pendingCount = data.length;
+      if (!isFirstLoadNiaga.current && pendingCount > prevPendingNiagaRef.current) {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.play().catch(e => console.log("Audio play failed", e));
+
+          // Pemicu Smart Notification
+          if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
+          setShowSmartNotif({ type: 'NiagaGo', count: pendingCount });
+          notifTimeoutRef.current = setTimeout(() => setShowSmartNotif(null), 5000);
+      }
+      prevPendingNiagaRef.current = pendingCount;
+      isFirstLoadNiaga.current = false;
     });
     return () => unsubscribe();
   }, []);
@@ -762,19 +806,46 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fungsi Verifikasi Transaksi (Approve/Reject)
   const handleVerifyTransaction = async (order, isApproved) => {
+    // Modal Konfirmasi Anti-Ngumpet
+    const confirmResult = await Swal.fire({
+      title: isApproved ? 'Setujui Pembayaran?' : 'Tolak Pembayaran?',
+      text: isApproved ? "Pastikan dana sudah masuk ke mutasi rekening." : "Tulis alasan penolakan untuk user:",
+      icon: isApproved ? 'question' : 'warning',
+      input: isApproved ? undefined : 'text',
+      inputPlaceholder: 'Contoh: Bukti transfer tidak jelas',
+      inputValidator: (value) => {
+        if (!isApproved && !value) return 'Alasan wajib diisi!';
+      },
+      showCancelButton: true,
+      confirmButtonText: isApproved ? 'YA, SETUJU' : 'YA, TOLAK',
+      cancelButtonText: 'BATAL',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-2xl p-8 ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+        title: 'text-xl font-black mb-2',
+        htmlContainer: 'text-sm font-medium opacity-70',
+        confirmButton: `px-10 py-4 rounded-xl text-sm font-black text-white shadow-xl !opacity-100 mx-2 transition-transform active:scale-95 ${isApproved ? 'bg-green-600' : 'bg-rose-600'}`,
+        cancelButton: `px-10 py-4 rounded-xl text-sm font-black !opacity-100 mx-2 transition-transform active:scale-95 ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`
+      }
+    });
+
+    if (!confirmResult.isConfirmed) return;
+
     try {
       const newStatus = isApproved ? 'processed' : 'payment_rejected';
+      const reason = !isApproved ? confirmResult.value : null;
       
       await update(ref(realDb, `orders/${order.id}`), {
         status: newStatus,
-        verifiedAt: serverTimestamp()
+        verifiedAt: serverTimestamp(),
+        rejectionReason: reason
       });
 
       // Kirim Notifikasi ke User
       await push(ref(realDb, 'notifications'), {
         userId: order.buyerId,
         title: isApproved ? 'Pembayaran Diterima' : 'Pembayaran Ditolak',
-        message: isApproved ? 'Pesananmu sedang diproses seller.' : 'Bukti pembayaran tidak valid. Silakan upload ulang.',
+        message: isApproved ? 'Pesananmu sedang diproses seller.' : `Alasan: ${reason}`,
         type: isApproved ? 'success' : 'error',
               targetView: 'history',
         orderId: order.id,
@@ -797,6 +868,29 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fungsi Verifikasi Order NiagaGo (Logika Saldo Driver)
   const handleVerifyNiagaOrder = async (order, isApproved) => {
+    const confirmResult = await Swal.fire({
+      title: isApproved ? 'Setujui Order NiagaGo?' : 'Tolak Order NiagaGo?',
+      text: isApproved ? "Dana akan diteruskan ke saldo driver." : "Tulis alasan penolakan:",
+      icon: isApproved ? 'question' : 'warning',
+      input: isApproved ? undefined : 'text',
+      inputPlaceholder: 'Contoh: Nominal transfer salah',
+      inputValidator: (value) => {
+        if (!isApproved && !value) return 'Alasan wajib diisi!';
+      },
+      showCancelButton: true,
+      confirmButtonText: isApproved ? 'YA, SETUJU' : 'YA, TOLAK',
+      cancelButtonText: 'BATAL',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-2xl p-8 ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+        title: 'text-xl font-black mb-2',
+        confirmButton: `px-10 py-4 rounded-xl text-sm font-black text-white shadow-xl !opacity-100 mx-2 transition-transform active:scale-95 ${isApproved ? 'bg-green-600' : 'bg-rose-600'}`,
+        cancelButton: `px-10 py-4 rounded-xl text-sm font-black !opacity-100 mx-2 transition-transform active:scale-95 ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`
+      }
+    });
+
+    if (!confirmResult.isConfirmed) return;
+
     try {
       if (isApproved) {
         // 1. Hitung Pendapatan Bersih Driver & Admin Fee
@@ -825,7 +919,10 @@ const AdminDashboard = ({ onBack }) => {
         Swal.fire('Berhasil', `Pembayaran diverifikasi. Saldo Rp ${netIncome.toLocaleString()} masuk ke driver.`, 'success');
       } else {
         // Reject
-        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), { status: 'payment_rejected' });
+        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), { 
+          status: 'payment_rejected',
+          rejectionReason: confirmResult.value
+        });
         Swal.fire('Ditolak', 'Pembayaran ditolak.', 'info');
       }
       setSelectedNiagaOrder(null);
@@ -1425,6 +1522,51 @@ const AdminDashboard = ({ onBack }) => {
 
   return (
     <div className={`h-[100dvh] flex overflow-hidden ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
+      {/* Custom Styles for Drop & Shake Animation */}
+      <style>{`
+        @keyframes dropAndShake {
+          0% { transform: translate(-50%, -100%) scale(0.8); opacity: 0; }
+          50% { transform: translate(-50%, 24px) scale(1.05); opacity: 1; }
+          60% { transform: translate(-52%, 20px) rotate(-1deg); }
+          70% { transform: translate(-48%, 20px) rotate(1deg); }
+          80% { transform: translate(-51%, 20px) rotate(-0.5deg); }
+          90% { transform: translate(-49%, 20px) rotate(0.5deg); }
+          100% { transform: translate(-50%, 20px) rotate(0); }
+        }
+        .animate-drop-shake {
+          animation: dropAndShake 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+      `}</style>
+
+      {/* SMART NOTIFICATION OVERLAY */}
+      {showSmartNotif && (
+        <div 
+          className="fixed top-0 left-1/2 z-[9999] w-[90%] max-w-md pointer-events-none"
+          style={{ perspective: '1000px' }}
+        >
+          <div className="animate-drop-shake pointer-events-auto bg-white dark:bg-slate-800 border-2 border-sky-500 shadow-[0_20px_50px_rgba(14,165,233,0.3)] rounded-2xl p-4 flex items-center gap-4">
+            <div className="relative">
+              <div className="p-3 bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400 rounded-xl">
+                {showSmartNotif.type === 'NiagaGo' ? <Bike size={24} /> : <ShoppingBag size={24} />}
+              </div>
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ring-2 ring-white dark:ring-slate-800">
+                {showSmartNotif.count}
+              </span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-black text-sm text-gray-900 dark:text-white leading-tight">
+                ADA DUIT MASUK! 💸
+              </h4>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                {showSmartNotif.count} Antrean Verifikasi {showSmartNotif.type}
+              </p>
+            </div>
+            <button onClick={() => setShowSmartNotif(null)} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* MOBILE OVERLAY FOR SIDEBAR */}
       {isSidebarOpen && !isMobileChatOpen && (
@@ -1693,61 +1835,94 @@ const AdminDashboard = ({ onBack }) => {
               <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                    <thead className={`text-xs uppercase ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                    <thead className={`text-xs uppercase sticky top-0 z-10 ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
                       <tr>
-                        <th className="px-6 py-3">Produk</th>
-                        <th className="px-6 py-3">User</th>
-                        <th className="px-6 py-3">Harga</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3">Waktu</th>
-                        <th className="px-6 py-3">Aksi</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Produk</th>
+                        <th className="px-3 md:px-6 py-4 text-left hidden sm:table-cell">User</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Harga</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Status</th>
+                        <th className="px-3 md:px-6 py-4 text-left hidden md:table-cell">Waktu</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Aksi</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
                       {transactions.map(trx => (
-                        <tr key={trx.id} className={`border-b ${isDarkMode ? 'border-slate-700 hover:bg-slate-700/50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                          <td className="px-6 py-4 font-medium">
-                            <div className="text-xs">
+                        <tr key={trx.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
+                          {/* 1. PRODUK */}
+                          <td className="px-3 md:px-6 py-4 align-middle font-medium">
+                            <div className="text-xs font-bold text-gray-800 dark:text-gray-200">
                                 {trx.items ? (Array.isArray(trx.items) ? trx.items[0].name : Object.values(trx.items)[0].name) : 'Produk'}
-                                {trx.items && (Array.isArray(trx.items) ? trx.items.length : Object.values(trx.items).length) > 1 && <span className="text-gray-400"> +lainnya</span>}
+                                {trx.items && (Array.isArray(trx.items) ? trx.items.length : Object.values(trx.items).length) > 1 && <span className="text-gray-400 font-normal"> +lainnya</span>}
                             </div>
-                            <div className="text-[10px] text-gray-400">#{trx.id.slice(-6)}</div>
+                            <div className="text-[9px] text-gray-400 font-mono mt-0.5">#{trx.id.slice(-6).toUpperCase()}</div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-bold">{trx.buyerName || 'User'}</div>
+                          {/* 2. USER */}
+                          <td className="px-3 md:px-6 py-4 align-middle hidden sm:table-cell">
+                            <div className="text-xs font-bold">{trx.buyerName || 'User'}</div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-  {trx.status === 'pending' ? (
-    <div className="flex justify-end gap-2 items-center">
-      <button 
-        onClick={() => setSelectedTransaction(trx)} 
-        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" 
-        title="Lihat Bukti"
-      >
-        <ImageIcon size={16} />
-      </button>
-      
-      <button 
-        onClick={() => handleVerifyTransaction(trx, true)} 
-        className="p-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded font-bold text-xs"
-      >
-        Terima
-      </button>
+                          {/* 3. HARGA */}
+                          <td className="px-3 md:px-6 py-4 align-middle font-bold text-sky-600 whitespace-nowrap text-xs">
+                            Rp {(parseInt(trx.totalPrice) || 0).toLocaleString('id-ID')}
+                          </td>
+                          {/* 4. STATUS */}
+                          <td className="px-3 md:px-6 py-4 align-middle">
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                              trx.status === 'waiting_verification' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                              trx.status === 'payment_rejected' ? 'bg-red-50 text-red-600 border border-red-100' :
+                              trx.status === 'processed' ? 'bg-blue-50 text-blue-600' :
+                              trx.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
+                              'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>
+                              {trx.status === 'waiting_verification' ? 'PENDING' : 
+                               trx.status === 'payment_rejected' ? 'DITOLAK' : 
+                               trx.status?.replace('_', ' ')}
+                            </span>
+                          </td>
+                          {/* 5. WAKTU */}
+                          <td className="px-3 md:px-6 py-4 align-middle text-[10px] md:text-xs text-gray-500 whitespace-nowrap hidden md:table-cell">
+                            {trx.paidAt ? new Date(trx.paidAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 
+                             (trx.createdAt ? new Date(trx.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-')}
+                          </td>
+                          {/* 6. AKSI */}
+                          <td className="px-3 md:px-6 py-4 align-middle">
+                            <div className="flex items-center gap-2">
+                              {/* Thumbnail Bukti */}
+                              {trx.proofUrl ? (
+                                <div 
+                                  onClick={() => setSelectedImage(trx.proofUrl)}
+                                  className="w-10 h-10 rounded-lg border dark:border-slate-600 overflow-hidden cursor-pointer hover:ring-2 hover:ring-sky-500 transition-all bg-gray-50 flex-shrink-0 shadow-sm"
+                                  title="Zoom Bukti"
+                                >
+                                  <img src={trx.proofUrl} className="w-full h-full object-cover" alt="Proof" />
+                                </div>
+                              ) : (
+                                <div className="w-10 h-10 rounded-lg border border-dashed flex items-center justify-center text-[8px] text-gray-400 flex-shrink-0">No Proof</div>
+                              )}
 
-      <button 
-        onClick={() => handleVerifyTransaction(trx, false)} 
-        className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded font-bold text-xs"
-      >
-        Tolak
-      </button>
-    </div>
-  ) : (
-    <span className="text-gray-400 text-sm">Tidak ada bukti</span>
-  )}
-</td>
+                              {/* Tombol Cepat */}
+                              {trx.status === 'waiting_verification' && (
+                                <div className="flex gap-1.5">
+                                  <button 
+                                    onClick={() => handleVerifyTransaction(trx, true)} 
+                                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md active:scale-90 transition-all"
+                                    title="Setujui"
+                                  >
+                                    <Check size={14} strokeWidth={3} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleVerifyTransaction(trx, false)} 
+                                    className="p-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md active:scale-90 transition-all"
+                                    title="Tolak"
+                                  >
+                                    <X size={14} strokeWidth={3} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))} 
-                      {verificationQueue.length === 0 && (
+                      {transactions.length === 0 && (
                       <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Hore! Semua transaksi sudah diverifikasi.</td></tr>
                       )}
                       </tbody>
@@ -1761,28 +1936,46 @@ const AdminDashboard = ({ onBack }) => {
                 <div className={`rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                      <thead className={`text-xs uppercase ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                    <thead className={`text-xs uppercase sticky top-0 z-10 ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
                         <tr>
-                          <th className="px-6 py-3">Rute</th>
-                          <th className="px-6 py-3">Driver</th>
-                          <th className="px-6 py-3">Harga</th>
-                          <th className="px-6 py-3">Bukti</th>
-                          <th className="px-6 py-3">Aksi</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Rute</th>
+                        <th className="px-3 md:px-6 py-4 text-left hidden sm:table-cell">Driver</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Harga</th>
+                        <th className="px-3 md:px-6 py-4 text-left hidden md:table-cell">Waktu</th>
+                        <th className="px-3 md:px-6 py-4 text-left">Aksi</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
                         {niagaOrdersToVerify.map(order => (
                           <tr key={order.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
-                            <td className="px-6 py-4">
+                            <td className="px-3 md:px-6 py-4 align-middle">
                                 <div className="font-bold text-xs">{order.pickup}</div>
                                 <div className="text-[10px] text-gray-500">Ke: {order.destination}</div>
                             </td>
-                            <td className="px-6 py-4 text-xs">{order.driverName}</td>
-                            <td className="px-6 py-4 font-bold text-sky-500">Rp {order.price.toLocaleString('id-ID')}</td>
-                            <td className="px-6 py-4">
-                                <button onClick={() => setSelectedNiagaOrder(order)} className="text-sky-600 hover:underline text-xs font-bold flex items-center gap-1"><ImageIcon size={14}/> Cek Bukti</button>
+                            <td className="px-3 md:px-6 py-4 align-middle text-xs hidden sm:table-cell">{order.driverName}</td>
+                            <td className="px-3 md:px-6 py-4 align-middle font-bold text-sky-500 text-xs">Rp {order.price.toLocaleString('id-ID')}</td>
+                            <td className="px-3 md:px-6 py-4 align-middle text-[10px] text-gray-500 whitespace-nowrap hidden md:table-cell">
+                                {new Date(order.verifiedAt || order.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </td>
-                            <td className="px-6 py-4"><span className="text-xs text-orange-500 font-bold">Perlu Verifikasi</span></td>
+                            <td className="px-3 md:px-6 py-4 align-middle">
+                                <div className="flex items-center gap-2">
+                                    {order.paymentProof ? (
+                                        <div 
+                                            onClick={() => setSelectedImage(order.paymentProof)}
+                                            className="w-10 h-10 rounded-lg border dark:border-slate-600 overflow-hidden cursor-pointer hover:ring-2 hover:ring-sky-500 transition-all bg-gray-50 flex-shrink-0 shadow-sm"
+                                            title="Zoom Bukti"
+                                        >
+                                            <img src={order.paymentProof} className="w-full h-full object-cover" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-lg border border-dashed flex items-center justify-center text-[8px] text-gray-400 flex-shrink-0">No Proof</div>
+                                    )}
+                                    <div className="flex gap-1.5">
+                                        <button onClick={() => handleVerifyNiagaOrder(order, true)} className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md active:scale-90 transition-all" title="Setujui"><Check size={14} strokeWidth={3}/></button>
+                                        <button onClick={() => handleVerifyNiagaOrder(order, false)} className="p-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md active:scale-90 transition-all" title="Tolak"><X size={14} strokeWidth={3}/></button>
+                                    </div>
+                                </div>
+                            </td>
                           </tr>
                         ))}
                         {niagaOrdersToVerify.length === 0 && <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Tidak ada pesanan NiagaGo yang perlu diverifikasi.</td></tr>}
