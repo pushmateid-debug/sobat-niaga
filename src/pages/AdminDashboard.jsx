@@ -5,10 +5,10 @@ import {
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown,
-  Eye, Mail
+  Eye, Mail, HeartHandshake, UtensilsCrossed
 } from 'lucide-react';
 import { dbFirestore, db as realDb, storage, auth } from '../config/firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
 import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction } from 'firebase/database';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
@@ -221,6 +221,16 @@ const AdminDashboard = ({ onBack }) => {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  const [sharingConfig, setSharingConfig] = useState({ packageA: 15000, packageB: 10000, fund: 0 });
+  const [storeQuotas, setStoreQuotas] = useState({});
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(dbFirestore, 'sharing_configs', 'global'), (s) => {
+      if(s.exists()) setSharingConfig(s.data());
+    });
+    return () => unsub();
   }, []);
 
   // Fetch Marketplace Orders (Realtime DB) untuk Laporan Keuangan
@@ -1518,6 +1528,7 @@ const AdminDashboard = ({ onBack }) => {
     { id: 'images', label: 'Manajemen Gambar', icon: <ImageIcon size={20} /> },
     { id: 'chat', label: 'Pesan Pelanggan', icon: <MessageCircle size={20} />, badge: stats.unreadMessages },
     { id: 'settings', label: 'Pengaturan', icon: <Settings size={20} /> },
+    { id: 'sharing', label: 'Sobat Berbagi', icon: <HeartHandshake size={20} /> },
   ];
 
   return (
@@ -1815,6 +1826,61 @@ const AdminDashboard = ({ onBack }) => {
                   <ImageUploader label="NiagaGo / Niagaku" currentUrl={banners['icon_niagago']} onFileSelect={(file) => handleFileSelect(file, 'icon_niagago')} />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2">*Gunakan format PNG Transparan atau WebP agar tampilan rapi di Mobile.</p>
+              </div>
+            </div>
+          )}
+
+          {/* --- SOBAT BERBAGI (ADMIN CONTROL) --- */}
+          {activeTab === 'sharing' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Program Sobat Berbagi</h2>
+                <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold">
+                  Total Dana Donasi: Rp {sharingConfig.donationFund?.toLocaleString()}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className={cardClass}>
+                  <h3 className="font-bold mb-4 flex items-center gap-2"><Settings size={18}/> Harga Paket Bantuan</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className={labelClass}>Harga Paket A (Sembako)</label>
+                      <input type="number" value={sharingConfig.packageA_price} onChange={e => setSharingConfig({...sharingConfig, packageA_price: parseInt(e.target.value)})} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Harga Paket B (Makanan)</label>
+                      <input type="number" value={sharingConfig.packageB_price} onChange={e => setSharingConfig({...sharingConfig, packageB_price: parseInt(e.target.value)})} className={inputClass} />
+                    </div>
+                    <button onClick={() => setDoc(doc(dbFirestore, 'sharing_configs', 'global'), sharingConfig)} className="w-full py-2 bg-sky-600 text-white font-bold rounded-lg">Update Harga</button>
+                  </div>
+                </div>
+
+                <div className={cardClass}>
+                  <h3 className="font-bold mb-4 flex items-center gap-2"><UtensilsCrossed size={18}/> Kuota Harian Toko Mitra</h3>
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {sellers.map(s => (
+                      <div key={s.uid} className="flex items-center justify-between p-2 border-b">
+                        <span className="text-xs font-bold">{s.storeName}</span>
+                        <input 
+                          type="number" 
+                          placeholder="Kuota" 
+                          className="w-20 p-1 border rounded text-xs"
+                          onBlur={async (e) => {
+                            const date = new Date().toISOString().split('T')[0];
+                            await setDoc(doc(dbFirestore, 'sharing_quotas', `${s.uid}_${date}`), {
+                              storeId: s.uid,
+                              date,
+                              maxQuota: parseInt(e.target.value),
+                              usedQuota: 0
+                            }, { merge: true });
+                            Swal.fire('Kuota Diset!', '', 'success');
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}

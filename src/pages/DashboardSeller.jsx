@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode } from 'lucide-react';
 import { db } from '../config/firebase';
+import { dbFirestore } from '../config/firebase';
+import { doc, getDoc, updateDoc, collection, query as fsQuery, where, onSnapshot } from 'firebase/firestore';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useTheme } from '../context/ThemeContext';
-import { ref, get, set, push, remove, onValue, query, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
+import { ref, get, set, push, remove, onValue, query as realQuery, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
 import confetti from 'canvas-confetti';
 import SellerVerification from './SellerVerification';
 import Swal from 'sweetalert2';
@@ -127,6 +130,8 @@ const DashboardSeller = ({ user, onBack }) => {
   const [isChartExpanded, setIsChartExpanded] = useState(false); // Default collapsed di HP
   const [chartFilter, setChartFilter] = useState('1W'); // '1D', '1W', '1M', 'ALL'
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [sharingHistory, setSharingHistory] = useState([]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -174,7 +179,7 @@ const DashboardSeller = ({ user, onBack }) => {
       });
 
       // 1.5 Load Leaderboard dari Users (Biar Sinkron sama Reset)
-      // OPTIMASI: Gunakan query untuk hanya ambil user yang ikut kompetisi, jangan download semua user!
+      // OPTIMASI: Gunakan realQuery untuk hanya ambil user yang ikut kompetisi, jangan download semua user!
       const usersRef = query(ref(db, 'users'), orderByChild('sellerInfo/isCompetitor'), equalTo(true));
       const unsubscribeUsers = onValue(usersRef, (snap) => {
         const usersData = snap.val();
@@ -187,7 +192,7 @@ const DashboardSeller = ({ user, onBack }) => {
       });
 
       // 2. Load Produk Realtime (Query dari Global Products by sellerId)
-      const productsRef = query(ref(db, 'products'), orderByChild('sellerId'), equalTo(user.uid));
+      const productsRef = realQuery(ref(db, 'products'), orderByChild('sellerId'), equalTo(user.uid));
       const unsubscribeProducts = onValue(productsRef, (snap) => {
         const prodData = snap.val();
         const loadedProducts = prodData ? Object.keys(prodData).map(key => ({ id: key, ...prodData[key] })) : [];
@@ -275,7 +280,7 @@ const DashboardSeller = ({ user, onBack }) => {
       });
 
       // 4. Load Riwayat Penarikan (Withdrawals)
-      const withdrawalsRef = query(ref(db, 'withdrawals'), orderByChild('sellerId'), equalTo(user.uid));
+      const withdrawalsRef = realQuery(ref(db, 'withdrawals'), orderByChild('sellerId'), equalTo(user.uid));
       const unsubscribeWithdrawals = onValue(withdrawalsRef, (snap) => {
         const data = snap.val();
         const loaded = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
@@ -283,11 +288,30 @@ const DashboardSeller = ({ user, onBack }) => {
       });
 
       // 5. Load Pending Withdrawals (Request)
-      const pendingWithdrawalsRef = query(ref(db, 'withdrawal_requests'), orderByChild('sellerId'), equalTo(user.uid));
+      const pendingWithdrawalsRef = realQuery(ref(db, 'withdrawal_requests'), orderByChild('sellerId'), equalTo(user.uid));
       const unsubscribePendingWithdrawals = onValue(pendingWithdrawalsRef, (snap) => {
         const data = snap.val();
         const loaded = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
         setPendingWithdrawals(loaded);
+      });
+
+      // 6. Load Rekap Sobat Berbagi (Hari Ini)
+      const today = new Date().toISOString().split('T')[0];
+      const sharingRef = collection(dbFirestore, 'sobat_berbagi');
+      const qSharing = fsQuery(
+        sharingRef, 
+        where('storeId', '==', user.uid),
+        where('status', '==', 'used')
+      );
+
+      const unsubscribeSharing = onSnapshot(qSharing, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const todayItems = items.filter(item => {
+          if (!item.usedAt) return false;
+          const usedDate = item.usedAt.toDate ? item.usedAt.toDate().toISOString().split('T')[0] : new Date(item.usedAt).toISOString().split('T')[0];
+          return usedDate === today;
+        });
+        setSharingHistory(todayItems);
       });
 
       return () => {
@@ -298,6 +322,7 @@ const DashboardSeller = ({ user, onBack }) => {
         unsubscribeWithdrawals();
         unsubscribeUsers();
         unsubscribePendingWithdrawals();
+        unsubscribeSharing();
       };
     }
   }, [user, compSettings.isActive, compSettings.startDate, compSettings.endDate]);
@@ -1292,6 +1317,66 @@ const DashboardSeller = ({ user, onBack }) => {
     }
   };
 
+  // LOGIKA SCANNER UI
+  useEffect(() => {
+    if (isScannerOpen) {
+      const scanner = new Html5QrcodeScanner("reader", { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        rememberLastUsedCamera: true,
+        aspectRatio: 1.0
+      });
+
+      scanner.render((result) => {
+        scanner.clear();
+        setIsScannerOpen(false);
+        handleScanVoucher(result);
+      }, (error) => {
+        // Silent error while scanning
+      });
+    }
+  }, [isScannerOpen]);
+
+  // LOGIKA SCAN VOUCHER SOBAT BERBAGI
+  const handleScanVoucher = async (scanResult) => {
+    try {
+      // Parsing data QR (ID|Type)
+      const voucherId = scanResult.includes('|') ? scanResult.split('|')[0] : scanResult;
+      const voucherRef = doc(dbFirestore, 'sobat_berbagi', voucherId);
+      const vSnap = await getDoc(voucherRef);
+
+      if (!vSnap.exists()) throw new Error("Voucher tidak valid!");
+      const vData = vSnap.data();
+
+      if (vData.status === 'used') throw new Error("Voucher sudah pernah digunakan!");
+
+      // 1. Update status voucher di Firestore
+      await updateDoc(voucherRef, {
+        status: 'used',
+        usedAt: serverTimestamp(),
+        storeId: user.uid, // Catat otomatis toko yang men-scan
+        storeName: sellerInfo?.storeName || 'Mitra Niaga'
+      });
+
+      // 2. Tambah Saldo Pending Payout Seller di Realtime DB
+      const sellerRef = ref(db, `users/${user.uid}/sellerInfo`);
+      const currentPayout = sellerInfo?.sharingPayout || 0;
+      await update(sellerRef, {
+        sharingPayout: currentPayout + vData.price
+      });
+
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      Swal.fire({
+        title: 'Voucher Valid! ✅',
+        text: `Paket ${vData.packageType} berhasil diklaim. Saldo Anda bertambah Rp ${vData.price.toLocaleString()}`,
+        icon: 'success'
+      });
+
+    } catch (error) {
+      Swal.fire('Scan Gagal', error.message, 'error');
+    }
+  };
+
   return (
     <div className={`h-[100dvh] overflow-hidden flex flex-col justify-start pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
       {/* Header Biru Muda - Konsisten */}
@@ -1308,6 +1393,7 @@ const DashboardSeller = ({ user, onBack }) => {
                  mobileView === 'add_product' ? 'Tambah Produk' :
                  mobileView === 'product_list' ? 'Produk Saya' :
                  mobileView === 'finance' ? 'Keuangan' :
+                 mobileView === 'sharing_recap' ? 'Rekap Bantuan' :
                  mobileView === 'stats' ? 'Statistik' : 'Pesanan'}
               </h1>
               {sellerInfo?.isTrustedSeller && <CheckCircle size={20} className="text-blue-500 fill-blue-100" />}
@@ -1449,12 +1535,51 @@ const DashboardSeller = ({ user, onBack }) => {
                         <button onClick={() => setMobileView('product_list')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Package size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Produk Saya</span></button>
                         <button onClick={() => setMobileView('finance')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Wallet size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Keuangan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><BarChart2 size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Statistik</span></button>
+                        <button onClick={() => setIsScannerOpen(true)} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 group-active:scale-95 transition-transform"><QrCode size={20}/></div><span className="text-[10px] font-bold text-center leading-tight text-emerald-600">Scan Bantuan</span></button>
+                        <button onClick={() => setMobileView('sharing_recap')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><RotateCcw size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Rekap Bantuan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Award size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Poin Seller</span></button>
                         <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><Megaphone size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Promosi</span></button>
                         <button onClick={() => setIsPaymentModalOpen(true)} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Settings size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Pengaturan</span></button>
                         <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><HelpCircle size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Bantuan</span></button>
                     </div>
                 </div>
+            </div>
+
+            {/* --- SHARING RECAP VIEW (MOBILE) --- */}
+            <div className={`space-y-4 ${mobileView === 'sharing_recap' ? 'block' : 'hidden'}`}>
+              <div className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg">
+                <p className="text-xs opacity-80 uppercase font-bold">Total Klaim Hari Ini</p>
+                <h3 className="text-3xl font-black mt-1">Rp {sharingHistory.reduce((acc, curr) => acc + (curr.price || 0), 0).toLocaleString()}</h3>
+                <p className="text-[10px] mt-2 bg-white/20 inline-block px-2 py-1 rounded-lg">Total {sharingHistory.length} Voucher</p>
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                <h4 className="font-bold text-sm mb-4">Daftar Voucher Hari Ini</h4>
+                <div className="space-y-3">
+                  {sharingHistory.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <HeartHandshake size={40} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-xs">Belum ada bantuan yang di-scan hari ini.</p>
+                    </div>
+                  ) : (
+                    sharingHistory.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center border-b border-dashed pb-2 last:border-0">
+                        <div>
+                          <p className="text-xs font-bold">Paket {item.packageType}</p>
+                          <p className="text-[10px] text-gray-500">{item.userName}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-emerald-600">+Rp {item.price.toLocaleString()}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {item.usedAt?.toDate ? item.usedAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Baru saja'}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 text-center px-4 italic">Dana bantuan akan dicairkan otomatis oleh Admin bersamaan dengan dana penjualan reguler.</p>
             </div>
 
             {/* 1. Header Stats (Grid 2x2) */}
@@ -2162,6 +2287,26 @@ const DashboardSeller = ({ user, onBack }) => {
           </div>
         </div>
       )}
+      {/* MODAL SCANNER QR */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 backdrop-blur-md">
+          <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative">
+            <button 
+              onClick={() => setIsScannerOpen(false)} 
+              className="absolute top-4 right-4 z-50 p-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200 transition-colors"
+            >
+              <X size={24} />
+            </button>
+            <div className="p-6 text-center">
+              <h3 className="font-bold text-gray-800 mb-1">Scan Voucher Bantuan</h3>
+              <p className="text-xs text-gray-500 mb-4">Arahkan kamera ke QR Code Mahasiswa</p>
+              <div id="reader" className="overflow-hidden rounded-2xl border-4 border-emerald-100"></div>
+            </div>
+          </div>
+          <p className="text-white/60 text-xs mt-6">Pastikan pencahayaan cukup untuk scan yang cepat.</p>
+        </div>
+      )}
+
     </div>
   );
 };

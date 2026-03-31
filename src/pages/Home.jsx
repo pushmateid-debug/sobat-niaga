@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -33,6 +33,8 @@ const DigitalCenter = React.lazy(() => import('./DigitalCenter'));
 const NiagaGo = React.lazy(() => import('./NiagaGo'));
 const SearchResults = React.lazy(() => import('./SearchResults'));
 const SearchPage = React.lazy(() => import('./SearchPage'));
+const AllCategories = React.lazy(() => import('./AllCategories'));
+const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 
 const Home = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -128,7 +130,7 @@ const Home = () => {
     { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
     { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
     { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50' },
-    { name: 'NiagaGo', icon: <Bike size={20} />, color: 'shadow-emerald-500/50', key: 'icon_niagago' },
+    { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50' },
   ];
 
   // Fetch Real Products from Firebase
@@ -354,6 +356,11 @@ const Home = () => {
   };
 
   const scrollToSection = (name) => {
+    if (name === 'Lainnya') {
+      setCurrentView('all-categories');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     let ref = null;
     switch (name) {
       case 'Populer': ref = populerRef; break;
@@ -602,6 +609,8 @@ const Home = () => {
       case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
       case 'help': return renderStaticPage('help', 'Pusat Bantuan');
       case 'niagago': return <NiagaGo user={user} onBack={() => setCurrentView('home')} onOpenProfile={() => setCurrentView('profile')} />;
+      case 'all-categories': return <AllCategories onBack={() => setCurrentView('home')} onNavigate={(view) => setCurrentView(view)} />;
+      case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => setCurrentView('all-categories')} />;
       
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat': return (
