@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake } from 'lucide-react';
 import { db } from '../config/firebase';
 import { dbFirestore } from '../config/firebase';
-import { doc, getDoc, updateDoc, collection, query as fsQuery, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useTheme } from '../context/ThemeContext';
 import { ref, get, set, push, remove, onValue, query as realQuery, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
@@ -180,7 +180,7 @@ const DashboardSeller = ({ user, onBack }) => {
 
       // 1.5 Load Leaderboard dari Users (Biar Sinkron sama Reset)
       // OPTIMASI: Gunakan realQuery untuk hanya ambil user yang ikut kompetisi, jangan download semua user!
-      const usersRef = query(ref(db, 'users'), orderByChild('sellerInfo/isCompetitor'), equalTo(true));
+      const usersRef = realQuery(ref(db, 'users'), orderByChild('sellerInfo/isCompetitor'), equalTo(true));
       const unsubscribeUsers = onValue(usersRef, (snap) => {
         const usersData = snap.val();
         if (usersData) {
@@ -298,7 +298,7 @@ const DashboardSeller = ({ user, onBack }) => {
       // 6. Load Rekap Sobat Berbagi (Hari Ini)
       const today = new Date().toISOString().split('T')[0];
       const sharingRef = collection(dbFirestore, 'sobat_berbagi');
-      const qSharing = fsQuery(
+      const qSharing = query(
         sharingRef, 
         where('storeId', '==', user.uid),
         where('status', '==', 'used')
