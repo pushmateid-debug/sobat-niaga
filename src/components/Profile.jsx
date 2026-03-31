@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
 import { updateProfile } from 'firebase/auth';
-import { ref as dbRef, set, get, update } from 'firebase/database';
+import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
@@ -14,28 +14,32 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
   const [imageFile, setImageFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [saldo, setSaldo] = useState(0); // State untuk saldo
+  const [niagaSaldo, setNiagaSaldo] = useState(0);
+  const [sellerBalance, setSellerBalance] = useState(0);
   const { theme, toggleTheme } = useTheme(); // Pakai Theme Context
   const isDarkMode = theme === 'dark'; // Helper variable biar kodingan lebih bersih
 
-  // Load data tambahan dari Realtime Database
+  // Load data tambahan dari Realtime Database (Real-time Sync)
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (user?.uid) {
-        try {
-          const snapshot = await get(dbRef(db, `users/${user.uid}`));
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            if (data.username) setUsername(data.username);
-            if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
-            if (data.saldo) setSaldo(data.saldo); // Ambil data saldo
-          }
-        } catch (error) {
-          console.error("Error fetching user data:", error);
+    if (user?.uid) {
+      const userRef = dbRef(db, `users/${user.uid}`);
+      const unsubscribe = onValue(userRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          if (data.username) setUsername(data.username);
+          if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
+          
+          const nSaldo = parseInt(data.saldo || 0);
+          const sBalance = parseInt(data.sellerInfo?.balance || 0);
+          
+          setNiagaSaldo(nSaldo);
+          setSellerBalance(sBalance);
+          setSaldo(nSaldo + sBalance); // Total saldo gabungan
         }
-      }
-    };
-    fetchUserData();
-  }, [user]);
+      });
+      return () => unsubscribe(); // Cleanup listener biar gak berat
+    }
+  }, [user?.uid]);
 
   const handleImageChange = (e) => {
     if (e.target.files[0]) {
@@ -57,9 +61,10 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
 
   // Fungsi Upload ke Cloudinary
   const uploadToCloudinary = async (file) => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
+    // Perbaikan: Hapus duplikasi variabel const yang bikin garis merah
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
+    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
 
     // Debugging: Cek apakah variabel environment terbaca
     console.log("DEBUG CLOUDINARY (HARDCODED):", { cloudName, apiKey, apiSecret: apiSecret ? '***' : 'undefined' });
@@ -122,12 +127,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
         updatedAt: new Date().toISOString()
       };
 
-      try {
-        await update(dbRef(db, `users/${user.uid}`), userData);
-      } catch (dbError) {
-        console.warn("Database permission denied (diabaikan agar UI tetap update):", dbError);
-        // Kita lanjut aja, karena update foto & nama di Auth sudah berhasil
-      }
+      await update(dbRef(db, `users/${user.uid}`), userData);
 
       // 4. Update State di Home biar langsung berubah tanpa refresh
       const updatedUser = {
@@ -180,6 +180,36 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
     }).then((result) => { if (result.isConfirmed) window.open('https://wa.me/6289517587498', '_blank'); });
   };
 
+  const handleShowBalanceDetail = () => {
+    Swal.fire({
+      title: 'Rincian Saldo Utama',
+      html: `
+        <div class="text-left space-y-3 mt-2">
+          <div class="flex justify-between items-center p-3 bg-blue-50 rounded-xl border border-blue-100">
+            <div class="flex items-center gap-2">
+                <span class="text-lg">🏪</span>
+                <span class="text-sm font-bold text-gray-700">Hasil Penjualan</span>
+            </div>
+            <span class="text-sm font-bold text-blue-600">Rp ${sellerBalance.toLocaleString('id-ID')}</span>
+          </div>
+          <div class="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
+            <div class="flex items-center gap-2">
+                <span class="text-lg">🛵</span>
+                <span class="text-sm font-bold text-gray-700">Saldo Niaga Go</span>
+            </div>
+            <span class="text-sm font-bold text-green-600">Rp ${niagaSaldo.toLocaleString('id-ID')}</span>
+          </div>
+          <div class="border-t border-dashed border-gray-300 pt-3 mt-2 flex justify-between items-center">
+            <span class="text-sm font-bold text-gray-800">Total Aset</span>
+            <span class="text-xl font-extrabold text-gray-900">Rp ${(sellerBalance + niagaSaldo).toLocaleString('id-ID')}</span>
+          </div>
+        </div>
+      `,
+      confirmButtonText: 'Tutup',
+      confirmButtonColor: '#0ea5e9'
+    });
+  };
+
   return (
     <div className="min-h-screen pb-20 transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Header Biru Muda - Konsisten */}
@@ -219,11 +249,14 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
           {/* Menu Tambahan */}
           <div className={`px-6 pt-4 space-y-3 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
             {/* Saldo Card */}
-            <div className={`p-4 rounded-xl border flex items-center justify-between ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-green-50 border-green-200'}`}>
+            <div 
+                onClick={handleShowBalanceDetail}
+                className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:bg-opacity-80 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-green-50 border-green-200'}`}
+            >
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-600'}`}><Wallet size={20} /></div>
                 <div>
-                  <p className={`text-xs font-bold ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo SobatNiaga</p>
+                  <p className={`text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo SobatNiaga <Info size={10} /></p>
                   <p className={`text-lg font-bold font-price ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {saldo.toLocaleString('id-ID')}</p>
                 </div>
               </div>

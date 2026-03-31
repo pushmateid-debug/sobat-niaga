@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, FileCheck, Users, Wallet, LogOut, 
-  Search, Filter, CheckCircle, XCircle, Eye, ArrowLeft,
-  MoreHorizontal, AlertCircle, Loader2, TrendingUp, Download, Ban, ShieldCheck, Settings, CreditCard, Upload, Image as ImageIcon, Trophy, Calendar as CalendarIcon, Power, RefreshCw, Save, Crop, Wallet as WalletIcon
+  Search, Filter, CheckCircle, XCircle, Eye, ArrowLeft, Star,
+  MoreHorizontal, AlertCircle, Loader2, TrendingUp, Download, Ban, ShieldCheck, Settings, CreditCard, Upload, Image as ImageIcon, Trophy, Calendar as CalendarIcon, Power, RefreshCw, Save, Crop, Wallet as WalletIcon, Coins
 } from 'lucide-react';
 import { Sun, Moon } from 'lucide-react';
 import Cropper from 'react-easy-crop'; // Pastikan install: npm install react-easy-crop
-import { db } from '../config/firebase';
-import { ref, onValue, update, get, push } from 'firebase/database';
+import { db, auth } from '../config/firebase';
+import { ref, onValue, update, get, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { Line } from 'react-chartjs-2';
 import {
@@ -122,7 +122,7 @@ const BANNER_SLOTS = [
 
 const AdminDashboard = ({ onBack }) => {
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('adminDarkMode') === 'true');
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, verification, sellers, finance
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, verification, sellers, points, finance
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]); // State Riwayat Pembayaran
@@ -612,6 +612,88 @@ const AdminDashboard = ({ onBack }) => {
       Swal.fire('Error', error.message, 'error');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // --- POINT MANAGEMENT LOGIC (Admin Only) ---
+  const handleUpdatePoints = async (type, targetUserId = null) => {
+    // 1. Security Check: Pastikan yang eksekusi adalah user yang login (Admin)
+    const currentAdmin = auth.currentUser;
+    if (!currentAdmin) return Swal.fire('Error', 'Sesi admin tidak valid. Silakan login ulang.', 'error');
+
+    const { value: formValues } = await Swal.fire({
+      title: type === 'bulk' ? '🎁 Inject Poin Masal' : '⭐ Tambah Poin User',
+      html: `
+        <div class="text-left space-y-4 mt-4">
+          <div class="space-y-1">
+            <label class="text-xs font-bold text-gray-500 uppercase">Jumlah Poin</label>
+            <input id="points-amount" class="w-full px-4 py-3 rounded-xl border bg-gray-50 outline-none focus:ring-2 focus:ring-purple-500" type="number" placeholder="Contoh: 100">
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-bold text-gray-500 uppercase">Alasan / Pesan untuk User</label>
+            <textarea id="points-reason" class="w-full px-4 py-3 rounded-xl border bg-gray-50 outline-none focus:ring-2 focus:ring-purple-500" placeholder="Contoh: Bonus Event Bulanan / Kompensasi System Error"></textarea>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Proses Update',
+      confirmButtonColor: '#9333ea',
+      preConfirm: () => {
+        const amount = document.getElementById('points-amount').value;
+        const reason = document.getElementById('points-reason').value;
+        if (!amount || parseInt(amount) === 0) return Swal.showValidationMessage('Masukkan jumlah poin yang valid!');
+        if (!reason) return Swal.showValidationMessage('Alasan wajib diisi untuk riwayat audit!');
+        return { amount: parseInt(amount), reason };
+      }
+    });
+
+    if (formValues) {
+      setIsUploading(true);
+      try {
+        const updates = {};
+        const timestamp = new Date().toISOString();
+        // Filter user yang akan diupdate
+        const targetUsers = type === 'bulk' ? users.filter(u => u.sellerInfo) : users.filter(u => u.uid === targetUserId);
+
+        targetUsers.forEach(user => {
+          const currentPoints = parseInt(user.sellerInfo?.points_loyalty || 0);
+          const newPoints = currentPoints + formValues.amount;
+          
+          // 1. Update Database Poin Seller
+          updates[`users/${user.uid}/sellerInfo/points_loyalty`] = newPoints;
+          
+          // 2. Catat di koleksi point_history (Audit Log) - Sesuai Request
+          const historyKey = push(ref(db, 'point_history')).key;
+          updates[`point_history/${historyKey}`] = {
+            userId: user.uid,
+            userName: user.sellerInfo?.storeName || user.displayName || 'User',
+            amount: formValues.amount,
+            newPoints: newPoints,
+            reason: formValues.reason,
+            createdAt: timestamp,
+            adminId: currentAdmin.uid,
+            type: 'manual_inject'
+          };
+
+          // 3. Kirim Notifikasi ke User agar mereka senang
+          const notifKey = push(ref(db, 'notifications')).key;
+          updates[`notifications/${notifKey}`] = {
+            userId: user.uid,
+            title: 'Poin Loyalitas Masuk! ⭐',
+            message: `Kamu mendapatkan bonus ${formValues.amount} Poin dari Admin. Alasan: ${formValues.reason}`,
+            type: 'success',
+            createdAt: timestamp,
+            isRead: false
+          };
+        });
+
+        await update(ref(db), updates);
+        Swal.fire('Berhasil', `${formValues.amount} Poin telah dibagikan ke ${targetUsers.length} seller.`, 'success');
+      } catch (err) {
+        Swal.fire('Gagal', 'Terjadi kesalahan sistem: ' + err.message, 'error');
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -1305,6 +1387,56 @@ const AdminDashboard = ({ onBack }) => {
     </div>
   );
 
+  const renderPoints = () => {
+    const sellers = users.filter(u => u.sellerInfo);
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className={`text-xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Point Management Center</h3>
+            <p className="text-xs text-gray-500 mt-1">Kelola poin loyalitas seller untuk reward atau event khusus.</p>
+          </div>
+          <button 
+            onClick={() => handleUpdatePoints('bulk')}
+            className="flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-2xl font-bold text-sm hover:bg-purple-700 transition-all shadow-lg shadow-purple-200"
+          >
+            <Coins size={18} /> Inject Poin ke Semua Seller
+          </button>
+        </div>
+
+        <div className={`rounded-2xl shadow-sm border overflow-hidden ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className={`font-bold ${isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-600'}`}>
+                <tr>
+                  <th className="px-6 py-4">Nama Toko / Seller</th>
+                  <th className="px-6 py-4 text-center">Loyalty Poin</th>
+                  <th className="px-6 py-4 text-center">Event Poin</th>
+                  <th className="px-6 py-4 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700 text-gray-300' : 'divide-gray-100'}`}>
+                {sellers.map(seller => (
+                  <tr key={seller.uid} className={`hover:bg-gray-50/50 ${isDarkMode ? 'hover:bg-gray-700/30' : ''} transition-colors`}>
+                    <td className="px-6 py-4">
+                      <div className="font-bold">{seller.sellerInfo.storeName}</div>
+                      <div className="text-[10px] text-gray-400">{seller.email}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center font-black text-purple-600">{seller.sellerInfo.points_loyalty || 0}</td>
+                    <td className="px-6 py-4 text-center font-black text-orange-500">{seller.sellerInfo.points_event || 0}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => handleUpdatePoints('single', seller.uid)} className="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-purple-600 hover:text-white transition-all">Tambah Poin</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderBanners = () => {
     // Helper untuk render card slot
     const renderSlotCard = (slot) => {
@@ -1703,6 +1835,9 @@ const AdminDashboard = ({ onBack }) => {
           <button onClick={() => setActiveTab('sellers')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'sellers' ? 'bg-sky-700 text-white shadow-lg' : 'text-sky-200 hover:bg-sky-800'}`}>
             <Users size={20} /> Daftar Penjual
           </button>
+          <button onClick={() => setActiveTab('points')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'points' ? 'bg-sky-700 text-white shadow-lg' : 'text-sky-200 hover:bg-sky-800'}`}>
+            <Star size={20} /> Point Management
+          </button>
           <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'finance' ? 'bg-sky-700 text-white shadow-lg' : 'text-sky-200 hover:bg-sky-800'}`}>
             <Wallet size={20} /> Laporan Keuangan
           </button>
@@ -1738,6 +1873,7 @@ const AdminDashboard = ({ onBack }) => {
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'verification' && renderVerification()}
           {activeTab === 'sellers' && renderSellers()}
+          {activeTab === 'points' && renderPoints()}
           {activeTab === 'finance' && renderFinance()}
           {activeTab === 'banners' && renderBanners()}
           {activeTab === 'settings' && renderSettings()}

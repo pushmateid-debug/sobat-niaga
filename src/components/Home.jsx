@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2 } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Zap, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Bike, LayoutTemplate } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination } from 'swiper/modules';
 import 'swiper/css';
@@ -67,12 +67,15 @@ const Home = () => {
   ];
 
   const categories = [
-    { name: 'Isi Pulsa', icon: <Zap size={24} />, color: 'bg-blue-50 text-blue-600 border border-blue-200' },
-    { name: 'Makan', icon: <Utensils size={24} />, color: 'bg-orange-50 text-orange-600 border border-orange-200' },
-    { name: 'Skin Care', icon: <Sparkles size={24} />, color: 'bg-rose-50 text-rose-600 border border-rose-200' },
-    { name: 'Fashion', icon: <ShoppingBag size={24} />, color: 'bg-indigo-50 text-indigo-600 border border-indigo-200' },
-    { name: 'Jasa', icon: <Wrench size={24} />, color: 'bg-teal-50 text-teal-600 border border-teal-200' },
-    { name: 'Top Up Game', icon: <Gamepad2 size={24} />, color: 'bg-purple-50 text-purple-600 border border-purple-200' },
+    { name: 'Isi Pulsa', icon: <Zap size={24} />, color: 'bg-blue-50 text-blue-600 border border-blue-200', imgKey: 'icon_pulsa' },
+    { name: 'Makan', icon: <Utensils size={24} />, color: 'bg-orange-50 text-orange-600 border border-orange-200', imgKey: 'icon_makanan' },
+    { name: 'Skin Care', icon: <Sparkles size={24} />, color: 'bg-rose-50 text-rose-600 border border-rose-200', imgKey: 'icon_skincare' },
+    { name: 'Fashion', icon: <ShoppingBag size={24} />, color: 'bg-indigo-50 text-indigo-600 border border-indigo-200', imgKey: 'icon_fashion' },
+    { name: 'Jasa', icon: <Wrench size={24} />, color: 'bg-teal-50 text-teal-600 border border-teal-200', imgKey: 'icon_jasa' },
+    { name: 'Top Up Game', icon: <Gamepad2 size={24} />, color: 'bg-purple-50 text-purple-600 border border-purple-200', imgKey: 'icon_game' },
+    { name: 'NiagaGo', icon: <Bike size={24} />, color: 'bg-sky-50 text-sky-600 border border-sky-200', imgKey: 'icon_niagago' },
+    { name: 'Populer', icon: <Zap size={24} />, color: 'bg-yellow-50 text-yellow-600 border border-yellow-200', imgKey: 'icon_populer' },
+    { name: 'Lainnya', icon: <LayoutTemplate size={24} />, color: 'bg-gray-50 text-gray-600 border border-gray-200', imgKey: 'icon_lainnya' },
   ];
 
   // Fetch Real Products from Firebase
@@ -398,13 +401,23 @@ const Home = () => {
                 if (cat.name === 'Fashion') setCurrentView('fashion');
                 if (cat.name === 'Jasa') setCurrentView('jasa');
                 if (cat.name === 'Top Up Game') setCurrentView('digital-center');
+                if (cat.name === 'NiagaGo') setCurrentView('niaga-go');
+                if (cat.name === 'Lainnya') setCurrentView('all-categories');
               }}
               className="flex flex-col items-center gap-2 cursor-pointer group p-2 rounded-xl hover:bg-opacity-50 transition-all"
             >
-              <div className={`${cat.color} p-3 rounded-2xl transition-transform group-hover:scale-110 shadow-sm`}>
-                {cat.icon}
+              <div className={`${cat.color} p-3 rounded-2xl transition-transform group-hover:scale-110 shadow-sm flex items-center justify-center overflow-hidden w-14 h-14`}>
+                {bannerImages[cat.imgKey] ? (
+                  <img 
+                    src={typeof bannerImages[cat.imgKey] === 'object' ? bannerImages[cat.imgKey].url : bannerImages[cat.imgKey]} 
+                    alt={cat.name} 
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  cat.icon
+                )}
               </div>
-              <span className="text-xs font-medium theme-text text-center leading-tight w-16">
+              <span className="text-[10px] sm:text-xs font-medium theme-text text-center leading-tight w-16 line-clamp-1">
                 {cat.name}
               </span>
             </div>

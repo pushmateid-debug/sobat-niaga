@@ -121,16 +121,31 @@ const Home = () => {
     return typeof data === 'object' ? data?.url : data;
   }, [bannerImages]);
 
+  // --- DYNAMIC FAVICON UPDATE ---
+  useEffect(() => {
+    const data = bannerImages.favicon;
+    const url = typeof data === 'object' ? data?.url : data;
+    if (url) {
+      let link = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'shortcut icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.href = url;
+    }
+  }, [bannerImages.favicon]);
+
   // Kategori Navigasi Baru (Sticky)
   const navCategories = [
     { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
     { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50', key: 'icon_pulsa' },
     { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50', key: 'icon_makanan' },
-    { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50' },
+    { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50', key: 'icon_skincare' },
     { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
     { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
-    { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50' },
-    { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50' },
+    { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50', key: 'icon_game' },
+    { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50', key: 'icon_lainnya' },
   ];
 
   // Fetch Real Products from Firebase
@@ -867,7 +882,14 @@ const Home = () => {
                       : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
                   }`}
                 >
-                  {cat.name}
+              <div className="flex items-center gap-2">
+                {cat.key && bannerImages[cat.key] ? (
+                  <img src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} alt="" className="w-5 h-5 object-contain" />
+                ) : (
+                  cat.icon
+                )}
+                {cat.name}
+              </div>
                 </button>
               ))}
             </div>
@@ -883,7 +905,7 @@ const Home = () => {
             <div className="flex items-center gap-2 mb-2">
               <Bike className={`w-6 h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
               <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
-            </div>
+            </div> 
             <p className={`text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
               Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
             </p>

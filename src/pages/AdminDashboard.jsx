@@ -39,12 +39,12 @@ ChartJS.register(
   Filler
 );
 
-const ImageUploader = ({ label, currentUrl, onFileSelect }) => {
+const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false }) => {
   const imgSrc = typeof currentUrl === 'object' ? currentUrl?.url : currentUrl;
     return (
   <div className="space-y-2">
     <label className="block text-xs font-bold opacity-70">{label}</label>
-    <div className="relative aspect-square w-full rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-slate-700 transition-all group">
+    <div className={`relative aspect-square w-full ${rounded ? 'rounded-full' : 'rounded-xl'} border-2 border-dashed border-gray-300 dark:border-slate-600 overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-slate-700 transition-all group`}>
       <input 
         type="file" 
         accept="image/*" 
@@ -58,7 +58,7 @@ const ImageUploader = ({ label, currentUrl, onFileSelect }) => {
       />
       {imgSrc ? (
         <>
-          <img src={imgSrc} alt="Preview" className="w-full h-full object-cover" />
+          <img src={imgSrc} alt="Preview" className={`w-full h-full ${rounded ? 'object-contain' : 'object-cover'}`} />
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
@@ -1280,10 +1280,12 @@ const AdminDashboard = ({ onBack }) => {
   // Fungsi Proses & Upload (Canvas)
   const handleProcessAndUpload = () => {
     if (typeof cropper !== "undefined" && cropper !== null) {
+        const isIcon = editingImage.key.includes('icon') || editingImage.key.includes('logo') || editingImage.key.includes('favicon');
+        
         const canvas = cropper.getCroppedCanvas({
             maxWidth: 1920,
             maxHeight: 1080,
-            fillColor: '#fff',
+            fillColor: isIcon ? null : '#fff', // Support transparency for icons
             imageSmoothingEnabled: true,
             imageSmoothingQuality: 'high',
         });
@@ -1293,7 +1295,17 @@ const AdminDashboard = ({ onBack }) => {
         const width = canvas.width;
         const height = canvas.height;
 
+        // 0. Logika Lingkaran (Circular Clip) Khusus Favicon
+        if (editingImage.key === 'favicon') {
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.beginPath();
+          ctx.arc(width / 2, height / 2, Math.min(width, height) / 2, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
         // 1. Watermark Pojok Kanan Bawah (Branding)
+        if (!isIcon) {
         const fontSize = Math.round(width * 0.025);
         ctx.font = `bold ${fontSize}px Arial`;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Warna hitam transparan soft
@@ -1310,13 +1322,14 @@ const AdminDashboard = ({ onBack }) => {
           ctx.fillText('SOBAT NIAGA QRIS', 0, 0);
           ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset posisi canvas
         }
+        }
 
         canvas.toBlob((blob) => {
             if (blob) {
                 handleFileUpload(blob, editingImage.key, editingImage.type);
                 setEditingImage(null); // Close modal
             }
-        }, (editingImage.key.includes('icon') || editingImage.key.includes('logo')) ? 'image/png' : 'image/jpeg', 0.85); 
+        }, (isIcon) ? 'image/png' : 'image/jpeg', 0.85); 
         // Pakai PNG untuk icon/logo supaya transparansi tetap aman
     }
   };
@@ -1784,7 +1797,7 @@ const AdminDashboard = ({ onBack }) => {
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Branding (Logo & Icon)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   <ImageUploader label="Logo Menu Login" currentUrl={banners['login_logo']} onFileSelect={(file) => handleFileSelect(file, 'login_logo')} />
-                  <ImageUploader label="Favicon (Icon Browser)" currentUrl={banners['favicon']} onFileSelect={(file) => handleFileSelect(file, 'favicon')} />
+                  <ImageUploader label="Favicon (Icon Browser)" currentUrl={banners['favicon']} onFileSelect={(file) => handleFileSelect(file, 'favicon')} rounded={true} />
                 </div>
               </div>
 
@@ -1817,13 +1830,16 @@ const AdminDashboard = ({ onBack }) => {
               {/* 5. ICON MENU UTAMA (HOME) */}
               <div>
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-emerald-500"/> Icon Menu Utama (Home)</h3>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-3 md:grid-cols-9 gap-4">
                   <ImageUploader label="Populer" currentUrl={banners['icon_populer']} onFileSelect={(file) => handleFileSelect(file, 'icon_populer')} />
                   <ImageUploader label="Isi Pulsa" currentUrl={banners['icon_pulsa']} onFileSelect={(file) => handleFileSelect(file, 'icon_pulsa')} />
                   <ImageUploader label="Fashion" currentUrl={banners['icon_fashion']} onFileSelect={(file) => handleFileSelect(file, 'icon_fashion')} />
                   <ImageUploader label="Makanan" currentUrl={banners['icon_makanan']} onFileSelect={(file) => handleFileSelect(file, 'icon_makanan')} />
                   <ImageUploader label="Jasa / Cetak" currentUrl={banners['icon_jasa']} onFileSelect={(file) => handleFileSelect(file, 'icon_jasa')} />
                   <ImageUploader label="NiagaGo / Niagaku" currentUrl={banners['icon_niagago']} onFileSelect={(file) => handleFileSelect(file, 'icon_niagago')} />
+                  <ImageUploader label="Skin Care" currentUrl={banners['icon_skincare']} onFileSelect={(file) => handleFileSelect(file, 'icon_skincare')} />
+                  <ImageUploader label="Top Up Game" currentUrl={banners['icon_game']} onFileSelect={(file) => handleFileSelect(file, 'icon_game')} />
+                  <ImageUploader label="Lainnya" currentUrl={banners['icon_lainnya']} onFileSelect={(file) => handleFileSelect(file, 'icon_lainnya')} />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2">*Gunakan format PNG Transparan atau WebP agar tampilan rapi di Mobile.</p>
               </div>
