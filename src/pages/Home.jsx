@@ -831,9 +831,9 @@ const Home = () => {
               }}
               className="flex flex-col items-center gap-2 group"
             >
-              <div className={`p-3 rounded-2xl shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
+            <div className={`p-2 rounded-full shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
                 {cat.key && bannerImages[cat.key] ? (
-                  <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-5 h-5 object-contain" />
+                <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-12 h-12 object-contain" />
                 ) : (
                   cat.icon
                 )}

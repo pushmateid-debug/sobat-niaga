@@ -59,7 +59,7 @@ const AllCategories = ({ onBack, onNavigate }) => {
             >
               <div 
                 className={`
-                  w-16 h-16 md:w-20 md:h-20 rounded-[2rem] border-2 flex items-center justify-center transition-all 
+                  w-16 h-16 md:w-20 md:h-20 rounded-full border-2 flex items-center justify-center transition-all 
                   shadow-sm group-hover:shadow-lg group-hover:scale-110 group-active:scale-95
                   ${isDarkMode 
                     ? 'bg-slate-800 border-slate-700 text-sky-400 group-hover:border-sky-500' 
@@ -70,7 +70,7 @@ const AllCategories = ({ onBack, onNavigate }) => {
                   <img 
                     src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
                     alt={cat.name} 
-                    className="w-8 h-8 object-contain" 
+                    className="w-12 h-12 object-contain" 
                   />
                 ) : (
                   cat.icon
