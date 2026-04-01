@@ -7,7 +7,7 @@ import {
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown,
   Eye, Mail, HeartHandshake, UtensilsCrossed
 } from 'lucide-react';
-import { dbFirestore, db as realDb, storage, auth } from '../config/firebase';
+import { dbFirestore, db as realDb, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
 import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction } from 'firebase/database';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -72,6 +72,7 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIco
         <>
           {/* Gunakan object-contain dan padding p-2 agar ikon terlihat melayang dan tidak kepentok pinggir */}
           <img src={imgSrc} alt="Preview" className={`w-full h-full ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
+          <img src={imgSrc} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
@@ -1352,6 +1353,8 @@ const AdminDashboard = ({ onBack }) => {
     const cloudName = 'djqnnguli';
     const apiKey = '156244598362341';
     const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
+    
+    const type = file.type.startsWith('video/') ? 'video' : 'image';
     const timestamp = Math.round((new Date()).getTime() / 1000);
     
     // Signature Generation
@@ -1372,10 +1375,12 @@ const AdminDashboard = ({ onBack }) => {
     formData.append('signature', signature);
     formData.append('folder', 'sobatniaga/admin');
 
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${type}/upload`, { method: 'POST', body: formData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
-    return data.secure_url;
+
+    // Optimasi: Gunakan auto-quality dan auto-format agar file enteng
+    return data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
   };
 
   // Fungsi Upload File
@@ -3230,6 +3235,7 @@ const AdminDashboard = ({ onBack }) => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

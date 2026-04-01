@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, HeartHandshake, QrCode, Loader2, Info, AlertCircle } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
-import { ref, get, update, onValue } from 'firebase/database';
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, onValue, update } from 'firebase/database';
 import Swal from 'sweetalert2';
 import QRCode from 'react-qr-code'; // Install: npm install react-qr-code
 
@@ -42,8 +42,7 @@ const SobatBerbagi = ({ user, onBack }) => {
         packageType: type,
         price: type === 'A' ? (config.packageA_price || 15000) : (config.packageB_price || 10000),
         isUsed: false,
-        createdAt: serverTimestamp(),
-        status: 'active'
+        createdAt: serverTimestamp()
       });
 
       // Potong Poin

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -35,6 +35,7 @@ const SearchResults = React.lazy(() => import('./SearchResults'));
 const SearchPage = React.lazy(() => import('./SearchPage'));
 const AllCategories = React.lazy(() => import('./AllCategories'));
 const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
+const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
 
 const Home = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -139,13 +140,12 @@ const Home = () => {
   // Kategori Navigasi Baru (Sticky)
   const navCategories = [
     { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
-    { name: 'Isi Pulsa', icon: <Smartphone size={20} />, color: 'shadow-blue-500/50', key: 'icon_pulsa' },
+    { name: 'Sobat Berbagi', icon: <HeartHandshake size={20} />, color: 'shadow-orange-100/50', key: 'icon_sharing' },
     { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50', key: 'icon_makanan' },
     { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50', key: 'icon_skincare' },
     { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
     { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
     { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50', key: 'icon_game' },
-    { name: 'Sobat Berbagi', icon: <HeartHandshake size={20} />, color: 'shadow-orange-100/50', key: 'icon_sharing' },
     { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50', key: 'icon_lainnya' },
   ];
 
@@ -602,7 +602,16 @@ const Home = () => {
       case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'cart': return <Cart onBack={() => setCurrentView('home')} user={user} onCheckout={handleCheckout} />;
-      case 'profile': return <Profile user={user} onBack={() => setCurrentView('home')} onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })} onViewHistory={() => setCurrentView('history')} />;
+      case 'niaga-video': return <NiagaVideo onBack={() => setCurrentView('home')} />;
+      case 'profile': return (
+        <Profile 
+          user={user} 
+          onBack={() => setCurrentView('home')} 
+          onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })} 
+          onViewHistory={() => setCurrentView('history')} 
+          onViewSellerDashboard={() => setCurrentView('dashboard-seller')}
+        />
+      );
       case 'address': return <Address user={user} onBack={() => setCurrentView('home')} />;
       case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => setCurrentView('home')} />;
       case 'product-detail': return <ProductDetail product={selectedProduct} onBack={() => setCurrentView(previousView)} onGoToCart={() => setCurrentView('cart')} user={user} onVisitStore={handleVisitStore} />;
@@ -673,9 +682,9 @@ const Home = () => {
           <div className={`mx-4 rounded-2xl overflow-hidden shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
             {[
               { label: 'Profil Saya', icon: <User size={20} />, action: () => setCurrentView('profile') },
+              { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => setCurrentView('dashboard-seller') },
               { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => setCurrentView('history') },
               { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => setCurrentView('address') },
-              { label: 'Dashboard Seller', icon: <Store size={20} />, action: () => setCurrentView('dashboard-seller') },
               { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => setCurrentView('admin-dashboard'), hidden: user?.email !== 'pushmate.id@gmail.com' },
               { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => setCurrentView('help') },
             ].map((item, idx) => (
@@ -839,7 +848,12 @@ const Home = () => {
             >
             <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
                 {cat.key && bannerImages[cat.key] ? (
-                <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-12 h-12 object-contain bg-transparent" />
+                <img 
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} 
+                  alt={cat.name} 
+                  className="w-12 h-12 object-contain bg-transparent" 
+                  style={{ backgroundColor: 'transparent' }}
+                />
                 ) : (
                   cat.icon
                 )}
@@ -890,7 +904,12 @@ const Home = () => {
                 >
               <div className="flex items-center gap-2">
                 {cat.key && bannerImages[cat.key] ? (
-                  <img src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} alt="" className="w-5 h-5 object-contain" />
+                  <img 
+                    src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
+                    alt="" 
+                    className="w-5 h-5 object-contain bg-transparent" 
+                    style={{ backgroundColor: 'transparent' }}
+                  />
                 ) : (
                   cat.icon
                 )}
@@ -1374,7 +1393,6 @@ const Home = () => {
                   </div>
                   <button onClick={() => { setCurrentView('profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
                   <button onClick={() => { setCurrentView('history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
-                  <button onClick={() => { setCurrentView('dashboard-seller'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Dasbor Seller</button>
                   {user?.email === 'pushmate.id@gmail.com' && (
                     <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
                   )}
@@ -1436,15 +1454,15 @@ const Home = () => {
             <HomeIcon size={24} strokeWidth={currentView === 'home' ? 2.5 : 2} />
             <span className="text-[10px] font-medium">Home</span>
           </button>
+
+          <button onClick={() => setCurrentView('niaga-video')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'niaga-video' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <PlayCircle size={24} strokeWidth={currentView === 'niaga-video' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Video</span>
+          </button>
           
           <button onClick={() => setCurrentView('chat')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
             <MessageCircle size={24} />
             <span className="text-[10px] font-medium">Chat</span>
-          </button>
-
-          <button onClick={() => setCurrentView('dashboard-seller')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'dashboard-seller' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-            <Store size={24} strokeWidth={currentView === 'dashboard-seller' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Seller</span>
           </button>
 
           <button onClick={() => setCurrentView('account-menu')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>

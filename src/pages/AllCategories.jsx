@@ -20,14 +20,14 @@ const AllCategories = ({ onBack, onNavigate }) => {
 
   const categories = [
     { id: 'populer', name: 'Populer', icon: <Star size={24} />, color: 'bg-orange-50 text-orange-600 border-orange-100', view: 'home', key: 'icon_populer' },
-    { id: 'topup', name: 'Isi Pulsa', icon: <Smartphone size={24} />, color: 'bg-blue-50 text-blue-600 border-blue-100', view: 'topup', key: 'icon_pulsa' },
+    { id: 'sharing', name: 'Sobat Berbagi', icon: <HeartHandshake size={24} />, color: 'bg-orange-100 text-orange-700 border-orange-200', view: 'sobat-berbagi', key: 'icon_sharing' },
     { id: 'food', name: 'Niaga Food', icon: <Utensils size={24} />, color: 'bg-red-50 text-red-600 border-red-100', view: 'food', key: 'icon_makanan' },
     { id: 'skincare', name: 'Skin Care', icon: <Sparkles size={24} />, color: 'bg-pink-50 text-pink-600 border-pink-100', view: 'skincare', key: 'icon_skincare' },
     { id: 'fashion', name: 'Fashion', icon: <ShoppingBag size={24} />, color: 'bg-purple-50 text-purple-600 border-purple-100', view: 'fashion', key: 'icon_fashion' },
     { id: 'jasa', name: 'Jasa', icon: <Wrench size={24} />, color: 'bg-indigo-50 text-indigo-600 border-indigo-100', view: 'jasa', key: 'icon_jasa' },
     { id: 'game', name: 'Top Up Game', icon: <Gamepad2 size={24} />, color: 'bg-green-50 text-green-600 border-green-100', view: 'digital-center', key: 'icon_game' },
     { id: 'niagago', name: 'NiagaGo', icon: <Bike size={24} />, color: 'bg-emerald-50 text-emerald-600 border-emerald-100', view: 'niagago', key: 'icon_niagago' },
-    { id: 'sharing', name: 'Sobat Berbagi', icon: <HeartHandshake size={24} />, color: 'bg-orange-100 text-orange-700 border-orange-200', view: 'sobat-berbagi', key: 'icon_sharing' },
+    { id: 'topup', name: 'Isi Pulsa', icon: <Smartphone size={24} />, color: 'bg-blue-50 text-blue-600 border-blue-100', view: 'topup', key: 'icon_pulsa' },
   ];
 
   return (
@@ -70,7 +70,8 @@ const AllCategories = ({ onBack, onNavigate }) => {
                   <img 
                     src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
                     alt={cat.name} 
-                    className="w-12 h-12 object-contain bg-transparent" 
+                    className="w-12 h-12 object-contain bg-transparent"
+                    style={{ backgroundColor: 'transparent' }}
                   />
                 ) : (
                   cat.icon

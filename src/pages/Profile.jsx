@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info } from 'lucide-react';
+import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, Store, ChevronRight } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
 import { updateProfile } from 'firebase/auth';
 import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
-const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
+const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashboard }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [username, setUsername] = useState('');
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
@@ -276,6 +276,16 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
                 <PlusCircle size={14} /> Top Up
               </button>
             </div>
+
+            {/* Dashboard Seller / Mulai Jualan (Baris Menu) */}
+            <button onClick={onViewSellerDashboard} className={`w-full py-3 border rounded-xl flex items-center justify-between px-4 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 hover:bg-slate-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                <span className={`text-sm font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <Store size={18} className={isDarkMode ? 'text-sky-400' : 'text-sky-600'}/> 
+                  {user?.sellerInfo?.isVerifiedSeller ? 'Dashboard Seller' : 'Mulai Jualan (Toko Saya)'}
+                </span>
+                <ChevronRight size={16} className="text-gray-400" />
+            </button>
+
             {/* Tombol Dark Mode */}
             <button onClick={toggleTheme} className={`w-full py-3 mb-3 border rounded-xl flex items-center justify-between px-4 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 hover:bg-slate-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
                 <span className={`text-sm font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake } from 'lucide-react';
-import { db } from '../config/firebase';
-import { dbFirestore } from '../config/firebase';
-import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio } from 'lucide-react';
+import { db, dbFirestore } from '../config/firebase';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useTheme } from '../context/ThemeContext';
 import { ref, get, set, push, remove, onValue, query as realQuery, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
@@ -132,6 +131,11 @@ const DashboardSeller = ({ user, onBack }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [sharingHistory, setSharingHistory] = useState([]);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoDesc, setVideoDesc] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -710,6 +714,44 @@ const DashboardSeller = ({ user, onBack }) => {
                 }
             });
         }
+    }
+  };
+
+  // Fungsi Upload Video ke Cloudinary & Metadata ke Firestore
+  const handleUploadVideo = async () => {
+    if (!videoFile) return Swal.fire('Pilih Video', 'Harap pilih file video rekaman produk.', 'warning');
+    if (!videoDesc) return Swal.fire('Deskripsi', 'Kasih deskripsi video dikit dong, Bro.', 'warning');
+
+    setIsUploadingVideo(true);
+    setUploadProgress(20); // Fake progress awal
+
+    try {
+      // Gunakan helper Cloudinary yang sudah kita buat di bawah
+      const uploadData = await uploadToCloudinary(videoFile);
+      setUploadProgress(80);
+
+      await addDoc(collection(dbFirestore, 'niaga_videos'), {
+        sellerId: user.uid,
+        sellerName: sellerInfo?.storeName || 'Seller',
+        videoUrl: uploadData.url, // URL Cloudinary dengan q_auto,f_auto
+        description: videoDesc,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        createdAt: firestoreTimestamp()
+      });
+
+      setUploadProgress(100);
+      Swal.fire('Berhasil!', 'Video produk kamu sudah live di Niaga Video.', 'success');
+      setIsVideoModalOpen(false);
+      setVideoFile(null);
+      setVideoDesc('');
+      setUploadProgress(0);
+    } catch (error) {
+      console.error(error);
+      Swal.fire('Gagal Upload', error.message, 'error');
+    } finally {
+      setIsUploadingVideo(false);
     }
   };
 
@@ -1353,7 +1395,7 @@ const DashboardSeller = ({ user, onBack }) => {
       // 1. Update status voucher di Firestore
       await updateDoc(voucherRef, {
         status: 'used',
-        usedAt: serverTimestamp(),
+        usedAt: firestoreTimestamp(),
         storeId: user.uid, // Catat otomatis toko yang men-scan
         storeName: sellerInfo?.storeName || 'Mitra Niaga'
       });
@@ -1496,6 +1538,24 @@ const DashboardSeller = ({ user, onBack }) => {
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 bottom-0 w-24 bg-white/5 skew-x-12 transform translate-x-8"></div>
+                </div>
+
+                {/* 1.5 Video & Live Center (NEW) */}
+                <div className="flex gap-3 mb-4">
+                    <button 
+                        onClick={() => setIsVideoModalOpen(true)}
+                        className="flex-1 py-4 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
+                    >
+                        <Video size={24} />
+                        <span className="text-[10px] font-bold uppercase tracking-tight">Upload Video</span>
+                    </button>
+                    <button 
+                        onClick={() => Swal.fire('Coming Soon', 'Fitur Live Streaming lagi kita siapin nih Bro!', 'info')}
+                        className="flex-1 py-4 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-lg flex flex-col items-center justify-center gap-1 opacity-80 cursor-not-allowed"
+                    >
+                        <Radio size={24} />
+                        <span className="text-[10px] font-bold uppercase tracking-tight">Mulai Live</span>
+                    </button>
                 </div>
 
                 {/* 2. Order Status Row */}
@@ -2304,6 +2364,47 @@ const DashboardSeller = ({ user, onBack }) => {
             </div>
           </div>
           <p className="text-white/60 text-xs mt-6">Pastikan pencahayaan cukup untuk scan yang cepat.</p>
+        </div>
+      )}
+
+      {/* MODAL UPLOAD VIDEO */}
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className={`rounded-2xl w-full max-w-md p-6 relative shadow-2xl ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <button onClick={() => setIsVideoModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={24} /></button>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Video className="text-purple-500" /> Upload Video Produk</h2>
+            
+            <div className="space-y-4">
+              <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${videoFile ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 hover:border-sky-500'}`}>
+                <input type="file" accept="video/*" onChange={(e) => setVideoFile(e.target.files[0])} className="hidden" id="video-input" />
+                <label htmlFor="video-input" className="cursor-pointer">
+                  {videoFile ? (
+                    <div className="text-green-600 font-bold text-sm truncate">{videoFile.name}</div>
+                  ) : (
+                    <div className="flex flex-col items-center text-gray-400">
+                      <Upload size={32} className="mb-2" />
+                      <p className="text-xs">Klik untuk pilih video rekaman produk</p>
+                    </div>
+                  )}
+                </label>
+              </div>
+              <textarea 
+                placeholder="Tulis deskripsi video kamu (max 100 karakter)..." 
+                className={`w-full p-3 rounded-xl border outline-none text-sm ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50'}`}
+                rows="2"
+                value={videoDesc}
+                onChange={(e) => setVideoDesc(e.target.value)}
+              />
+              {isUploadingVideo && (
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div className="bg-sky-500 h-full transition-all" style={{ width: `${uploadProgress}%` }}></div>
+                </div>
+              )}
+              <button onClick={handleUploadVideo} disabled={isUploadingVideo} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+                {isUploadingVideo ? <Loader2 className="animate-spin" /> : 'Mulai Upload'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
