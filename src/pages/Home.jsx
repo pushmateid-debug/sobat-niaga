@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid } from 'lucide-react';
+import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
@@ -145,6 +145,7 @@ const Home = () => {
     { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
     { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
     { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50', key: 'icon_game' },
+    { name: 'Sobat Berbagi', icon: <HeartHandshake size={20} />, color: 'shadow-orange-100/50', key: 'icon_sharing' },
     { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50', key: 'icon_lainnya' },
   ];
 
@@ -373,6 +374,11 @@ const Home = () => {
   const scrollToSection = (name) => {
     if (name === 'Lainnya') {
       setCurrentView('all-categories');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (name === 'Sobat Berbagi') {
+      setCurrentView('sobat-berbagi');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -831,9 +837,9 @@ const Home = () => {
               }}
               className="flex flex-col items-center gap-2 group"
             >
-            <div className={`p-2 rounded-full shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
+            <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
                 {cat.key && bannerImages[cat.key] ? (
-                <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-12 h-12 object-contain" />
+                <img src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} alt={cat.name} className="w-12 h-12 object-contain bg-transparent" />
                 ) : (
                   cat.icon
                 )}

@@ -39,12 +39,24 @@ ChartJS.register(
   Filler
 );
 
-const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false }) => {
+const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIcon = false }) => {
   const imgSrc = typeof currentUrl === 'object' ? currentUrl?.url : currentUrl;
+  
+  // Pola checkerboard untuk preview transparansi (hanya tampil jika ada gambar)
+  const checkerboardStyle = imgSrc ? {
+    backgroundImage: 'linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)',
+    backgroundSize: '10px 10px',
+    backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
+    backgroundColor: '#ffffff'
+  } : {};
+
     return (
   <div className="space-y-2">
     <label className="block text-xs font-bold opacity-70">{label}</label>
-    <div className={`relative aspect-square w-full ${rounded ? 'rounded-full' : 'rounded-xl'} border-2 border-dashed border-gray-300 dark:border-slate-600 overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-slate-700 transition-all group`}>
+    <div 
+      style={checkerboardStyle}
+      className={`relative aspect-square w-full ${rounded ? 'rounded-full' : 'rounded-xl'} ${imgSrc ? 'border-none' : 'border-2 border-dashed border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800'} overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 transition-all group`}
+    >
       <input 
         type="file" 
         accept="image/*" 
@@ -58,15 +70,16 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false }) => 
       />
       {imgSrc ? (
         <>
-          <img src={imgSrc} alt="Preview" className={`w-full h-full ${rounded ? 'object-contain' : 'object-cover'}`} />
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Gunakan object-contain dan padding p-2 agar ikon terlihat melayang dan tidak kepentok pinggir */}
+          <img src={imgSrc} alt="Preview" className={`w-full h-full ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
         </>
       ) : (
         <div className="text-center text-gray-400">
-          <ImageIcon size={24} className="mx-auto mb-2" />
-          <span className="text-xs">Upload</span>
+          <ImageIcon size={20} className="mx-auto mb-1" />
+          <span className="text-[10px]">Upload</span>
         </div>
       )}
     </div>
@@ -1796,7 +1809,7 @@ const AdminDashboard = ({ onBack }) => {
               <div>
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Branding (Logo & Icon)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  <ImageUploader label="Logo Menu Login" currentUrl={banners['login_logo']} onFileSelect={(file) => handleFileSelect(file, 'login_logo')} />
+                  <ImageUploader label="Logo Menu Login" currentUrl={banners['login_logo']} onFileSelect={(file) => handleFileSelect(file, 'login_logo')} isIcon />
                   <ImageUploader label="Favicon (Icon Browser)" currentUrl={banners['favicon']} onFileSelect={(file) => handleFileSelect(file, 'favicon')} rounded={true} />
                 </div>
               </div>
@@ -1817,7 +1830,8 @@ const AdminDashboard = ({ onBack }) => {
                   <ImageUploader 
                     label="Icon Chat / Admin" 
                     currentUrl={banners['chat_icon']} 
-                    onFileSelect={(file) => handleFileSelect(file, 'chat_icon')} 
+                    onFileSelect={(file) => handleFileSelect(file, 'chat_icon')}
+                    isIcon
                   />
                   <ImageUploader 
                     label="Banner Flash Deal" 
@@ -1831,15 +1845,16 @@ const AdminDashboard = ({ onBack }) => {
               <div>
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-emerald-500"/> Icon Menu Utama (Home)</h3>
                 <div className="grid grid-cols-3 md:grid-cols-9 gap-4">
-                  <ImageUploader label="Populer" currentUrl={banners['icon_populer']} onFileSelect={(file) => handleFileSelect(file, 'icon_populer')} />
-                  <ImageUploader label="Isi Pulsa" currentUrl={banners['icon_pulsa']} onFileSelect={(file) => handleFileSelect(file, 'icon_pulsa')} />
-                  <ImageUploader label="Fashion" currentUrl={banners['icon_fashion']} onFileSelect={(file) => handleFileSelect(file, 'icon_fashion')} />
-                  <ImageUploader label="Makanan" currentUrl={banners['icon_makanan']} onFileSelect={(file) => handleFileSelect(file, 'icon_makanan')} />
-                  <ImageUploader label="Jasa / Cetak" currentUrl={banners['icon_jasa']} onFileSelect={(file) => handleFileSelect(file, 'icon_jasa')} />
-                  <ImageUploader label="NiagaGo / Niagaku" currentUrl={banners['icon_niagago']} onFileSelect={(file) => handleFileSelect(file, 'icon_niagago')} />
-                  <ImageUploader label="Skin Care" currentUrl={banners['icon_skincare']} onFileSelect={(file) => handleFileSelect(file, 'icon_skincare')} />
-                  <ImageUploader label="Top Up Game" currentUrl={banners['icon_game']} onFileSelect={(file) => handleFileSelect(file, 'icon_game')} />
-                  <ImageUploader label="Lainnya" currentUrl={banners['icon_lainnya']} onFileSelect={(file) => handleFileSelect(file, 'icon_lainnya')} />
+                  <ImageUploader label="Populer" currentUrl={banners['icon_populer']} onFileSelect={(file) => handleFileSelect(file, 'icon_populer')} isIcon />
+                  <ImageUploader label="Isi Pulsa" currentUrl={banners['icon_pulsa']} onFileSelect={(file) => handleFileSelect(file, 'icon_pulsa')} isIcon />
+                  <ImageUploader label="Fashion" currentUrl={banners['icon_fashion']} onFileSelect={(file) => handleFileSelect(file, 'icon_fashion')} isIcon />
+                  <ImageUploader label="Makanan" currentUrl={banners['icon_makanan']} onFileSelect={(file) => handleFileSelect(file, 'icon_makanan')} isIcon />
+                  <ImageUploader label="Jasa / Cetak" currentUrl={banners['icon_jasa']} onFileSelect={(file) => handleFileSelect(file, 'icon_jasa')} isIcon />
+                  <ImageUploader label="NiagaGo / Niagaku" currentUrl={banners['icon_niagago']} onFileSelect={(file) => handleFileSelect(file, 'icon_niagago')} isIcon />
+                  <ImageUploader label="Skin Care" currentUrl={banners['icon_skincare']} onFileSelect={(file) => handleFileSelect(file, 'icon_skincare')} isIcon />
+                  <ImageUploader label="Top Up Game" currentUrl={banners['icon_game']} onFileSelect={(file) => handleFileSelect(file, 'icon_game')} isIcon />
+                  <ImageUploader label="Lainnya" currentUrl={banners['icon_lainnya']} onFileSelect={(file) => handleFileSelect(file, 'icon_lainnya')} isIcon />
+                  <ImageUploader label="Sobat Berbagi" currentUrl={banners['icon_sharing']} onFileSelect={(file) => handleFileSelect(file, 'icon_sharing')} isIcon />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2">*Gunakan format PNG Transparan atau WebP agar tampilan rapi di Mobile.</p>
               </div>
