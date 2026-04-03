@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, MessageCircle, UserPlus, UserMinus, Grid, PlayCircle, Loader2, Users, Video, AlertCircle, Edit, Trash2, Save, X, MoreVertical, Flag, Share2, Volume2, VolumeX, Check } from 'lucide-react';
+import { ArrowLeft, CheckCircle, MessageCircle, UserPlus, UserMinus, Grid, PlayCircle, Loader2, Users, Video, AlertCircle, Edit, Trash2, Save, X, MoreVertical, Flag, Share2, Volume2, VolumeX, Check, ShoppingBag } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
-import { ref, onValue, update, get } from 'firebase/database';
+import { ref, onValue, update, get, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, updateDoc, setDoc, serverTimestamp, increment, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import NiagaVideo from './NiagaVideo'; // Import untuk modal player
 
-const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChatClick }) => {
+const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChatClick, onProductClick }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [profile, setProfile] = useState(null);
   const [videos, setVideos] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ 
     followersCount: 0, 
@@ -20,6 +21,8 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
   });
   const [errorType, setErrorType] = useState(null);
 
+  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'products'
+  const [sellerProducts, setSellerProducts] = useState([]);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   // Owner Control States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -67,7 +70,11 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
           followingCount: data.followingCount || 0
         });
         // Cek status follow
-        setIsFollowing(currentUserId ? (data.followersList?.includes(currentUserId) || false) : false);
+        // FIX: Pastikan currentUserId ada sebelum update status follow agar tidak flicker
+        if (currentUserId) {
+          const isUserFollowing = data.followersList?.includes(currentUserId) || false;
+          setIsFollowing(isUserFollowing);
+        }
       } else {
         // Reset jika dokumen tidak ada (user belum punya follower sama sekali)
         setStats({ followersCount: 0, followingCount: 0 });
@@ -75,17 +82,28 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
       }
     });
 
+    // 4. Fetch User's Products (Realtime DB)
+    const productsRef = realQuery(ref(db, 'products'), orderByChild('sellerId'), equalTo(userId));
+    const unsubProducts = onValue(productsRef, (snap) => {
+      const data = snap.val();
+      const loaded = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      setSellerProducts(loaded.filter(p => p.isActive !== false));
+    });
+
     return () => {
       unsubUser();
       unsubVideos();
       unsubStats();
+      unsubProducts();
     };
   }, [userId, currentUserId]);
 
   const handleFollow = async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
     if (currentUserId === userId) return;
+    if (followLoading) return; // Anti-spam click
 
+    setFollowLoading(true);
     const batch = writeBatch(dbFirestore);
     const targetUserRef = doc(dbFirestore, 'users', userId);
     const currentUserRef = doc(dbFirestore, 'users', currentUserId);
@@ -113,8 +131,17 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         }, { merge: true });
       }
       await batch.commit();
+      // Status isFollowing akan terupdate otomatis lewat onSnapshot listener
     } catch (err) {
       console.error("Gagal Follow/Unfollow:", err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: 'Waduh, gagal memproses permintaan follow. Cek koneksi lo, Bro!',
+      });
+    } finally {
+      setFollowLoading(true);
+      setFollowLoading(false);
     }
   };
 
@@ -266,13 +293,20 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
           {currentUserId !== userId && (
             <button 
               onClick={handleFollow}
+              disabled={followLoading}
               className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 ${
                 isFollowing 
                   ? 'bg-white text-gray-500 border border-gray-300' 
                   : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-              }`}
+              } ${followLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              {isFollowing ? <><Check size={18}/> Mengikuti</> : <><UserPlus size={18}/> Ikuti</>}
+              {followLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : isFollowing ? (
+                <><Check size={18}/> Mengikuti</>
+              ) : (
+                <><UserPlus size={18}/> Ikuti</>
+              )}
             </button>
           )}
           <button 
@@ -284,16 +318,27 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         </div>
       </div>
 
-      {/* Tabs Line */}
-      <div className="mt-6 flex justify-center border-t border-gray-100 dark:border-slate-800">
-        <div className="py-3 px-8 border-t-2 border-black dark:border-white flex items-center gap-2">
-          <Grid size={18} />
+      {/* Tabs Navigation */}
+      <div className="mt-6 flex border-t border-gray-100 dark:border-slate-800">
+        <button 
+          onClick={() => setActiveTab('posts')}
+          className={`flex-1 py-3 flex items-center justify-center gap-2 transition-all relative ${activeTab === 'posts' ? (isDarkMode ? 'text-white border-t-2 border-white' : 'text-black border-t-2 border-black') : 'text-gray-400'}`}
+        >
+          <Video size={18} />
           <span className="text-xs font-black uppercase tracking-widest">Postingan</span>
-        </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('products')}
+          className={`flex-1 py-3 flex items-center justify-center gap-2 transition-all relative ${activeTab === 'products' ? (isDarkMode ? 'text-white border-t-2 border-white' : 'text-black border-t-2 border-black') : 'text-gray-400'}`}
+        >
+          <ShoppingBag size={18} />
+          <span className="text-xs font-black uppercase tracking-widest">Produk</span>
+        </button>
       </div>
 
       {/* Video Grid (3 Columns) */}
-      {errorType === 'index-missing' ? (
+      {activeTab === 'posts' ? (
+        errorType === 'index-missing' ? (
         <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center opacity-50">
           <AlertCircle size={48} className="mb-2 text-orange-500" />
           <p className="text-sm font-bold">Video profil sedang disiapkan...</p>
@@ -382,6 +427,36 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         <div className="flex-1 flex flex-col items-center justify-center py-20 opacity-30">
           <Video size={48} />
           <p className="text-sm font-bold mt-2">Belum ada video.</p>
+        </div>
+      )
+      ) : (
+        /* Product Grid (2 Columns) */
+        <div className="grid grid-cols-2 gap-3 p-4 pb-24">
+          {sellerProducts.length > 0 ? (
+            sellerProducts.map((p) => (
+              <div 
+                key={p.id} 
+                onClick={() => onProductClick(p)}
+                className={`rounded-2xl border overflow-hidden transition-all active:scale-95 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}
+              >
+                <div className="aspect-square relative bg-gray-100">
+                  <img src={p.mediaUrl || p.image} className="w-full h-full object-cover" alt="" />
+                  <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-bold ${p.stock > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                    {p.stock > 0 ? 'Stok Ada' : 'Habis'}
+                  </div>
+                </div>
+                <div className="p-3">
+                  <h4 className={`text-xs font-bold line-clamp-1 mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{p.name}</h4>
+                  <p className="text-sky-600 font-black text-sm">Rp {parseInt(p.price).toLocaleString('id-ID')}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-2 py-20 text-center opacity-30">
+              <ShoppingBag size={48} className="mx-auto mb-2" />
+              <p className="text-sm font-bold">Belum ada produk yang dijual.</p>
+            </div>
+          )}
         </div>
       )}
 

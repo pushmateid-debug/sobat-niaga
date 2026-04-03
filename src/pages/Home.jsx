@@ -612,7 +612,7 @@ const Home = () => {
           onProductClick={handleProductClick}
         />
       );
-      case 'user-public-profile': return <UserPublicProfile userId={selectedUserProfileId} currentUserId={user.uid} onBack={() => setCurrentView('niaga-video')} onVideoClick={() => setCurrentView('niaga-video')} onChatClick={(id) => { setChatTab('seller'); setCurrentView('chat'); }} />;
+      case 'user-public-profile': return <UserPublicProfile userId={selectedUserProfileId} currentUserId={user.uid} onBack={() => setCurrentView('niaga-video')} onVideoClick={() => setCurrentView('niaga-video')} onProductClick={handleProductClick} onChatClick={(id) => { setChatTab('seller'); setCurrentView('chat'); }} />;
       case 'profile': return (
         <Profile 
           user={user} 
