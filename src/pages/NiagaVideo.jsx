@@ -582,21 +582,24 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
 
   // Fetch Videos from Firestore secara Real-time
   useEffect(() => {
-    // 0. Listen to current user's following list (Global Source of Truth)
     const currentUid = auth.currentUser?.uid;
     let unsubFollowing = () => {};
+
+    // 0. Listen to current user's following list (Global Source of Truth)
+    // FIX: Listener ini harus selalu aktif & dibersihkan dengan benar di HP
     if (currentUid) {
       const userRef = doc(dbFirestore, 'users', currentUid);
       unsubFollowing = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
           setFollowingList(docSnap.data().followingList || []);
         }
-      }, (err) => {
-        console.error("Gagal listen following list:", err);
-      });
+      }, (err) => console.error("Gagal listen following list:", err));
     }
 
-    if (initialVideos) return;
+    // Jika initialVideos ada, skip fetch video tapi tetep return cleanup buat listener di atas
+    if (initialVideos) {
+      return () => unsubFollowing();
+    }
 
     // 1. Fetch Niaga Reels (Video)
     const q = query(collection(dbFirestore, 'niaga_reels'), orderBy('timestamp', 'desc'));

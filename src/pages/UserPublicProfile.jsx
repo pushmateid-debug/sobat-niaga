@@ -8,7 +8,7 @@ import Swal from 'sweetalert2';
 import NiagaVideo from './NiagaVideo'; // Import untuk modal player
 
 const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChatClick, onProductClick }) => {
-  const { theme } = useTheme();
+  const { theme } = useTheme() || { theme: 'light' }; // Safety check agar tidak blank jika context error
   const isDarkMode = theme === 'dark';
   const [profile, setProfile] = useState(null);
   const [videos, setVideos] = useState([]);
@@ -19,7 +19,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     followersCount: 0, 
     followingCount: 0 
   });
-  const [errorType, setErrorType] = useState(null);
+  const [error, setError] = useState(null);
 
   const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'products'
   const [sellerProducts, setSellerProducts] = useState([]);
@@ -40,8 +40,10 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
       if (snapshot.exists()) {
         const data = snapshot.val();
         setProfile(data);
+        setLoading(false);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     // 2. Fetch User's Videos (Firestore)
@@ -52,12 +54,12 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     );
     const unsubVideos = onSnapshot(vQuery, (snap) => {
       setVideos(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setErrorType(null);
-    }, (error) => {
-      console.error("Gagal ambil video profil:", error);
+      setError(null);
+    }, (err) => {
+      console.error("Gagal ambil video profil:", err);
       // Klik link yang muncul di console log untuk membuat composite index!
       // Cek apakah error karena indeks belum dibuat
-      if (error.code === 'failed-precondition') setErrorType('index-missing');
+      if (err.code === 'failed-precondition') setError('index-missing');
     });
 
     // 3. Listen to Profile Stats & Follow Status (Firestore Real-time)
@@ -100,7 +102,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
 
   const handleFollow = async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
-    if (currentUserId === userId) return;
+    if (!userId || userId === currentUserId) return;
     if (followLoading) return; // Anti-spam click
 
     setFollowLoading(true);
@@ -131,13 +133,12 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         }, { merge: true });
       }
       await batch.commit();
-      // Status isFollowing akan terupdate otomatis lewat onSnapshot listener
+      // UI akan terupdate otomatis via onSnapshot listener di useEffect
     } catch (err) {
-      // DEBUG LOG: Liat kode error di console (PERMISSION_DENIED, NOT_FOUND, dll)
       console.error("DEBUG_FOLLOW_ERROR:", {
         code: err.code,
         message: err.message,
-        collection: 'users', // Pastikan di Firestore lo namanya 'users' (kecil semua)
+        collection: 'users',
         targetId: userId,
         currentId: currentUserId
       });
@@ -242,18 +243,25 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     }
   };
 
-  if (loading) return (
-    <div className="flex-1 flex items-center justify-center bg-black">
-      <Loader2 size={40} className="text-sky-500 animate-spin" />
-    </div>
-  );
+  // UI SKELETON / LOADING STATE: Mencegah layar putih saat data belum sampai
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-black min-h-screen">
+        <Loader2 size={40} className="text-sky-500 animate-spin mb-4" />
+        <p className="text-gray-400 text-xs font-bold animate-pulse">Memuat Profil...</p>
+      </div>
+    );
+  }
 
-  if (!profile) return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-black text-white p-10 text-center">
-      <p>User tidak ditemukan atau sudah dihapus.</p>
-      <button onClick={onBack} className="mt-4 text-sky-500 font-bold">Kembali</button>
-    </div>
-  );
+  if (!profile) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-black text-white p-10 text-center min-h-screen">
+        <AlertCircle size={48} className="text-gray-600 mb-4" />
+        <p className="font-bold">User tidak ditemukan.</p>
+        <button onClick={onBack} className="mt-6 px-8 py-2 bg-white/10 rounded-full text-sky-500 font-bold">Kembali</button>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex-1 flex flex-col min-h-screen transition-colors ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
@@ -353,7 +361,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
 
       {/* Video Grid (3 Columns) */}
       {activeTab === 'posts' ? (
-        errorType === 'index-missing' ? (
+        error === 'index-missing' ? (
         <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center opacity-50">
           <AlertCircle size={48} className="mb-2 text-orange-500" />
           <p className="text-sm font-bold">Video profil sedang disiapkan...</p>
