@@ -195,7 +195,7 @@ const TaggedProductSheet = ({ productIds, onClose, isDarkMode, onProductClick })
       <div className={`relative w-full h-[50vh] rounded-t-3xl flex flex-col shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
         <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-2 opacity-50"></div>
         <div className="flex items-center justify-between px-5 py-2 border-b dark:border-slate-800">
-          <h3 className="font-bold text-sm flex items-center gap-2 text-yellow-600"><ShoppingBag size={16}/> Produk Dalam Video</h3>
+          <h3 className="font-bold text-sm flex items-center gap-2 text-yellow-600"><span>🛍️</span> Produk Dalam Video</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full"><X size={20}/></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -382,17 +382,21 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       {/* Bottom Sheet Komentar */}
       {isCommentOpen && <CommentSheet videoId={video.id} onClose={() => setIsCommentOpen(false)} isDarkMode={theme === 'dark'} />}
 
-      {/* Keranjang Kuning (Conditional) */}
+      {/* Keranjang Kuning (Rounded Shopping Bag - Modern Style) */}
       {video.taggedProducts && video.taggedProducts.length > 0 && (
         <button 
           onClick={(e) => { e.stopPropagation(); setIsProductSheetOpen(true); }}
-          className="absolute left-4 bottom-36 z-10 flex items-center gap-2 px-3 py-2 bg-yellow-400 text-black font-black rounded-xl shadow-lg animate-bounce border-2 border-white/20 active:scale-95 transition-all"
+          className="absolute left-4 bottom-36 z-10 w-12 h-12 bg-[#FFD700] backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center border-2 border-white/20 active:scale-95 transition-all"
         >
-          <ShoppingBag size={18} fill="currentColor" /> 
-          <span className="text-[10px] uppercase tracking-tighter">Beli Produk</span>
-          <div className="bg-black text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full ml-1">
-            {video.taggedProducts.length}
-          </div>
+          {/* Ikon Tas Belanja Emoji 🛍️ sesuai request user */}
+          <span className="text-2xl drop-shadow-sm">🛍️</span>
+          
+          {/* Badge Jumlah Produk (Hanya muncul jika produk > 1) */}
+          {video.taggedProducts.length > 1 && (
+            <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-md animate-in zoom-in duration-300">
+              {video.taggedProducts.length}
+            </div>
+          )}
         </button>
       )}
 
