@@ -249,19 +249,21 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
 
   // 1.5 Cek status follow secara real-time
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (currentUser && video.userId && currentUser.uid !== video.userId) {
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && video.userId && currentUid !== video.userId) {
       // Reactive Follow Status: Listen ke dokumen seller untuk cek apakah kita ada di followersList
       const targetUserRef = doc(dbFirestore, 'users', video.userId);
       const unsub = onSnapshot(targetUserRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setIsFollowing(data.followersList?.includes(currentUser.uid) || false);
+          setIsFollowing(data.followersList?.includes(currentUid) || false);
+        } else {
+          setIsFollowing(false);
         }
       });
       return () => unsub();
     }
-  }, [video.userId]);
+  }, [video.userId, auth.currentUser?.uid]);
 
   // Menangani pemutaran video menggunakan Intersection Observer
   useEffect(() => {

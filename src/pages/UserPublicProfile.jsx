@@ -66,10 +66,12 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
           followersCount: data.followersCount || 0,
           followingCount: data.followingCount || 0
         });
-        // Reactive Follow Status check: Cek apakah ID kita ada di list pengikut dia
-        if (currentUserId) {
-          setIsFollowing(data.followersList?.includes(currentUserId) || false);
-        }
+        // Cek status follow
+        setIsFollowing(currentUserId ? (data.followersList?.includes(currentUserId) || false) : false);
+      } else {
+        // Reset jika dokumen tidak ada (user belum punya follower sama sekali)
+        setStats({ followersCount: 0, followingCount: 0 });
+        setIsFollowing(false);
       }
     });
 
