@@ -136,6 +136,8 @@ const DashboardSeller = ({ user, onBack }) => {
   const [videoDesc, setVideoDesc] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [selectedTaggedProducts, setSelectedTaggedProducts] = useState([]);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -364,7 +366,13 @@ const DashboardSeller = ({ user, onBack }) => {
     if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
     
     // Auto-Compress: Quality Auto & Format Auto
-    return { url: data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/'), type: type };
+    const videoUrl = data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    let thumbnailUrl = null;
+    if (type === 'video') {
+      // Generate thumbnail URL dari Cloudinary (ambil frame pertama sebagai JPG)
+      thumbnailUrl = data.secure_url.replace('/upload/', '/upload/f_jpg,vc_auto,w_300,h_500,c_fill/').replace(/\.(mp4|mov|avi|webm)$/i, '.jpg');
+    }
+    return { url: videoUrl, type: type, thumbnailUrl: thumbnailUrl };
   };
 
   // Callback function dari SellerVerification
@@ -730,15 +738,17 @@ const DashboardSeller = ({ user, onBack }) => {
       const uploadData = await uploadToCloudinary(videoFile);
       setUploadProgress(80);
 
-      await addDoc(collection(dbFirestore, 'niaga_videos'), {
-        sellerId: user.uid,
+      await addDoc(collection(dbFirestore, 'niaga_reels'), {
+        userId: user.uid,
         sellerName: sellerInfo?.storeName || 'Seller',
         videoUrl: uploadData.url, // URL Cloudinary dengan q_auto,f_auto
+        thumbnailUrl: uploadData.thumbnailUrl, // Simpan URL thumbnail
         description: videoDesc,
         likes: 0,
         comments: 0,
         shares: 0,
-        createdAt: firestoreTimestamp()
+        timestamp: firestoreTimestamp(),
+        taggedProducts: selectedTaggedProducts // Simpan array ID produk
       });
 
       setUploadProgress(100);
@@ -747,6 +757,7 @@ const DashboardSeller = ({ user, onBack }) => {
       setVideoFile(null);
       setVideoDesc('');
       setUploadProgress(0);
+      setSelectedTaggedProducts([]);
     } catch (error) {
       console.error(error);
       Swal.fire('Gagal Upload', error.message, 'error');
@@ -2395,6 +2406,21 @@ const DashboardSeller = ({ user, onBack }) => {
                 value={videoDesc}
                 onChange={(e) => setVideoDesc(e.target.value)}
               />
+
+              {/* Tombol Pilih Produk (Keranjang Kuning) */}
+              <button 
+                onClick={() => setIsTagModalOpen(true)}
+                className={`w-full p-3 rounded-xl border-2 border-dashed flex items-center justify-between hover:border-sky-500 transition-all ${selectedTaggedProducts.length > 0 ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-gray-200'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShoppingBag size={18} className="text-sky-600" />
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
+                    {selectedTaggedProducts.length > 0 ? `${selectedTaggedProducts.length} Produk Ditandai` : 'Pilih Produk Jualan (Optional)'}
+                  </span>
+                </div>
+                <Plus size={16} className="text-sky-600" />
+              </button>
+
               {isUploadingVideo && (
                 <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                   <div className="bg-sky-500 h-full transition-all" style={{ width: `${uploadProgress}%` }}></div>
@@ -2408,6 +2434,45 @@ const DashboardSeller = ({ user, onBack }) => {
         </div>
       )}
 
+      {/* Modal Pemilihan Produk untuk Tagging */}
+      {isTagModalOpen && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`w-full max-w-sm rounded-2xl shadow-2xl p-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold">Pilih Produk untuk Video</h3>
+              <button onClick={() => setIsTagModalOpen(false)}><X size={20}/></button>
+            </div>
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+              {products.map(p => (
+                <div 
+                  key={p.id} 
+                  onClick={() => {
+                    const isSelected = selectedTaggedProducts.includes(p.id);
+                    if (isSelected) setSelectedTaggedProducts(prev => prev.filter(id => id !== p.id));
+                    else setSelectedTaggedProducts(prev => [...prev, p.id]);
+                  }}
+                  className={`flex items-center gap-3 p-2 rounded-xl border cursor-pointer transition-all ${selectedTaggedProducts.includes(p.id) ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-gray-100'}`}
+                >
+                  <img src={p.mediaUrl} className="w-12 h-12 rounded-lg object-cover" alt="" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold truncate">{p.name}</p>
+                    <p className="text-[10px] text-sky-600 font-bold">Rp {parseInt(p.price).toLocaleString()}</p>
+                  </div>
+                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${selectedTaggedProducts.includes(p.id) ? 'bg-sky-500 border-sky-500 text-white' : 'border-gray-300'}`}>
+                    {selectedTaggedProducts.includes(p.id) && <Check size={14} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button 
+              onClick={() => setIsTagModalOpen(false)}
+              className="w-full mt-6 py-3 bg-sky-600 text-white font-bold rounded-xl"
+            >
+              Selesai ({selectedTaggedProducts.length})
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

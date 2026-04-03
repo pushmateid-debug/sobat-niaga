@@ -36,6 +36,7 @@ const SearchPage = React.lazy(() => import('./SearchPage'));
 const AllCategories = React.lazy(() => import('./AllCategories'));
 const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
+const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
 
 const Home = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -65,6 +66,7 @@ const Home = () => {
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
   const [capsuleStyle, setCapsuleStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const tabsRef = useRef([]);
+  const [selectedUserProfileId, setSelectedUserProfileId] = useState(null); // State baru
   const { theme } = useTheme(); // Ambil state theme
   const isDarkMode = theme === 'dark';
   const [flashDeal, setFlashDeal] = useState(null);
@@ -602,7 +604,15 @@ const Home = () => {
       case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'cart': return <Cart onBack={() => setCurrentView('home')} user={user} onCheckout={handleCheckout} />;
-      case 'niaga-video': return <NiagaVideo onBack={() => setCurrentView('home')} />;
+      case 'niaga-video': return (
+        <NiagaVideo 
+          onBack={() => setCurrentView('home')} 
+          onProfileClick={(id) => { setSelectedUserProfileId(id); setCurrentView('user-public-profile'); }} 
+          onStoreClick={(id) => handleVisitStore(id)} 
+          onProductClick={handleProductClick}
+        />
+      );
+      case 'user-public-profile': return <UserPublicProfile userId={selectedUserProfileId} currentUserId={user.uid} onBack={() => setCurrentView('niaga-video')} onVideoClick={() => setCurrentView('niaga-video')} onChatClick={(id) => { setChatTab('seller'); setCurrentView('chat'); }} />;
       case 'profile': return (
         <Profile 
           user={user} 

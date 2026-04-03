@@ -3,7 +3,7 @@
     ".read": "auth != null",
     ".write": "auth != null",
     "users": {
-      ".indexOn": ["email", "sellerInfo/isVerifiedSeller", "role"],
+      ".indexOn": ["email", "sellerInfo/isVerifiedSeller", "role", "sellerInfo/isCompetitor"],
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || root.child('admins').child(auth.uid).exists() || auth.token.email === 'pushmate.id@gmail.com')",
         ".write": "auth != null && ($uid === auth.uid || root.child('admins').child(auth.uid).exists() || auth.token.email === 'pushmate.id@gmail.com')",
@@ -13,6 +13,7 @@
       }
     },
     "products": {
+      ".indexOn": ["sellerId"],
       ".read": true,
       "$productId": {
         ".write": "auth != null",
@@ -20,6 +21,7 @@
       }
     },
     "orders": {
+      ".indexOn": ["buyerId", "driverId"],
       ".read": "auth != null",
       "$orderId": {
         ".write": "auth != null",
@@ -52,12 +54,17 @@
       ".write": "auth != null && (auth.token.email === 'pushmate.id@gmail.com' || root.child('admins').child(auth.uid).exists() || root.child('users').child(auth.uid).child('role').val() === 'driver' || root.child('users').child(auth.uid).child('sellerInfo/isVerifiedSeller').val() === true)"
     },
     "reviews": {
+      ".indexOn": ["productId"],
       ".read": true,
       ".write": "auth != null"
     },
     "withdrawals": {
+      ".indexOn": ["sellerId"],
       ".read": "auth != null && (data.child('userId').val() === auth.uid || data.child('sellerId').val() === auth.uid || auth.token.email === 'pushmate.id@gmail.com' || root.child('admins').child(auth.uid).exists())",
       ".write": "auth != null && (newData.child('userId').val() === auth.uid || newData.child('sellerId').val() === auth.uid || auth.token.email === 'pushmate.id@gmail.com' || root.child('admins').child(auth.uid).exists())"
+    },
+    "withdrawal_requests": {
+      ".indexOn": ["sellerId"]
     }
   }
 }
