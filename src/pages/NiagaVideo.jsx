@@ -221,12 +221,13 @@ const TaggedProductSheet = ({ productIds, onClose, isDarkMode, onProductClick })
   );
 };
 
-const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, isGlobalMuted, setIsGlobalMuted, hasInteracted, setHasInteracted }) => {
+const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, isGlobalMuted, setIsGlobalMuted, hasInteracted, setHasInteracted, followingList }) => {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const isFollowing = useMemo(() => followingList.includes(video.userId), [followingList, video.userId]);
+  const [followLoading, setFollowLoading] = useState(false);
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
   const { theme } = useTheme();
@@ -246,24 +247,6 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       videoRef.current.muted = isGlobalMuted;
     }
   }, [isGlobalMuted]);
-
-  // 1.5 Cek status follow secara real-time
-  useEffect(() => {
-    const currentUid = auth.currentUser?.uid;
-    if (currentUid && video.userId && currentUid !== video.userId) {
-      // Reactive Follow Status: Listen ke dokumen seller untuk cek apakah kita ada di followersList
-      const targetUserRef = doc(dbFirestore, 'users', video.userId);
-      const unsub = onSnapshot(targetUserRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setIsFollowing(data.followersList?.includes(currentUid) || false);
-        } else {
-          setIsFollowing(false);
-        }
-      });
-      return () => unsub();
-    }
-  }, [video.userId, auth.currentUser?.uid]);
 
   // Menangani pemutaran video menggunakan Intersection Observer
   useEffect(() => {
@@ -343,8 +326,9 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti seller ini, Bro!', 'warning');
     }
     
-    if (currentUser.uid === video.userId) return;
+    if (currentUser.uid === video.userId || followLoading) return;
 
+    setFollowLoading(true);
     const batch = writeBatch(dbFirestore);
     const targetUserRef = doc(dbFirestore, 'users', video.userId);
     const currentUserRef = doc(dbFirestore, 'users', currentUser.uid);
@@ -370,8 +354,12 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
         }, { merge: true });
       }
       await batch.commit();
+      // UI akan terupdate otomatis via followingList prop dari parent listener
     } catch (err) {
       console.error("Gagal Follow dari Video:", err);
+      Swal.fire('Gagal', 'Ada masalah pas mau follow nih, Bro. Cek koneksi ya!', 'error');
+    } finally {
+      setFollowLoading(false);
     }
   };
 
@@ -507,13 +495,20 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
           {auth.currentUser?.uid !== video.userId && (
             <button 
               onClick={handleFollowVideo}
+              disabled={followLoading}
               className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all duration-300 border flex items-center gap-1 active:scale-90 ${
                 isFollowing 
                   ? 'bg-white text-gray-500 border-gray-300' 
                   : 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/20'
-              }`}
+              } ${followLoading ? 'opacity-70 cursor-wait' : ''}`}
             >
-              {isFollowing ? <><Check size={12}/> Mengikuti</> : <><UserPlus size={12}/> Ikuti</>}
+              {followLoading ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : isFollowing ? (
+                <><Check size={12}/> Mengikuti</>
+              ) : (
+                <><UserPlus size={12}/> Ikuti</>
+              )}
             </button>
           )}
         </div>
@@ -545,6 +540,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
   const [videos, setVideos] = useState(initialVideos || []);
   const [liveStreams, setLiveStreams] = useState([]);
   const [loading, setLoading] = useState(!initialVideos);
+  const [followingList, setFollowingList] = useState([]);
   const [isGlobalMuted, setIsGlobalMuted] = useState(true);
   const [hasInteracted, setHasInteracted] = useState(!!initialVideos); // Anggap interaksi klik thumbnail sebagai gerbang audio
 
@@ -572,6 +568,20 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
 
   // Fetch Videos from Firestore secara Real-time
   useEffect(() => {
+    // 0. Listen to current user's following list (Global Source of Truth)
+    const currentUid = auth.currentUser?.uid;
+    let unsubFollowing = () => {};
+    if (currentUid) {
+      const userRef = doc(dbFirestore, 'users', currentUid);
+      unsubFollowing = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setFollowingList(docSnap.data().followingList || []);
+        }
+      }, (err) => {
+        console.error("Gagal listen following list:", err);
+      });
+    }
+
     if (initialVideos) return;
 
     // 1. Fetch Niaga Reels (Video)
@@ -601,6 +611,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
     return () => {
       unsubVideos();
       unsubLive();
+      unsubFollowing();
     };
   }, [initialVideos]);
 
@@ -690,6 +701,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
                   setIsGlobalMuted={setIsGlobalMuted}
                   hasInteracted={hasInteracted}
                   setHasInteracted={setHasInteracted}
+                  followingList={followingList}
                 />
               )
             ))
@@ -711,6 +723,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
                 setIsGlobalMuted={setIsGlobalMuted} 
                 hasInteracted={hasInteracted} 
                 setHasInteracted={setHasInteracted} 
+                followingList={followingList}
               />
             ))
           ) : (
