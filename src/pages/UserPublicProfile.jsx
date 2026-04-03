@@ -84,37 +84,35 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
     if (currentUserId === userId) return;
 
+    const batch = writeBatch(dbFirestore);
     const targetUserRef = doc(dbFirestore, 'users', userId);
     const currentUserRef = doc(dbFirestore, 'users', currentUserId);
 
-    if (isFollowing) {
-      // UNFOLLOW: Gunakan arrayRemove dan increment(-1)
-      try {
-        await updateDoc(targetUserRef, {
+    try {
+      if (isFollowing) {
+        // UNFOLLOW: Hapus ID dari list dan kurangi counter
+        batch.set(targetUserRef, {
           followersList: arrayRemove(currentUserId),
           followersCount: increment(-1)
-        });
-        await updateDoc(currentUserRef, {
+        }, { merge: true });
+        batch.set(currentUserRef, {
           followingList: arrayRemove(userId),
           followingCount: increment(-1)
-        });
-      } catch (e) { console.error("Gagal unfollow:", e); }
-    } else {
-      // FOLLOW: Gunakan arrayUnion dan increment(1)
-      try {
-        await updateDoc(targetUserRef, {
+        }, { merge: true });
+      } else {
+        // FOLLOW: Tambah ID ke list dan tambah counter (Auto-create doc jika belum ada)
+        batch.set(targetUserRef, {
           followersList: arrayUnion(currentUserId),
           followersCount: increment(1)
-        });
-        await updateDoc(currentUserRef, {
+        }, { merge: true });
+        batch.set(currentUserRef, {
           followingList: arrayUnion(userId),
           followingCount: increment(1)
-        });
-      } catch (e) {
-        // Jika dokumen belum ada di Firestore, buat baru
-        await setDoc(targetUserRef, { followersList: [currentUserId], followersCount: 1 }, { merge: true });
-        await setDoc(currentUserRef, { followingList: [userId], followingCount: 1 }, { merge: true });
+        }, { merge: true });
       }
+      await batch.commit();
+    } catch (err) {
+      console.error("Gagal Follow/Unfollow:", err);
     }
   };
 

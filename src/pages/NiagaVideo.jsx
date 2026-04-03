@@ -343,33 +343,33 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
     
     if (currentUser.uid === video.userId) return;
 
+    const batch = writeBatch(dbFirestore);
     const targetUserRef = doc(dbFirestore, 'users', video.userId);
     const currentUserRef = doc(dbFirestore, 'users', currentUser.uid);
 
-    if (isFollowing) {
-      // UNFOLLOW logic
-      try {
-        await updateDoc(targetUserRef, {
+    try {
+      if (isFollowing) {
+        batch.set(targetUserRef, {
           followersList: arrayRemove(currentUser.uid),
           followersCount: increment(-1)
-        });
-        await updateDoc(currentUserRef, {
+        }, { merge: true });
+        batch.set(currentUserRef, {
           followingList: arrayRemove(video.userId),
           followingCount: increment(-1)
-        });
-      } catch (err) { console.error("Gagal unfollow:", err); }
-    } else {
-      // FOLLOW logic
-      try {
-        await updateDoc(targetUserRef, {
+        }, { merge: true });
+      } else {
+        batch.set(targetUserRef, {
           followersList: arrayUnion(currentUser.uid),
           followersCount: increment(1)
-        });
-        await updateDoc(currentUserRef, {
+        }, { merge: true });
+        batch.set(currentUserRef, {
           followingList: arrayUnion(video.userId),
           followingCount: increment(1)
-        });
-      } catch (err) { console.error("Gagal follow:", err); }
+        }, { merge: true });
+      }
+      await batch.commit();
+    } catch (err) {
+      console.error("Gagal Follow dari Video:", err);
     }
   };
 
