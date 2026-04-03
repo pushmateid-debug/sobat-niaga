@@ -133,14 +133,29 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
       await batch.commit();
       // Status isFollowing akan terupdate otomatis lewat onSnapshot listener
     } catch (err) {
-      console.error("Gagal Follow/Unfollow:", err);
+      // DEBUG LOG: Liat kode error di console (PERMISSION_DENIED, NOT_FOUND, dll)
+      console.error("DEBUG_FOLLOW_ERROR:", {
+        code: err.code,
+        message: err.message,
+        collection: 'users', // Pastikan di Firestore lo namanya 'users' (kecil semua)
+        targetId: userId,
+        currentId: currentUserId
+      });
+
+      let errorTitle = 'Gagal';
+      let errorText = 'Waduh, gagal memproses permintaan follow. Cek koneksi lo, Bro!';
+      
+      if (err.code === 'permission-denied') {
+        errorTitle = 'Akses Ditolak';
+        errorText = 'Firebase Rules lo melarang tulis ke koleksi "users". Cek firestore.rules, Bro!';
+      }
+
       Swal.fire({
         icon: 'error',
-        title: 'Gagal',
-        text: 'Waduh, gagal memproses permintaan follow. Cek koneksi lo, Bro!',
+        title: errorTitle,
+        text: errorText,
       });
     } finally {
-      setFollowLoading(true);
       setFollowLoading(false);
     }
   };

@@ -356,8 +356,22 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       await batch.commit();
       // UI akan terupdate otomatis via followingList prop dari parent listener
     } catch (err) {
-      console.error("Gagal Follow dari Video:", err);
-      Swal.fire('Gagal', 'Ada masalah pas mau follow nih, Bro. Cek koneksi ya!', 'error');
+      // DEBUG LOG: Cek di console log browser buat liat penyakitnya
+      console.error("DEBUG_VIDEO_FOLLOW_ERROR:", {
+        code: err.code,
+        message: err.message,
+        path: `users/${video.userId}`
+      });
+
+      let errorTitle = 'Gagal';
+      let errorText = 'Ada masalah pas mau follow nih, Bro. Cek koneksi ya!';
+
+      if (err.code === 'permission-denied') {
+        errorTitle = 'Izin Ditolak';
+        errorText = 'Firestore Rules menolak akses. Pastikan lo udah allow write di koleksi "users".';
+      }
+
+      Swal.fire(errorTitle, errorText, 'error');
     } finally {
       setFollowLoading(false);
     }
