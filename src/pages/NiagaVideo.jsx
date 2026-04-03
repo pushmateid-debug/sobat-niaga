@@ -589,7 +589,11 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
       const liveData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setLiveStreams(liveData);
     }, (error) => {
-      console.error("Gagal ambil live streams:", error);
+      if (error.code === 'permission-denied') {
+        console.warn("Firestore Rules Error: Akses ke 'live_streams' ditolak. Cek tab Rules di Firestore Console!");
+      } else {
+        console.error("Gagal ambil live streams:", error);
+      }
     });
 
     return () => {
