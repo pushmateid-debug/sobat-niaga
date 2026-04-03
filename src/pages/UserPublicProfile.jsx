@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CheckCircle, MessageCircle, UserPlus, UserMinus, Grid, PlayCircle, Loader2, Users, Video, AlertCircle, Edit, Trash2, Save, X, MoreVertical, Flag, Share2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, CheckCircle, MessageCircle, UserPlus, UserMinus, Grid, PlayCircle, Loader2, Users, Video, AlertCircle, Edit, Trash2, Save, X, MoreVertical, Flag, Share2, Volume2, VolumeX, Check } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { ref, onValue, update, get } from 'firebase/database';
-import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, updateDoc, setDoc, serverTimestamp, increment, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, updateDoc, setDoc, serverTimestamp, increment, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import NiagaVideo from './NiagaVideo'; // Import untuk modal player
@@ -57,31 +57,25 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
       if (error.code === 'failed-precondition') setErrorType('index-missing');
     });
 
-    // 3. Check Follow Status (Firestore Real-time)
-    let unsubFollowStatus = () => {};
-    if (currentUserId && userId && currentUserId !== userId) {
-      const followRef = doc(dbFirestore, 'following', currentUserId, 'userFollowing', userId);
-      unsubFollowStatus = onSnapshot(followRef, (doc) => {
-        setIsFollowing(doc.exists());
-      });
-    }
-
-    // 4. Listen to Profile Stats (Firestore Real-time)
+    // 3. Listen to Profile Stats & Follow Status (Firestore Real-time)
     const statsRef = doc(dbFirestore, 'users', userId);
-    const unsubStats = onSnapshot(statsRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    const unsubStats = onSnapshot(statsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         setStats({
           followersCount: data.followersCount || 0,
           followingCount: data.followingCount || 0
         });
+        // Reactive Follow Status check: Cek apakah ID kita ada di list pengikut dia
+        if (currentUserId) {
+          setIsFollowing(data.followersList?.includes(currentUserId) || false);
+        }
       }
     });
 
     return () => {
       unsubUser();
       unsubVideos();
-      unsubFollowStatus();
       unsubStats();
     };
   }, [userId, currentUserId]);
@@ -90,29 +84,37 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
     if (currentUserId === userId) return;
 
-    const batch = writeBatch(dbFirestore);
-    
-    const followerRef = doc(dbFirestore, 'followers', userId, 'userFollowers', currentUserId);
-    const followingRef = doc(dbFirestore, 'following', currentUserId, 'userFollowing', userId);
     const targetUserRef = doc(dbFirestore, 'users', userId);
     const currentUserRef = doc(dbFirestore, 'users', currentUserId);
 
     if (isFollowing) {
-      batch.delete(followerRef);
-      batch.delete(followingRef);
-      batch.set(targetUserRef, { followersCount: increment(-1) }, { merge: true });
-      batch.set(currentUserRef, { followingCount: increment(-1) }, { merge: true });
+      // UNFOLLOW: Gunakan arrayRemove dan increment(-1)
+      try {
+        await updateDoc(targetUserRef, {
+          followersList: arrayRemove(currentUserId),
+          followersCount: increment(-1)
+        });
+        await updateDoc(currentUserRef, {
+          followingList: arrayRemove(userId),
+          followingCount: increment(-1)
+        });
+      } catch (e) { console.error("Gagal unfollow:", e); }
     } else {
-      batch.set(followerRef, { timestamp: serverTimestamp() });
-      batch.set(followingRef, { timestamp: serverTimestamp() });
-      batch.set(targetUserRef, { followersCount: increment(1) }, { merge: true });
-      batch.set(currentUserRef, { followingCount: increment(1) }, { merge: true });
-    }
-
-    try {
-      await batch.commit();
-    } catch (err) {
-      console.error(err);
+      // FOLLOW: Gunakan arrayUnion dan increment(1)
+      try {
+        await updateDoc(targetUserRef, {
+          followersList: arrayUnion(currentUserId),
+          followersCount: increment(1)
+        });
+        await updateDoc(currentUserRef, {
+          followingList: arrayUnion(userId),
+          followingCount: increment(1)
+        });
+      } catch (e) {
+        // Jika dokumen belum ada di Firestore, buat baru
+        await setDoc(targetUserRef, { followersList: [currentUserId], followersCount: 1 }, { merge: true });
+        await setDoc(currentUserRef, { followingList: [userId], followingCount: 1 }, { merge: true });
+      }
     }
   };
 
@@ -264,13 +266,13 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
           {currentUserId !== userId && (
             <button 
               onClick={handleFollow}
-              className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
+              className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 ${
                 isFollowing 
-                  ? 'bg-slate-200 text-slate-800' 
-                  : 'bg-sky-600 text-white shadow-lg shadow-sky-600/20'
+                  ? 'bg-white text-gray-500 border border-gray-300' 
+                  : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
               }`}
             >
-              {isFollowing ? <><UserMinus size={18}/> Mengikuti</> : <><UserPlus size={18}/> Ikuti</>}
+              {isFollowing ? <><Check size={18}/> Mengikuti</> : <><UserPlus size={18}/> Ikuti</>}
             </button>
           )}
           <button 

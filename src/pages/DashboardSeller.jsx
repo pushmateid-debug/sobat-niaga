@@ -2413,7 +2413,7 @@ const DashboardSeller = ({ user, onBack }) => {
                 className={`w-full p-3 rounded-xl border-2 border-dashed flex items-center justify-between hover:border-sky-500 transition-all ${selectedTaggedProducts.length > 0 ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-gray-200'}`}
               >
                 <div className="flex items-center gap-2">
-                  <ShoppingBag size={18} className="text-sky-600" />
+                  <span>🛍️</span>
                   <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
                     {selectedTaggedProducts.length > 0 ? `${selectedTaggedProducts.length} Produk Ditandai` : 'Pilih Produk Jualan (Optional)'}
                   </span>

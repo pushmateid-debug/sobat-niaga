@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect, memo, useMemo } fr
 import { Heart, MessageCircle, Share2, Store, Search, X, Radio, Volume2, VolumeX, Play, UserPlus, Send, Loader2, ArrowLeft, Users, Sparkles, ShoppingBag, ChevronRight, Check } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { dbFirestore, db, auth } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp, setDoc, where, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp, setDoc, where, getDoc, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ref, get } from 'firebase/database';
 import Swal from 'sweetalert2';
 
@@ -226,6 +226,7 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
   const { theme } = useTheme();
@@ -245,6 +246,22 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       videoRef.current.muted = isGlobalMuted;
     }
   }, [isGlobalMuted]);
+
+  // 1.5 Cek status follow secara real-time
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser && video.userId && currentUser.uid !== video.userId) {
+      // Reactive Follow Status: Listen ke dokumen seller untuk cek apakah kita ada di followersList
+      const targetUserRef = doc(dbFirestore, 'users', video.userId);
+      const unsub = onSnapshot(targetUserRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setIsFollowing(data.followersList?.includes(currentUser.uid) || false);
+        }
+      });
+      return () => unsub();
+    }
+  }, [video.userId]);
 
   // Menangani pemutaran video menggunakan Intersection Observer
   useEffect(() => {
@@ -313,6 +330,46 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
           console.warn("Pemutaran terinterupsi:", error.message);
         }
       }
+    }
+  };
+
+  const handleFollowVideo = async (e) => {
+    e.stopPropagation();
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
+      return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti seller ini, Bro!', 'warning');
+    }
+    
+    if (currentUser.uid === video.userId) return;
+
+    const targetUserRef = doc(dbFirestore, 'users', video.userId);
+    const currentUserRef = doc(dbFirestore, 'users', currentUser.uid);
+
+    if (isFollowing) {
+      // UNFOLLOW logic
+      try {
+        await updateDoc(targetUserRef, {
+          followersList: arrayRemove(currentUser.uid),
+          followersCount: increment(-1)
+        });
+        await updateDoc(currentUserRef, {
+          followingList: arrayRemove(video.userId),
+          followingCount: increment(-1)
+        });
+      } catch (err) { console.error("Gagal unfollow:", err); }
+    } else {
+      // FOLLOW logic
+      try {
+        await updateDoc(targetUserRef, {
+          followersList: arrayUnion(currentUser.uid),
+          followersCount: increment(1)
+        });
+        await updateDoc(currentUserRef, {
+          followingList: arrayUnion(video.userId),
+          followingCount: increment(1)
+        });
+      } catch (err) { console.error("Gagal follow:", err); }
     }
   };
 
@@ -444,7 +501,19 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
             <img src={`https://ui-avatars.com/api/?name=${video.sellerName || 'S'}&background=random`} alt="" className="w-full h-full object-cover" />
           </div>
           <h3 className="text-white font-bold text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">@{video.sellerName?.replace(/\s+/g, '').toLowerCase() || 'seller'}</h3>
-          <button className="px-3 py-1 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-[10px] text-white font-bold hover:bg-white/30 transition-all">Ikuti</button>
+          
+          {auth.currentUser?.uid !== video.userId && (
+            <button 
+              onClick={handleFollowVideo}
+              className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all duration-300 border flex items-center gap-1 active:scale-90 ${
+                isFollowing 
+                  ? 'bg-white text-gray-500 border-gray-300' 
+                  : 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/20'
+              }`}
+            >
+              {isFollowing ? <><Check size={12}/> Mengikuti</> : <><UserPlus size={12}/> Ikuti</>}
+            </button>
+          )}
         </div>
         <p className="text-white text-sm line-clamp-3 leading-relaxed drop-shadow-[0_1px_3px_rgba(0,0,0,1)] font-medium">
           {video.description}
