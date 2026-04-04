@@ -226,7 +226,9 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
-  const isFollowing = useMemo(() => followingList.includes(video.userId), [followingList, video.userId]);
+  const isFollowing = useMemo(() => {
+    return Array.isArray(followingList) && video?.userId ? followingList.includes(video.userId) : false;
+  }, [followingList, video?.userId]);
   const [followLoading, setFollowLoading] = useState(false);
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
@@ -326,7 +328,7 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
       return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti seller ini, Bro!', 'warning');
     }
     
-    if (currentUser.uid === video.userId || followLoading) return;
+    if (!video?.userId || currentUser.uid === video.userId || followLoading) return;
 
     setFollowLoading(true);
     const batch = writeBatch(dbFirestore);
@@ -502,9 +504,9 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
           onClick={(e) => { e.stopPropagation(); onProfileClick(video.userId); }}
         >
           <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden shadow-xl">
-            <img src={`https://ui-avatars.com/api/?name=${video.sellerName || 'S'}&background=random`} alt="" className="w-full h-full object-cover" />
+            <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(video.sellerName || 'S')}&background=random`} alt="" className="w-full h-full object-cover" />
           </div>
-          <h3 className="text-white font-bold text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">@{video.sellerName?.replace(/\s+/g, '').toLowerCase() || 'seller'}</h3>
+          <h3 className="text-white font-bold text-sm drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">@{String(video.sellerName || 'seller').replace(/\s+/g, '').toLowerCase()}</h3>
           
           {auth.currentUser?.uid !== video.userId && (
             <button 
@@ -565,12 +567,11 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
       ...liveStreams.map(l => ({ ...l, type: 'live' }))
     ];
     
-    // Sort berdasarkan timestamp terbaru, tapi kasih sedikit bumbu acak (Math.random) 
-    // biar urutan Live vs Video bervariasi setiap masuk
+    // FIX: Hapus Math.random dari sort karena bisa menyebabkan Infinite Loop/Crash di beberapa browser HP
     return combined.sort((a, b) => {
       const timeA = a.timestamp?.seconds || 0;
       const timeB = b.timestamp?.seconds || 0;
-      return (timeB - timeA) + (Math.random() * 10 - 5); 
+      return timeB - timeA; 
     });
   }, [videos, liveStreams]);
 

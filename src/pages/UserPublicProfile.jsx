@@ -74,7 +74,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         // Cek status follow
         // FIX: Pastikan currentUserId ada sebelum update status follow agar tidak flicker
         if (currentUserId) {
-          const isUserFollowing = data.followersList?.includes(currentUserId) || false;
+          const isUserFollowing = Array.isArray(data.followersList) && data.followersList.includes(currentUserId);
           setIsFollowing(isUserFollowing);
         }
       } else {
@@ -102,7 +102,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
 
   const handleFollow = async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
-    if (!userId || userId === currentUserId) return;
+    if (!userId || String(userId) === String(currentUserId)) return;
     if (followLoading) return; // Anti-spam click
 
     setFollowLoading(true);
@@ -270,7 +270,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         <button onClick={onBack} className="p-2 rounded-full hover:bg-white/10 transition-colors">
           <ArrowLeft size={24} />
         </button>
-        <h2 className="font-bold text-lg">@{profile.sellerInfo?.storeName?.replace(/\s+/g, '').toLowerCase() || profile.username || 'user'}</h2>
+        <h2 className="font-bold text-lg">@{String(profile.sellerInfo?.storeName || profile.username || 'user').replace(/\s+/g, '').toLowerCase()}</h2>
       </div>
 
       {/* Profile Info */}
@@ -302,11 +302,11 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
             <p className="text-[10px] uppercase font-bold text-gray-400">Postingan</p>
           </div>
           <div className="text-center">
-            <p className="font-black text-lg">{stats.followersCount.toLocaleString()}</p>
+            <p className="font-black text-lg">{(stats.followersCount || 0).toLocaleString()}</p>
             <p className="text-[10px] uppercase font-bold text-gray-400">Pengikut</p>
           </div>
           <div className="text-center">
-            <p className="font-black text-lg">{stats.followingCount.toLocaleString()}</p>
+            <p className="font-black text-lg">{(stats.followingCount || 0).toLocaleString()}</p>
             <p className="text-[10px] uppercase font-bold text-gray-400">Diikuti</p>
           </div>
         </div>
