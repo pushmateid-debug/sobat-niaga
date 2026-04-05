@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { ArrowLeft, CheckCircle, MessageCircle, UserPlus, UserMinus, Grid, PlayCircle, Loader2, Users, Video, AlertCircle, Edit, Trash2, Save, X, MoreVertical, Flag, Share2, Volume2, VolumeX, Check, ShoppingBag } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { ref, onValue, update, get, query as realQuery, orderByChild, equalTo } from 'firebase/database';
@@ -100,7 +100,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     };
   }, [userId, currentUserId]);
 
-  const handleFollow = async () => {
+  const handleFollow = useCallback(async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti, Bro!', 'warning');
     if (!userId || String(userId) === String(currentUserId)) return;
     if (followLoading) return; // Anti-spam click
@@ -112,6 +112,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
 
     try {
       if (isFollowing) {
+        console.log("Processing Unfollow for:", userId);
         // UNFOLLOW: Hapus ID dari list dan kurangi counter
         batch.set(targetUserRef, {
           followersList: arrayRemove(currentUserId),
@@ -122,6 +123,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
           followingCount: increment(-1)
         }, { merge: true });
       } else {
+        console.log("Processing Follow for:", userId);
         // FOLLOW: Tambah ID ke list dan tambah counter (Auto-create doc jika belum ada)
         batch.set(targetUserRef, {
           followersList: arrayUnion(currentUserId),
@@ -133,11 +135,12 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         }, { merge: true });
       }
       await batch.commit();
-      // UI akan terupdate otomatis via onSnapshot listener di useEffect
+      
+      // SUCCESS: Firebase update beres. UI akan terupdate otomatis via onSnapshot listener.
+      // JANGAN gunakan window.location.reload() karena bikin crash di mobile.
+      console.log("Firebase Follow/Unfollow Commit Success");
     } catch (err) {
-      console.error("DEBUG_FOLLOW_ERROR:", {
-        code: err.code,
-        message: err.message,
+      console.error("FOLLOW_ERROR:", {
         collection: 'users',
         targetId: userId,
         currentId: currentUserId
@@ -159,7 +162,7 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
     } finally {
       setFollowLoading(false);
     }
-  };
+  }, [userId, currentUserId, isFollowing, followLoading]);
 
   const handleDeleteVideo = async (videoId) => {
     const confirm = await Swal.fire({
@@ -527,4 +530,4 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
   );
 };
 
-export default UserPublicProfile;
+export default memo(UserPublicProfile);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, memo, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, memo, useMemo, useCallback } from 'react';
 import { Heart, MessageCircle, Share2, Store, Search, X, Radio, Volume2, VolumeX, Play, UserPlus, Send, Loader2, ArrowLeft, Users, Sparkles, ShoppingBag, ChevronRight, Check } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { dbFirestore, db, auth } from '../config/firebase';
@@ -20,8 +20,12 @@ const CommentSheet = ({ videoId, onClose, isDarkMode }) => {
       orderBy('createdAt', 'asc')
     );
     const unsub = onSnapshot(q, (snap) => {
-      const loadedComments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setComments(loadedComments);
+      try {
+        const loadedComments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setComments(loadedComments);
+      } catch (err) {
+        console.error("Error parsing comments:", err);
+      }
     }, (error) => {
       console.error("Error listening to comments:", error);
       // Jika muncul error "The query requires an index", klik link yang ada di console browser!
@@ -31,7 +35,7 @@ const CommentSheet = ({ videoId, onClose, isDarkMode }) => {
   }, [videoId]);
 
   // Auto Scroll ke bawah tiap ada komen baru
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -221,14 +225,11 @@ const TaggedProductSheet = ({ productIds, onClose, isDarkMode, onProductClick })
   );
 };
 
-const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, isGlobalMuted, setIsGlobalMuted, hasInteracted, setHasInteracted, followingList }) => {
+const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, isGlobalMuted, setIsGlobalMuted, hasInteracted, setHasInteracted, isFollowing }) => {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
-  const isFollowing = useMemo(() => {
-    return Array.isArray(followingList) && video?.userId ? followingList.includes(video.userId) : false;
-  }, [followingList, video?.userId]);
   const [followLoading, setFollowLoading] = useState(false);
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
@@ -290,7 +291,7 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
     return () => observer.disconnect();
   }, [video.videoUrl]);
 
-  const togglePlayMute = async () => {
+  const togglePlayMute = useCallback(async () => {
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
@@ -318,10 +319,10 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
         }
       }
     }
-  };
+  }, [isPlaying, isGlobalMuted, setIsGlobalMuted, setHasInteracted]);
 
-  const handleFollowVideo = async (e) => {
-    e.stopPropagation();
+  const handleFollowVideo = useCallback(async (e) => {
+    if (e) e.stopPropagation();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -356,7 +357,8 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
         }, { merge: true });
       }
       await batch.commit();
-      // UI akan terupdate otomatis via followingList prop dari parent listener
+      // UI akan terupdate otomatis via props isFollowing dari parent listener
+      console.log("Firebase Follow/Unfollow Video Success");
     } catch (err) {
       // DEBUG LOG: Cek di console log browser buat liat penyakitnya
       console.error("DEBUG_VIDEO_FOLLOW_ERROR:", {
@@ -377,7 +379,7 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
     } finally {
       setFollowLoading(false);
     }
-  };
+  }, [video?.userId, isFollowing, followLoading]);
 
   const handleLike = async (e) => {
     e.stopPropagation();
@@ -591,8 +593,12 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
     if (currentUid) {
       const userRef = doc(dbFirestore, 'users', currentUid);
       unsubFollowing = onSnapshot(userRef, (docSnap) => {
-        if (docSnap.exists()) {
-          setFollowingList(docSnap.data().followingList || []);
+        try {
+          if (docSnap.exists()) {
+            setFollowingList(docSnap.data().followingList || []);
+          }
+        } catch (err) {
+          console.error("Error setting following list:", err);
         }
       }, (err) => console.error("Gagal listen following list:", err));
     }
@@ -719,7 +725,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
                   setIsGlobalMuted={setIsGlobalMuted}
                   hasInteracted={hasInteracted}
                   setHasInteracted={setHasInteracted}
-                  followingList={followingList}
+                  isFollowing={Array.isArray(followingList) && item.userId ? followingList.includes(item.userId) : false}
                 />
               )
             ))
@@ -741,7 +747,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
                 setIsGlobalMuted={setIsGlobalMuted} 
                 hasInteracted={hasInteracted} 
                 setHasInteracted={setHasInteracted} 
-                followingList={followingList}
+                isFollowing={Array.isArray(followingList) && video.userId ? followingList.includes(video.userId) : false}
               />
             ))
           ) : (
