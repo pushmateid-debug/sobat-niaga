@@ -1258,12 +1258,11 @@ const Home = () => {
   return (
     <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Global Header (Sticky) */}
-      {!['store-profile', 'chat', 'admin-dashboard'].includes(currentView) && (
       <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
           <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
-            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => setCurrentView('home')}>
+            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => navigate('/')}>
               SobatNiaga
             </h1>
           </div>
@@ -1283,8 +1282,7 @@ const Home = () => {
               onFocus={(e) => {
                 if (window.innerWidth < 768) {
                   e.target.blur(); // Cegah keyboard muncul di halaman home
-                  setPreviousView(currentView);
-                  setCurrentView('search-page');
+                  navigate('/search-page');
                 } else if (searchQuery.trim().length > 0) {
                   setShowSuggestions(true);
                 }
@@ -1372,7 +1370,7 @@ const Home = () => {
 
             {/* Cart Icon with Badge */}
             <button 
-              onClick={() => setCurrentView('cart')}
+              onClick={() => navigate('/cart')}
               className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
             >
               <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
@@ -1401,12 +1399,12 @@ const Home = () => {
                   <div className="px-4 py-2 border-b border-gray-100 mb-1 ">
                     <p className="text-sm font-bold theme-text">Halo, {user.displayName || 'User'}!</p>
                   </div>
-                  <button onClick={() => { setCurrentView('profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
-                  <button onClick={() => { setCurrentView('history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
+                  <button onClick={() => { navigate('/profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
+                  <button onClick={() => { navigate('/history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
                   {user?.email === 'pushmate.id@gmail.com' && (
-                    <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                    <button onClick={() => { navigate('/admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
                   )}
-                  <button onClick={() => { setCurrentView('address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
+                  <button onClick={() => { navigate('/address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
                   <div className="border-t border-gray-100 my-1"></div>
                   <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>
                 </div>
@@ -1415,14 +1413,6 @@ const Home = () => {
           </div>
         </div>
       </nav>
-      )}
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col w-full">
-        <Suspense fallback={<div className="flex-1 flex items-center justify-center min-h-[50vh]"><Loader2 className="animate-spin text-sky-600" /></div>}>
-          {renderContent()}
-        </Suspense>
-      </main>
 
       {/* Modal Top Up Game (Global) */}
       {selectedGame && TopUpModal && (

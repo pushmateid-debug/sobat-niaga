@@ -38,16 +38,26 @@ const AppLayout = () => {
   const lastBackPressTime = useRef(0);
   const toastId = useRef(null); // Untuk melacak toast "Tekan sekali lagi untuk keluar"
 
-  // --- Event Listener 'PopState' & Logika Tombol Back ---
+  // --- Sinkronisasi Modal dengan Browser History ---
+  useEffect(() => {
+    if (isGlobalModalOpen) {
+      // Jika modal dibuka, tambahkan state palsu ke history browser
+      // Ini kunci agar tombol back HP menutup modal, bukan keluar website
+      window.history.pushState({ modalOpen: true }, "");
+    }
+  }, [isGlobalModalOpen]);
+
   useEffect(() => {
     const handlePopState = (event) => {
-      // 1. Jika ada modal yang terbuka, tutup modalnya terlebih dahulu
+      // 1. Tangani penutupan modal lewat tombol back
       if (isGlobalModalOpen) {
         setIsGlobalModalOpen(false);
-        // Mencegah browser mundur lebih jauh dengan mendorong state saat ini kembali
-        // Ini penting agar tombol back hanya menutup modal, bukan halaman
-        window.history.pushState(event.state, '', window.location.pathname);
-        return; 
+        return; // Stop di sini, jangan biarkan browser mundur halaman
+      }
+
+      // Jika state history mengandung modalOpen, tutup modalnya
+      if (event.state && event.state.modalOpen) {
+        setIsGlobalModalOpen(false);
       }
 
       // 2. Penanganan khusus untuk halaman utama (root path '/')
@@ -75,6 +85,7 @@ const AppLayout = () => {
           window.history.pushState(null, '', window.location.pathname);
         }
       }
+      // Untuk halaman lain, biarkan perilaku default browser bekerja
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -84,6 +95,11 @@ const AppLayout = () => {
       if (toastId.current) Swal.close(toastId.current); // Pastikan toast ditutup saat komponen unmount
     };
   }, [isGlobalModalOpen, location.pathname]); // Dependensi: state modal dan path saat ini
+
+  // Auto-scroll ke atas setiap ganti route
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   // Props yang akan diteruskan ke komponen yang perlu mengelola state modal global
   const globalModalProps = { isGlobalModalOpen, setIsGlobalModalOpen };
