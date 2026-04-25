@@ -102,8 +102,8 @@ const Home = () => {
       const data = bannerImages[slot.key];
       if (!data) return null;
       
-      const image = typeof data === 'object' ? data.url : data;
-      const link = typeof data === 'object' ? data.link : null;
+      const image = (typeof data === 'object' && data !== null) ? data.url : data;
+      const link = (typeof data === 'object' && data !== null) ? data.link : null;
       
       return { ...slot, image, link };
     }).filter(b => b && b.image);
@@ -111,23 +111,23 @@ const Home = () => {
 
   const footerBg = useMemo(() => {
     const data = bannerImages.footer_bg;
-    return typeof data === 'object' ? data?.url : data;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
   }, [bannerImages]);
 
   const chatIcon = useMemo(() => {
     const data = bannerImages.chat_icon;
-    return typeof data === 'object' ? data?.url : data;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
   }, [bannerImages]);
 
   const homeBgStatic = useMemo(() => {
     const data = bannerImages.home_bg_static;
-    return typeof data === 'object' ? data?.url : data;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
   }, [bannerImages]);
 
   // --- DYNAMIC FAVICON UPDATE ---
   useEffect(() => {
     const data = bannerImages.favicon;
-    const url = typeof data === 'object' ? data?.url : data;
+    const url = (typeof data === 'object' && data !== null) ? data?.url : data;
     if (url) {
       let link = document.querySelector("link[rel*='icon']");
       if (!link) {
@@ -859,7 +859,7 @@ const Home = () => {
             <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
                 {cat.key && bannerImages[cat.key] ? (
                 <img 
-                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key]} 
+                  src={(typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key]} 
                   alt={cat.name} 
                   className="w-12 h-12 object-contain bg-transparent" 
                   style={{ backgroundColor: 'transparent' }}
@@ -915,7 +915,7 @@ const Home = () => {
               <div className="flex items-center gap-2">
                 {cat.key && bannerImages[cat.key] ? (
                   <img 
-                    src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
+                    src={`${((typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
                     alt="" 
                     className="w-5 h-5 object-contain bg-transparent" 
                     style={{ backgroundColor: 'transparent' }}
@@ -1009,7 +1009,7 @@ const Home = () => {
 
                 {/* Right: Product List (Horizontal Scroll) */}
                 <div className={`flex-1 p-3 md:p-6 flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide items-center ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10 backdrop-blur-sm'}`}>
-                    {products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).length === 0 ? (
+                    {(!products || products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).length === 0) ? (
                         <div className="text-white/80 text-xs md:text-sm font-medium w-full text-center">
                             Produk segera hadir...
                         </div>
@@ -1052,15 +1052,14 @@ const Home = () => {
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.slice(0, 12).map((product) => (
+            {products && products.length > 0 ? products.slice(0, 12).map((product) => (
               <ProductCard 
                 key={product.id} 
                 product={{...product, image: product.mediaUrl || 'https://via.placeholder.com/150', price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}}
                 className="product-card-home"
                 onClick={() => handleProductClick(product)}
               />
-            ))}
-            {products.length === 0 && (
+            )) : (
                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
             )}
           </div>
@@ -1262,7 +1261,7 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
           <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
-            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => navigate('/')}>
+            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => setCurrentView('home')}>
               SobatNiaga
             </h1>
           </div>
@@ -1282,7 +1281,7 @@ const Home = () => {
               onFocus={(e) => {
                 if (window.innerWidth < 768) {
                   e.target.blur(); // Cegah keyboard muncul di halaman home
-                  navigate('/search-page');
+                  setCurrentView('search-page');
                 } else if (searchQuery.trim().length > 0) {
                   setShowSuggestions(true);
                 }
@@ -1370,7 +1369,7 @@ const Home = () => {
 
             {/* Cart Icon with Badge */}
             <button 
-              onClick={() => navigate('/cart')}
+              onClick={() => setCurrentView('cart')}
               className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
             >
               <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
@@ -1399,12 +1398,12 @@ const Home = () => {
                   <div className="px-4 py-2 border-b border-gray-100 mb-1 ">
                     <p className="text-sm font-bold theme-text">Halo, {user.displayName || 'User'}!</p>
                   </div>
-                  <button onClick={() => { navigate('/profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
-                  <button onClick={() => { navigate('/history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
+                  <button onClick={() => { setCurrentView('profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
+                  <button onClick={() => { setCurrentView('history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
                   {user?.email === 'pushmate.id@gmail.com' && (
-                    <button onClick={() => { navigate('/admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                    <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
                   )}
-                  <button onClick={() => { navigate('/address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
+                  <button onClick={() => { setCurrentView('address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
                   <div className="border-t border-gray-100 my-1"></div>
                   <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>
                 </div>
@@ -1413,6 +1412,11 @@ const Home = () => {
           </div>
         </div>
       </nav>
+
+      {/* MAIN CONTENT AREA - INI YANG TADI ILANG BRO! */}
+      <main className="flex-1">
+        {renderContent()}
+      </main>
 
       {/* Modal Top Up Game (Global) */}
       {selectedGame && TopUpModal && (

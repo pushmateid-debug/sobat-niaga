@@ -564,6 +564,9 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
 
   // Algoritma Campuran: Merge Video & Live untuk Tab "Untuk Anda"
   const forYouFeed = useMemo(() => {
+    // Guard Clause: Pastikan data adalah array sebelum di-map
+    if (!Array.isArray(videos) || !Array.isArray(liveStreams)) return [];
+
     const combined = [
       ...videos.map(v => ({ ...v, type: 'video' })),
       ...liveStreams.map(l => ({ ...l, type: 'live' }))
@@ -710,13 +713,13 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
             <Loader2 size={40} className="text-sky-500 animate-spin" />
           </div>
         ) : activeTab === 'foryou' ? (
-          forYouFeed.length > 0 ? (
-            forYouFeed.map((item) => (
+          forYouFeed && forYouFeed.length > 0 ? (
+            forYouFeed.map((item, index) => (
               item.type === 'live' ? (
                 <NiagaLiveCard key={item.id} stream={item} onProfileClick={onProfileClick} onStoreClick={onStoreClick} />
               ) : (
                 <VideoItem 
-                  key={item.id} 
+                  key={item?.id || index} 
                   video={item} 
                   onProfileClick={onProfileClick} 
                   onStoreClick={onStoreClick}
@@ -735,10 +738,10 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
             </div>
           )
         ) : activeTab === 'reels' ? (
-          videos.length > 0 ? (
-            videos.map((video) => (
+          videos && videos.length > 0 ? (
+            videos.map((video, index) => (
               <VideoItem 
-                key={video.id} 
+                key={video?.id || index} 
                 video={video} 
                 onProfileClick={onProfileClick} 
                 onStoreClick={onStoreClick} 
