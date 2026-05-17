@@ -82,6 +82,14 @@ const Home = () => {
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
 
+  // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
+  const playCustomNotificationSound = () => {
+    const savedSound = localStorage.getItem('custom_notif_sound') || user?.notificationSoundUrl;
+    const defaultSound = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+    const audio = new Audio(savedSound || defaultSound);
+    audio.play().catch(err => console.log("Gagal putar suara:", err));
+  };
+
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
   const pulsaRef = useRef(null);
@@ -253,13 +261,24 @@ const Home = () => {
   }, [user]);
 
   // Fetch Notifications Realtime
+  const prevNotifCount = useRef(0);
+  const isFirstLoadNotif = useRef(true);
+
   useEffect(() => {
     if (user?.uid) {
       const notifRef = query(ref(db, 'notifications'), orderByChild('userId'), equalTo(user.uid));
       const unsubscribe = onValue(notifRef, (snapshot) => {
         const data = snapshot.val();
         const loadedNotifs = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-        // Sort by createdAt descending
+
+        // Trigger suara jika ada notifikasi baru (bukan saat pertama kali load)
+        const count = loadedNotifs.length;
+        if (!isFirstLoadNotif.current && count > prevNotifCount.current) {
+            playCustomNotificationSound();
+        }
+        prevNotifCount.current = count;
+        isFirstLoadNotif.current = false;
+
         setNotifications(loadedNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
       });
       return () => unsubscribe();
@@ -707,6 +726,7 @@ const Home = () => {
                 setChatTab={setChatTab} 
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
+                playCustomNotificationSound={playCustomNotificationSound}
             />
         </div>
       );
@@ -1504,6 +1524,7 @@ const Home = () => {
                 setChatTab={setChatTab} 
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
+                playCustomNotificationSound={playCustomNotificationSound}
             />
         </div>
       )}
@@ -1610,10 +1631,12 @@ const DraggableChatWidget = ({ onClick, icon }) => {
 };
 
 // --- INTERNAL CHAT COMPONENT ---
-const ChatComponent = ({ user, isDarkMode }) => {
+const ChatComponent = ({ user, isDarkMode, playCustomNotificationSound }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
+  const prevMsgCount = useRef(0);
+  const isFirstLoadMsg = useRef(true);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -1622,6 +1645,17 @@ const ChatComponent = ({ user, isDarkMode }) => {
       const data = snapshot.val();
       if (data) {
         const msgs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // Trigger suara jika ada pesan baru dari Admin/Lawan Chat
+        if (!isFirstLoadMsg.current && msgs.length > prevMsgCount.current) {
+            const sorted = [...msgs].sort((a, b) => b.timestamp - a.timestamp);
+            if (sorted[0]?.sender !== 'user') {
+                playCustomNotificationSound();
+            }
+        }
+        prevMsgCount.current = msgs.length;
+        isFirstLoadMsg.current = false;
+
         setMessages(msgs.sort((a, b) => a.timestamp - b.timestamp));
       }
     });
@@ -1680,7 +1714,7 @@ const ChatComponent = ({ user, isDarkMode }) => {
 };
 
 // --- CHAT LAYOUT COMPONENT (Reusable for Mobile & Desktop) ---
-const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen }) => {
+const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen, playCustomNotificationSound }) => {
   return (
     <div className={`flex flex-col h-full w-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
        {/* Chat Header */}
@@ -1756,7 +1790,7 @@ const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, 
               <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold">Login</button>
             </div>
           ) : (
-            chatTab === 'admin' ? <ChatComponent user={user} isDarkMode={isDarkMode} /> : <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center p-6"><Store size={40} className="mb-3 opacity-50" /><p className="text-sm font-bold">Fitur Chat Seller</p><p className="text-xs mt-1 max-w-xs">Tanya produk langsung ke penjual? Fitur ini segera hadir!</p></div>
+            chatTab === 'admin' ? <ChatComponent user={user} isDarkMode={isDarkMode} playCustomNotificationSound={playCustomNotificationSound} /> : <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center p-6"><Store size={40} className="mb-3 opacity-50" /><p className="text-sm font-bold">Fitur Chat Seller</p><p className="text-xs mt-1 max-w-xs">Tanya produk langsung ke penjual? Fitur ini segera hadir!</p></div>
           )}
        </div>
     </div>

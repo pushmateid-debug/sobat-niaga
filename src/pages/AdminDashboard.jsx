@@ -117,12 +117,19 @@ const AdminDashboard = ({ onBack }) => {
   const prevUnreadMessagesRef = useRef(0);
   const [showSmartNotif, setShowSmartNotif] = useState(null);
   const notifTimeoutRef = useRef(null);
+  
+  // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
+  const playCustomNotificationSound = () => {
+    const savedSound = localStorage.getItem('custom_notif_sound') || auth.currentUser?.notificationSoundUrl;
+    const defaultSound = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+    const audio = new Audio(savedSound || defaultSound);
+    audio.play().catch(err => console.log("Gagal putar suara:", err));
+  };
 
   // NOTIFIKASI SUARA PESAN BARU
   useEffect(() => {
     if (stats?.unreadMessages > prevUnreadMessagesRef.current) {
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-        audio.play().catch(e => console.debug("Sound blocked by browser", e));
+        playCustomNotificationSound();
     }
     prevUnreadMessagesRef.current = stats?.unreadMessages || 0;
   }, [stats?.unreadMessages]);
@@ -275,8 +282,7 @@ const AdminDashboard = ({ onBack }) => {
 
         // --- NOTIFIKASI SUARA (CTING!) ---
         if (!isFirstLoadTrx.current && pending > prevPendingTrxRef.current) {
-            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.play().catch(e => console.log("Audio play failed", e));
+            playCustomNotificationSound();
 
             // Pemicu Smart Notification
             if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
@@ -630,8 +636,7 @@ const AdminDashboard = ({ onBack }) => {
       // --- NOTIFIKASI SUARA NIAGAGO (DING!) ---
       const pendingCount = data.length;
       if (!isFirstLoadNiaga.current && pendingCount > prevPendingNiagaRef.current) {
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-          audio.play().catch(e => console.log("Audio play failed", e));
+          playCustomNotificationSound();
 
           // Pemicu Smart Notification
           if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
