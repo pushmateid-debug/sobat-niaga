@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo, Suspense, useTransition } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
 import 'swiper/css';
+import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import 'swiper/css/effect-coverflow';
 import ProductCard from '../components/ProductCard';
@@ -37,8 +38,10 @@ const AllCategories = React.lazy(() => import('./AllCategories'));
 const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
 const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
-
+import { Navigation } from 'swiper/modules';
 const Home = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,6 +80,7 @@ const Home = () => {
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
   const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop
   const desktopChatRef = useRef(null);
+  const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
 
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
@@ -357,30 +361,30 @@ const Home = () => {
   };
 
   const handleProductClick = (product) => {
-    setPreviousView(currentView);
-    setSelectedProduct(product);
-    setCurrentView('product-detail');
+    startTransition(() => { setPreviousView(currentView); setSelectedProduct(product); setCurrentView('product-detail'); });
   };
 
   const handleCheckout = (orderId) => {
-    setCurrentOrder({ id: orderId }); // Di real app fetch order detail by ID
-    setCurrentView('payment');
+    startTransition(() => { setCurrentOrder({ id: orderId }); setCurrentView('payment'); });
   };
 
   const handleVisitStore = (sellerId) => {
-    setSelectedSellerId(sellerId);
-    setPreviousView(currentView); // Biar bisa back ke halaman sebelumnya
-    setCurrentView('store-profile');
+    startTransition(() => { setSelectedSellerId(sellerId); setPreviousView(currentView); setCurrentView('store-profile'); });
   };
 
   const scrollToSection = (name) => {
     if (name === 'Lainnya') {
-      setCurrentView('all-categories');
+      startTransition(() => { setCurrentView('all-categories'); });
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (name === 'Sobat Berbagi') {
-      setCurrentView('sobat-berbagi');
+      startTransition(() => { setCurrentView('sobat-berbagi'); });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (name === 'NiagaGo') { // Ini ada di kategori juga
+      startTransition(() => { setCurrentView('niagago'); });
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -392,7 +396,6 @@ const Home = () => {
       case 'Skin Care': ref = skincareRef; break;
       case 'Fashion': ref = fashionRef; break;
       case 'Jasa': ref = jasaRef; break;
-      case 'Top Up Game': ref = gameRef; break;
       case 'NiagaGo': ref = niagaGoRef; break;
       default: ref = null;
     }
@@ -404,7 +407,7 @@ const Home = () => {
   };
 
   const handleGameSelect = (game) => {
-    setSelectedGame(game);
+    startTransition(() => { setSelectedGame(game); });
   };
 
   // Handle Search Input & Auto-Suggestions
@@ -414,7 +417,7 @@ const Home = () => {
 
     if (query.trim().length > 0) {
       const filtered = products.filter(p => 
-        p.name.toLowerCase().includes(query.toLowerCase())
+        (p.name || "").toLowerCase().includes(query.toLowerCase())
       ).slice(0, 5); // Limit to 5 suggestions
       setSuggestions(filtered);
       setShowSuggestions(true);
@@ -425,22 +428,10 @@ const Home = () => {
   };
 
   const handleSuggestionClick = (productName) => {
-    setSearchQuery(productName);
-    setActiveSearchQuery(productName);
-    setPreviousView(currentView);
-    setCurrentView('search-results');
-    setShowSuggestions(false);
-  };
-
-  // Handle Search Submission
-  const handleSearch = (e) => {
-    if (e.key === 'Enter' && searchQuery.trim() !== '') {
-      setActiveSearchQuery(searchQuery.trim());
-      setPreviousView(currentView); // Simpan view saat ini untuk tombol back
-      setCurrentView('search-results');
-      setShowSuggestions(false);
-      e.target.blur(); // Hapus fokus dari input
-    }
+    startTransition(() => {
+      setSearchQuery(productName); setActiveSearchQuery(productName); setPreviousView(currentView);
+      setCurrentView('search-results'); setShowSuggestions(false);
+    });
   };
 
   // Notification Helpers
@@ -456,15 +447,15 @@ const Home = () => {
 
     // Handle Deep Link Order (Untuk Payment Rejected dll)
     if (notif.orderId) {
-      setCurrentOrder({ id: notif.orderId });
+      startTransition(() => { setCurrentOrder({ id: notif.orderId }); });
       setHighlightOrderId(notif.orderId);
     }
 
+    startTransition(() => { // Logic Dynamic Tab untuk TransactionHistory
     if (notif.targetView) {
       setCurrentView(notif.targetView);
     }
 
-    // Logic Dynamic Tab untuk TransactionHistory
     if (notif.targetView === 'history') {
       if (notif.targetTab) {
         setHistoryTab(notif.targetTab);
@@ -475,6 +466,7 @@ const Home = () => {
       }
     }
     setIsNotificationOpen(false);
+    });
   };
 
   const handleMarkAllRead = () => {
@@ -519,7 +511,7 @@ const Home = () => {
             {/* Header Sticky */}
             <div className={`sticky top-0 z-50 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
                 <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-                    <button onClick={() => setCurrentView('home')} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
+                    <button onClick={() => startTransition(() => setCurrentView('home'))} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
                         <ArrowLeft size={24} />
                     </button>
                     <h1 className={`text-lg font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>{title}</h1>
@@ -576,6 +568,32 @@ const Home = () => {
     );
   };
 
+  // --- FITUR SYNC BACK BUTTON HP (HISTORY SINKRONISASI) ---
+  useEffect(() => {
+    const handleBackButton = (event) => {
+      // Jika user sedang tidak di home (misal: di cart, detail produk, atau video)
+      if (currentView !== 'home') {
+        // Hentikan aksi 'keluar dari aplikasi' default browser
+        event.preventDefault();
+        
+        // Logika mundur internal: Balik ke state sebelumnya atau paksa ke home
+        if (currentView === 'product-detail' || currentView === 'search-results') {
+          startTransition(() => setCurrentView(previousView || 'home'));
+        } else {
+          startTransition(() => setCurrentView('home'));
+        }
+      }
+    };
+
+    // 'PushState' setiap kali view berubah (kecuali home) agar ada tumpukan history palsu
+    if (currentView !== 'home') {
+      window.history.pushState(null, null, window.location.pathname);
+    }
+
+    window.addEventListener('popstate', handleBackButton);
+    return () => window.removeEventListener('popstate', handleBackButton);
+  }, [currentView, previousView, window.location.pathname]);
+
   // Loading Screen: Tahan tampilan sampai Firebase selesai ngecek
   if (isLoading) {
     return (
@@ -598,59 +616,84 @@ const Home = () => {
   // Render Content Helper
   const renderContent = () => {
     switch (currentView) {
-      case 'topup': return <TopUp onBack={() => setCurrentView('home')} />;
-      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />; // View key 'food' is fine, component handles its own content
-      case 'skincare': return <SkinCare onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'cart': return <Cart onBack={() => setCurrentView('home')} user={user} onCheckout={handleCheckout} />;
+      case 'cart': return <Cart onBack={() => startTransition(() => setCurrentView('home'))} user={user} onCheckout={handleCheckout} />;
       case 'niaga-video': return (
         <NiagaVideo 
-          onBack={() => setCurrentView('home')} 
-          onProfileClick={(id) => { setSelectedUserProfileId(id); setCurrentView('user-public-profile'); }} 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
+          onProfileClick={(id) => { 
+            startTransition(() => {
+              setSelectedUserProfileId(id); 
+              setCurrentView('user-public-profile'); 
+            });
+          }} 
           onStoreClick={(id) => handleVisitStore(id)} 
           onProductClick={handleProductClick}
         />
       );
-      case 'user-public-profile': return <UserPublicProfile userId={selectedUserProfileId} currentUserId={user.uid} onBack={() => setCurrentView('niaga-video')} onVideoClick={() => setCurrentView('niaga-video')} onProductClick={handleProductClick} onChatClick={(id) => { setChatTab('seller'); setCurrentView('chat'); }} />;
+      case 'user-public-profile': return (
+        <UserPublicProfile 
+          userId={selectedUserProfileId} 
+          currentUserId={user.uid} 
+          onBack={() => startTransition(() => setCurrentView('niaga-video'))} 
+          onVideoClick={() => startTransition(() => setCurrentView('niaga-video'))} 
+          onProductClick={handleProductClick} 
+          onChatClick={(id) => { 
+            startTransition(() => {
+              setChatTab('seller'); 
+              setCurrentView('chat'); 
+            });
+          }} 
+        />
+      );
       case 'profile': return (
         <Profile 
           user={user} 
-          onBack={() => setCurrentView('home')} 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
           onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })} 
-          onViewHistory={() => setCurrentView('history')} 
-          onViewSellerDashboard={() => setCurrentView('dashboard-seller')}
+          onViewHistory={() => startTransition(() => setCurrentView('history'))} 
+          onViewSellerDashboard={() => startTransition(() => setCurrentView('dashboard-seller'))}
         />
       );
-      case 'address': return <Address user={user} onBack={() => setCurrentView('home')} />;
-      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => setCurrentView('home')} />;
-      case 'product-detail': return <ProductDetail product={selectedProduct} onBack={() => setCurrentView(previousView)} onGoToCart={() => setCurrentView('cart')} user={user} onVisitStore={handleVisitStore} />;
+      case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'product-detail': return (
+        <ProductDetail 
+          product={selectedProduct} 
+          onBack={() => startTransition(() => setCurrentView(previousView))} 
+          onGoToCart={() => startTransition(() => setCurrentView('cart'))} 
+          user={user} 
+          onVisitStore={handleVisitStore} 
+        />
+      );
       case 'search-page': return (
         <SearchPage 
-          onBack={() => setCurrentView('home')} 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
           products={products} 
           onProductClick={handleProductClick} 
           onSearch={(q) => {
-            setSearchQuery(q);
-            setActiveSearchQuery(q);
-            setPreviousView(currentView);
-            setCurrentView('search-results');
+            startTransition(() => {
+              setSearchQuery(q);
+              setActiveSearchQuery(q);
+              setPreviousView(currentView);
+              setCurrentView('search-results');
+            });
           }}
         />
       );
-      case 'payment': return <Payment order={currentOrder} onBack={() => setCurrentView('cart')} onPaymentSuccess={() => setCurrentView('history')} />;
-      case 'history': return <TransactionHistory user={user} onBack={() => setCurrentView('home')} onPay={(order) => { setCurrentOrder(order); setCurrentView('payment'); }} initialTab={historyTab} highlightOrderId={highlightOrderId} />;
-      case 'admin-dashboard': return <AdminDashboard onBack={() => setCurrentView('home')} />;
-      case 'store-profile': return <StoreProfile sellerId={selectedSellerId} onBack={() => setCurrentView(previousView)} onProductClick={handleProductClick} />;
-      case 'digital-center': return <DigitalCenter onBack={() => setCurrentView('home')} onGameSelect={handleGameSelect} />;
-      case 'search-results': return <SearchResults onBack={() => setCurrentView(previousView)} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
+      case 'payment': return <Payment order={currentOrder} onBack={() => startTransition(() => setCurrentView('cart'))} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
+      case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} />;
+      case 'admin-dashboard': return <AdminDashboard onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'store-profile': return <StoreProfile sellerId={selectedSellerId} onBack={() => startTransition(() => setCurrentView(previousView))} onProductClick={handleProductClick} />;
+      case 'digital-center': return <DigitalCenter onBack={() => startTransition(() => setCurrentView('home'))} onGameSelect={handleGameSelect} />;
+      case 'search-results': return <SearchResults onBack={() => startTransition(() => setCurrentView(previousView))} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
       case 'about': return renderStaticPage('about', 'Tentang Kami');
       case 'terms': return renderStaticPage('terms', 'Syarat & Ketentuan');
       case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
       case 'help': return renderStaticPage('help', 'Pusat Bantuan');
-      case 'niagago': return <NiagaGo user={user} onBack={() => setCurrentView('home')} onOpenProfile={() => setCurrentView('profile')} />;
-      case 'all-categories': return <AllCategories onBack={() => setCurrentView('home')} onNavigate={(view) => setCurrentView(view)} />;
-      case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => setCurrentView('all-categories')} />;
+      case 'niagago': return <NiagaGo user={user} onBack={() => startTransition(() => setCurrentView('home'))} onOpenProfile={() => startTransition(() => setCurrentView('profile'))} />;
+      case 'all-categories': return <AllCategories onBack={() => startTransition(() => setCurrentView('home'))} onNavigate={(view) => startTransition(() => setCurrentView(view))} />;
+      case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => startTransition(() => setCurrentView('all-categories'))} />;
       
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat': return (
@@ -691,12 +734,12 @@ const Home = () => {
           {/* Menu List */}
           <div className={`mx-4 rounded-2xl overflow-hidden shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
             {[
-              { label: 'Profil Saya', icon: <User size={20} />, action: () => setCurrentView('profile') },
-              { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => setCurrentView('dashboard-seller') },
-              { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => setCurrentView('history') },
-              { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => setCurrentView('address') },
-              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => setCurrentView('admin-dashboard'), hidden: user?.email !== 'pushmate.id@gmail.com' },
-              { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => setCurrentView('help') },
+              { label: 'Profil Saya', icon: <User size={20} />, action: () => startTransition(() => setCurrentView('profile')) },
+              { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => startTransition(() => setCurrentView('dashboard-seller')) },
+              { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => startTransition(() => setCurrentView('history')) },
+              { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => startTransition(() => setCurrentView('address')) },
+              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => startTransition(() => setCurrentView('admin-dashboard')), hidden: user?.email !== 'pushmate.id@gmail.com' },
+              { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => startTransition(() => setCurrentView('help')) },
             ].map((item, idx) => (
               !item.hidden && (
                 <button 
@@ -1209,10 +1252,10 @@ const Home = () => {
             <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Layanan Kami</h4>
               <ul className="space-y-3 text-sm text-slate-200 font-medium">
-                <li><button onClick={() => { setCurrentView('digital-center'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Top Up Game</button></li>
-                <li><button onClick={() => { setCurrentView('topup'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pulsa & Data</button></li>
-                <li><button onClick={() => { setCurrentView('fashion'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Fashion Pria & Wanita</button></li>
-                <li><button onClick={() => { setCurrentView('food'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Makan Hemat</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('digital-center')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Top Up Game</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('topup')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pulsa & Data</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('fashion')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Fashion Pria & Wanita</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('food')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Makan Hemat</button></li>
               </ul>
             </div>
 
@@ -1220,10 +1263,10 @@ const Home = () => {
             <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
               <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Informasi</h4>
               <ul className="space-y-3 text-sm text-slate-200 font-medium">
-                <li><button onClick={() => { setCurrentView('about'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Tentang Kami</button></li>
-                <li><button onClick={() => { setCurrentView('terms'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Syarat & Ketentuan</button></li>
-                <li><button onClick={() => { setCurrentView('privacy'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Kebijakan Privasi</button></li>
-                <li><button onClick={() => { setCurrentView('help'); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pusat Bantuan</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('about')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Tentang Kami</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('terms')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Syarat & Ketentuan</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('privacy')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Kebijakan Privasi</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('help')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pusat Bantuan</button></li>
               </ul>
             </div>
 
@@ -1261,27 +1304,42 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
           {/* Left: Brand or Back Button */}
           <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
-            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => setCurrentView('home')}>
+            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => startTransition(() => setCurrentView('home'))}>
               SobatNiaga
             </h1>
           </div>
 
           {/* Center: Search Bar (Hidden on mobile if needed, or simplified) */}
-          <div className="flex-1 relative" ref={searchRef}>
+          <form 
+            className="flex-1 relative" 
+            ref={searchRef}
+            onSubmit={(e) => {
+              e.preventDefault(); // Penahan agar tidak reload!
+              if (searchQuery.trim() !== '') {
+                startTransition(() => {
+                  setActiveSearchQuery(searchQuery.trim());
+                  setPreviousView(currentView);
+                  setCurrentView('search-results');
+                  setShowSuggestions(false);
+                });
+                if (e.target.querySelector('input')) e.target.querySelector('input').blur();
+              }
+            }}
+          >
             <div className="absolute inset-y-0 left-0 pl-2 md:pl-3 flex items-center pointer-events-none">
               <Search size={16} className="text-gray-400 md:w-[18px] md:h-[18px]" />
             </div>
             <input
               type="text"
+              enterKeyHint="search" // Ganti tombol Enter di HP jadi ikon Search
               className="block w-full pl-8 md:pl-10 pr-2 md:pr-3 py-1.5 md:py-2 border rounded-full text-xs md:text-sm focus:ring-2 focus:ring-sky-500 transition-all theme-card theme-text placeholder:text-gray-400"
               placeholder="Cari di SobatNiaga..."
               value={searchQuery}
               onChange={handleSearchInput}
-              onKeyDown={handleSearch}
               onFocus={(e) => {
                 if (window.innerWidth < 768) {
                   e.target.blur(); // Cegah keyboard muncul di halaman home
-                  setCurrentView('search-page');
+                  startTransition(() => { setCurrentView('search-page'); });
                 } else if (searchQuery.trim().length > 0) {
                   setShowSuggestions(true);
                 }
@@ -1303,7 +1361,7 @@ const Home = () => {
                 ))}
               </div>
             )}
-          </div>
+          </form>
 
           {/* Right: Icons */}
           <div className="flex items-center gap-1.5 md:gap-3 theme-text">
@@ -1398,12 +1456,12 @@ const Home = () => {
                   <div className="px-4 py-2 border-b border-gray-100 mb-1 ">
                     <p className="text-sm font-bold theme-text">Halo, {user.displayName || 'User'}!</p>
                   </div>
-                  <button onClick={() => { setCurrentView('profile'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
-                  <button onClick={() => { setCurrentView('history'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
-                  {user?.email === 'pushmate.id@gmail.com' && (
-                    <button onClick={() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                  <button onClick={() => startTransition(() => { setCurrentView('profile'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
+                  <button onClick={() => startTransition(() => { setCurrentView('history'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
+                  {user?.email === 'pushmate.id@gmail.com' && ( // Admin Dashboard
+                    <button onClick={() => startTransition(() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
                   )}
-                  <button onClick={() => { setCurrentView('address'); setIsProfileOpen(false); }} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
+                  <button onClick={() => startTransition(() => { setCurrentView('address'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
                   <div className="border-t border-gray-100 my-1"></div>
                   <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>
                 </div>
@@ -1429,7 +1487,7 @@ const Home = () => {
       {/* Customer Service Chat Widget */}
       {currentView !== 'chat' && !isDesktopChatOpen && (
         <DraggableChatWidget 
-            onClick={() => window.innerWidth >= 768 ? setIsDesktopChatOpen(true) : setCurrentView('chat')} 
+            onClick={() => window.innerWidth >= 768 ? setIsDesktopChatOpen(true) : startTransition(() => setCurrentView('chat'))} 
             icon={chatIcon} 
         />
       )}
@@ -1454,22 +1512,22 @@ const Home = () => {
       {!['product-detail', 'cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
       <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="flex justify-around items-center h-16">
-          <button onClick={() => setCurrentView('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+          <button onClick={() => startTransition(() => setCurrentView('home'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
             <HomeIcon size={24} strokeWidth={currentView === 'home' ? 2.5 : 2} />
             <span className="text-[10px] font-medium">Home</span>
           </button>
 
-          <button onClick={() => setCurrentView('niaga-video')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'niaga-video' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+          <button onClick={() => startTransition(() => setCurrentView('niaga-video'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'niaga-video' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
             <PlayCircle size={24} strokeWidth={currentView === 'niaga-video' ? 2.5 : 2} />
             <span className="text-[10px] font-medium">Video</span>
           </button>
           
-          <button onClick={() => setCurrentView('chat')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+          <button onClick={() => startTransition(() => setCurrentView('chat'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
             <MessageCircle size={24} />
             <span className="text-[10px] font-medium">Chat</span>
           </button>
 
-          <button onClick={() => setCurrentView('account-menu')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+          <button onClick={() => startTransition(() => setCurrentView('account-menu'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
             <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />
             <span className="text-[10px] font-medium">Profil</span>
           </button>

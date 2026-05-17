@@ -8,9 +8,9 @@ const SearchResults = ({ onBack, products = [], query, onProductClick }) => {
   const isDarkMode = theme === 'dark';
 
   // Filter products based on the query (case-insensitive, OR logic for multiple words)
-  const searchTerms = query.toLowerCase().split(' ').filter(term => term);
-  const filteredProducts = products.filter(p => {
-    const productName = p.name.toLowerCase();
+  const searchTerms = (query || "").toLowerCase().split(' ').filter(term => term);
+  const filteredProducts = (products || []).filter(p => {
+    const productName = (p.name || "").toLowerCase();
     // Return true if any of the search terms are included in the product name
     return searchTerms.some(term => productName.includes(term));
   });

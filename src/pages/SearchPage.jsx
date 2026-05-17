@@ -13,12 +13,6 @@ const SearchPage = ({ onBack, products = [], onProductClick, onSearch }) => {
     inputRef.current?.focus();
   }, []);
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && query.trim()) {
-      onSearch(query);
-    }
-  };
-
   // Trending (Empty Query) - Ambil 6 produk teratas sebagai contoh trending
   const trendingProducts = products.slice(0, 6);
 
@@ -26,7 +20,7 @@ const SearchPage = ({ onBack, products = [], onProductClick, onSearch }) => {
   const filteredProducts = query.trim() === ''
     ? [] // Don't show anything if input is empty
     : products.filter(p =>
-        p.name.toLowerCase().includes(query.toLowerCase())
+        (p.name || "").toLowerCase().includes(query.toLowerCase())
       );
 
   return (
@@ -37,23 +31,29 @@ const SearchPage = ({ onBack, products = [], onProductClick, onSearch }) => {
           <button onClick={onBack} className={`p-2 rounded-full transition-all active:scale-90 active:opacity-70 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}>
             <ArrowLeft size={24} />
           </button>
-          <div className="relative flex-1">
+          <form 
+            className="relative flex-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (query.trim()) onSearch(query);
+            }}
+          >
             <Search size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <input
               ref={inputRef}
               type="text"
+              enterKeyHint="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
               placeholder="Cari produk atau jasa..."
               className={`w-full pl-11 pr-10 py-2.5 rounded-full border text-sm focus:outline-none transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-gray-50 border-gray-200 focus:border-sky-500'}`}
             />
             {query && (
-              <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             )}
-          </div>
+          </form>
         </div>
       </div>
 
