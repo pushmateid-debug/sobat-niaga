@@ -957,7 +957,7 @@ const Home = () => {
               Ojek mahasiswa hemat & aman!
             </p>
           </div>
-          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-3 py-1.5 bg-white text-emerald-600 font-bold text-[11px] rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap shrink-0">
+          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-3 py-1.5 bg-white text-emerald-600 font-bold text-[11px] rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap shrink-0">
             Buka NiagaGo
           </button>
           <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
@@ -1068,7 +1068,7 @@ const Home = () => {
               Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
             </p>
           </div>
-          <button onClick={() => setCurrentView('niagago')} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold text-base rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold text-base rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
             Buka NiagaGo
           </button>
           {/* Decor */}
@@ -1192,7 +1192,7 @@ const Home = () => {
         <div ref={pulsaRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Isi Pulsa & Paket Data</h2>
-            <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
+            <button onClick={() => startTransition(() => setCurrentView('topup'))} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Isi Pulsa').slice(0, 6).map((product) => (
@@ -1208,7 +1208,7 @@ const Home = () => {
         <div ref={makanRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Niaga Food</h2>
-            <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <button onClick={() => startTransition(() => setCurrentView('food'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Niaga Food').slice(0, 6).map((product) => (
@@ -1224,7 +1224,7 @@ const Home = () => {
         <div ref={skincareRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Skin Care Glowing</h2>
-            <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <button onClick={() => startTransition(() => setCurrentView('skincare'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Skin Care').slice(0, 6).map((product) => (
@@ -1240,7 +1240,7 @@ const Home = () => {
         <div ref={fashionRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Fashion Terkini</h2>
-            <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <button onClick={() => startTransition(() => setCurrentView('fashion'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Fashion').slice(0, 6).map((product) => (
@@ -1256,7 +1256,7 @@ const Home = () => {
         <div ref={jasaRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Jasa Mahasiswa</h2>
-            <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <button onClick={() => startTransition(() => setCurrentView('jasa'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Jasa').slice(0, 6).map((product) => (
@@ -1272,7 +1272,7 @@ const Home = () => {
         <div ref={gameRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Top Up Game</h2>
-            <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <button onClick={() => startTransition(() => setCurrentView('digital-center'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Game').slice(0, 6).map((product) => (
@@ -1509,7 +1509,7 @@ const Home = () => {
 
             {/* Cart Icon with Badge */}
             <button 
-              onClick={() => setCurrentView('cart')}
+              onClick={() => startTransition(() => setCurrentView('cart'))}
               className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
             >
               <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />

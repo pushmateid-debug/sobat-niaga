@@ -917,14 +917,14 @@ const AdminDashboard = ({ onBack, user }) => {
 
       // Kirim Notifikasi ke User
       await push(ref(realDb, 'notifications'), {
-        userId: order.buyerId,
+        recipientId: order.buyerId,
         title: isApproved ? 'Pembayaran Diterima' : 'Pembayaran Ditolak',
         message: isApproved ? 'Pesananmu sedang diproses seller.' : `Alasan: ${reason}`,
         type: isApproved ? 'success' : 'error',
               targetView: 'history',
         orderId: order.id,
         createdAt: serverTimestamp(),
-        isRead: false
+        status: 'unread'
       });
 
       Swal.fire({

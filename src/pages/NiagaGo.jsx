@@ -1199,26 +1199,26 @@ const NiagaGo = ({ onOpenProfile }) => {
 
               if (itemsArray.length > 0 && itemsArray[0].sellerId) {
                 await push(ref(realDb, 'notifications'), {
-                  userId: itemsArray[0].sellerId,
+                  recipientId: itemsArray[0].sellerId,
                   title: 'Driver Ditemukan!',
                   message: `Driver ${userProfile.displayName} sedang menuju ke tokomu untuk mengambil pesanan #${delivery.orderId.slice(-6)}.`,
                   type: 'info',
                   targetView: 'dashboard-seller',
-                  createdAt: new Date().toISOString(),
-                  isRead: false
+                  createdAt: serverTimestamp(),
+                  status: 'unread'
                 });
               }
 
               await push(ref(realDb, 'notifications'), {
-                userId: orderData.buyerId,
+                recipientId: orderData.buyerId,
                 title: 'Driver OTW ke Resto!',
                 message: `Driver ${userProfile.displayName} (${userProfile.plateNumber}) sedang dalam perjalanan mengambil pesananmu.`,
                 type: 'info',
                 targetView: 'history',
                 targetTab: 'ready_for_pickup',
                 orderId: delivery.orderId,
-                createdAt: new Date().toISOString(),
-                isRead: false
+                createdAt: serverTimestamp(),
+                status: 'unread'
               });
             }
 

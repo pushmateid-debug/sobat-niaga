@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Minus, Plus, ShoppingBag, TicketPercent, Loader2, ChevronLeft, ChevronRight, MapPin, NotebookPen } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, onValue, remove, update, push } from 'firebase/database';
+import { ref, onValue, remove, update, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
@@ -310,6 +310,30 @@ const Cart = ({ onBack, user, onCheckout }) => {
 
     // Simpan ke Firebase
     const newOrderRef = await push(ref(db, 'orders'), orderData);
+
+    // --- TRIGGER NOTIFICATIONS (RTDB) ---
+    // 1. Notifikasi untuk setiap Seller yang terlibat
+    for (const sellerId of orderData.involvedSellerIds) {
+      await push(ref(db, 'notifications'), {
+        recipientId: sellerId,
+        title: 'Pesanan Baru Masuk!',
+        message: `Ada pesanan baru #${newOrderRef.key.slice(-6)} dari ${user.displayName}.`,
+        status: 'unread',
+        createdAt: serverTimestamp(),
+        type: 'info',
+        targetView: 'dashboard-seller'
+      });
+    }
+
+    // 2. Notifikasi untuk Admin (Memberitahu ada checkout baru)
+    await push(ref(db, 'notifications'), {
+      recipientId: 'ADMIN_GLOBAL',
+      title: 'Checkout Baru',
+      message: `User ${user.displayName} melakukan checkout untuk pesanan #${newOrderRef.key.slice(-6)}.`,
+      status: 'unread',
+      createdAt: serverTimestamp(),
+      type: 'warning'
+    });
     
     // Pindah ke halaman pembayaran
     onCheckout(newOrderRef.key);

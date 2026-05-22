@@ -821,15 +821,15 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound }) => {
             const order = sellerOrders.find(o => o.id === orderId);
             if (order) {
               await push(ref(db, 'notifications'), {
-                userId: order.buyerId,
+                recipientId: order.buyerId,
                 title: isJasa ? 'Jasa Selesai Dikerjakan' : 'Paket Dikirim',
                 message: isJasa ? `Seller menandai jasa selesai. Silakan cek hasil dan konfirmasi pesanan!` : `Paketmu sudah diserahkan ke kurir. Lacak dengan resi internal: ${newResi}`,
                 type: 'info',
                 targetView: 'history',
                 targetTab: 'shipped',
                 orderId: orderId,
-                createdAt: new Date().toISOString(),
-                isRead: false
+                createdAt: serverTimestamp(),
+                status: 'unread'
               });
             }
           });
@@ -1044,15 +1044,15 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound }) => {
             // Kirim notifikasi ke pembeli
             if (order) {
               await push(ref(db, 'notifications'), {
-                userId: order.buyerId,
+                recipientId: order.buyerId,
                 title: 'Pesananmu sedang dimasak! 🍳',
                 message: `Restoran ${sellerInfo?.storeName || 'Toko'} sedang menyiapkan pesananmu. Mohon ditunggu ya.`,
                 type: 'info',
                 targetView: 'history',
                 targetTab: 'being_prepared', // Arahkan ke tab yang benar
                 orderId: orderId,
-                createdAt: new Date().toISOString(),
-                isRead: false
+                createdAt: serverTimestamp(),
+                status: 'unread'
               });
             }
           });

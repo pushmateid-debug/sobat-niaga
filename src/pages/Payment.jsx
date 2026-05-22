@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, get, update, onValue } from 'firebase/database';
+import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
@@ -137,6 +137,17 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
         status: 'waiting_verification',
         proofUrl: proofUrl,
         paidAt: new Date().toISOString()
+      });
+
+      // --- TRIGGER NOTIFICATION UNTUK ADMIN ---
+      await push(ref(db, 'notifications'), {
+        recipientId: 'ADMIN_GLOBAL',
+        title: 'Bukti Pembayaran Baru!',
+        message: `User ${orderData.buyerName} mengunggah bukti transfer untuk pesanan #${order.id.slice(-6)}.`,
+        status: 'unread',
+        createdAt: serverTimestamp(),
+        orderId: order.id,
+        targetView: 'admin-dashboard'
       });
 
       Swal.fire({
