@@ -31,6 +31,9 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
   const displayImage = mediaUrl || image || 'https://via.placeholder.com/300';
   const displayPrice = parseInt(price).toLocaleString('id-ID');
 
+  // Layer Proteksi: Cek apakah barang ini milik user yang login
+  const isMyProduct = (realtimeProduct?.sellerId || product?.sellerId) === user?.uid;
+
   // Reset realtimeProduct saat product prop berubah (Pindah halaman produk)
   useEffect(() => {
     setRealtimeProduct(product);
@@ -210,11 +213,12 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                     </div>
                 </div>
                 <button 
-                    onClick={() => handleAddToCart(false)} 
-                    disabled={isAdding}
-                    className="flex-shrink-0 w-10 h-10 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors shadow-sm"
+                    onClick={() => !isMyProduct && handleAddToCart(false)} 
+                    disabled={isAdding || isMyProduct}
+                    className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${isMyProduct ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
+                    title={isMyProduct ? "Ini barang dagangan Anda" : "Tambah ke Keranjang"}
                 >
-                    {isAdding ? <span className="animate-spin text-xs">...</span> : <ShoppingCart size={20} />}
+                    {isAdding ? <span className="animate-spin text-xs">...</span> : (isMyProduct ? <X size={20} /> : <ShoppingCart size={20} />)}
                 </button>
             </div>
 
@@ -329,11 +333,12 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                     <h2 className="text-xl font-bold text-sky-600 font-sans">Rp {displayPrice}</h2>
                 </div>
                 <button 
-                    onClick={() => handleAddToCart(true)}
-                    className="flex-1 max-w-[180px] h-10 bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold rounded-full shadow-lg shadow-sky-200 transition-all active:scale-95"
+                    onClick={() => !isMyProduct && handleAddToCart(true)}
+                    disabled={isMyProduct}
+                    className={`flex-1 max-w-[180px] h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200'}`}
                 >
-                    Beli Sekarang
-            </button>
+                    {isMyProduct ? 'Ini Barang Anda' : 'Beli Sekarang'}
+                </button>
             </div>
         </div>
 

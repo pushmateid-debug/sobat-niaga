@@ -696,7 +696,12 @@ const Home = () => {
   const renderContent = () => {
     switch (currentView) {
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'cart': return <Cart onBack={() => startTransition(() => setCurrentView('home'))} user={user} onCheckout={handleCheckout} />;
+      case 'cart': return <Cart 
+        onBack={() => startTransition(() => setCurrentView('home'))} 
+        user={user} 
+        onCheckout={handleCheckout}
+        onGoToAddress={() => startTransition(() => setCurrentView('address'))}
+      />;
       case 'niaga-video': return (
         <NiagaVideo 
           onBack={() => startTransition(() => setCurrentView('home'))} 

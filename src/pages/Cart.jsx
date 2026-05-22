@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Minus, Plus, ShoppingBag, TicketPercent, Loader2, ChevronLeft, ChevronRight, MapPin, NotebookPen } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, onValue, remove, update, push, serverTimestamp } from 'firebase/database';
+import { ref, onValue, remove, update, push, serverTimestamp, get } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
@@ -20,6 +20,7 @@ const SummaryComponent = ({
   deliveryAddress,    // Prop baru
   setDeliveryAddress,  // Prop baru
   onBackToStep1,
+  onGoToAddress,      // Prop baru
   selectedItems
 }) => (
   <>
@@ -48,14 +49,22 @@ const SummaryComponent = ({
       {isNiagaFoodInCart && (
         <div className="mb-4">
           <label className={`block text-xs font-bold mb-2 flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}><MapPin size={14}/> Alamat Pengiriman</label>
-          <input 
-            type="text" 
-            placeholder="Cth: Kamar 203, Gedung Rusunawa B" 
-            value={deliveryAddress}
-            onChange={(e) => setDeliveryAddress(e.target.value)}
-            className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-gray-200 focus:border-indigo-400' : 'border-gray-200 focus:border-indigo-500'}`}
-            required
-          />
+          {deliveryAddress ? (
+            <textarea 
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none h-20 resize-none leading-relaxed ${isDarkMode ? 'bg-slate-700 border-slate-600 text-gray-200 focus:border-indigo-400' : 'border-gray-200 focus:border-indigo-500'}`}
+              required
+            />
+          ) : (
+            <button 
+              onClick={onGoToAddress}
+              className={`w-full p-4 border-2 border-dashed rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-400 hover:border-sky-500 hover:text-sky-400' : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-sky-500 hover:text-sky-600'}`}
+            >
+              <MapPin size={20} />
+              <span>Alamat belum diatur. Klik untuk melengkapi profil.</span>
+            </button>
+          )}
         </div>
       )}
       <div className="space-y-2 mb-4 text-sm">
@@ -120,7 +129,7 @@ const SummaryComponent = ({
   </>
 );
 
-const Cart = ({ onBack, user, onCheckout }) => {
+const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [cartItems, setCartItems] = useState([]);
@@ -154,6 +163,32 @@ const Cart = ({ onBack, user, onCheckout }) => {
 
     return () => unsubscribe();
   }, [user]);
+
+  // --- NEW: AUTO-FILL ADDRESS FROM PROFILE ---
+  useEffect(() => {
+    if (user?.uid) {
+      const addressRef = ref(db, `users/${user.uid}/addresses`);
+      get(addressRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const keys = Object.keys(data);
+          // Ambil alamat terbaru (paling terakhir di-push)
+          const lastAddress = data[keys[keys.length - 1]];
+          
+          if (lastAddress) {
+            const formatted = [
+              lastAddress.fullAddress,
+              lastAddress.districtName,
+              lastAddress.cityName,
+              lastAddress.provinceName,
+              lastAddress.postalCode
+            ].filter(Boolean).join(', ');
+            setDeliveryAddress(formatted);
+          }
+        }
+      });
+    }
+  }, [user?.uid]);
 
   // Handle Select All
   const handleSelectAll = () => {
@@ -286,6 +321,18 @@ const Cart = ({ onBack, user, onCheckout }) => {
         title: 'Alamat Kosong',
         text: 'Mohon isi alamat pengiriman untuk pesanan Niaga Food.',
         confirmButtonColor: '#0284c7'
+      });
+      return;
+    }
+
+    // --- LAYER PROTEKSI: Cegah beli barang sendiri ---
+    const hasMyOwnProduct = selectedItems.some(item => item.sellerId === user.uid);
+    if (hasMyOwnProduct) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Checkout',
+        text: 'Waduh, lo nggak bisa beli barang dagangan lo sendiri, Bro! Fokus jualan aja yuk.',
+        confirmButtonColor: '#ef4444'
       });
       return;
     }
@@ -531,7 +578,8 @@ const Cart = ({ onBack, user, onCheckout }) => {
                                 totalItems, totalPrice, appliedVoucher, orderNote, 
                                 setOrderNote, handleFinalCheckout, isNiagaFoodInCart, 
                                 deliveryAddress, setDeliveryAddress, 
-                                onBackToStep1: () => setCheckoutStep(1) 
+                                onBackToStep1: () => setCheckoutStep(1),
+                                onGoToAddress
                             }} 
                         />
                     </div>
