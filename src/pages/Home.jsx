@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay, Pagination, EffectCoverflow, Navigation } from 'swiper/modules';
+import Swal from 'sweetalert2';
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
@@ -792,6 +793,13 @@ const Home = () => {
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
                 playCustomNotificationSound={playCustomNotificationSound}
+                onViewProfile={(id) => {
+                  startTransition(() => {
+                    setSelectedUserProfileId(id);
+                    setCurrentView('user-public-profile');
+                    setIsChatMenuOpen(false);
+                  });
+                }}
             />
         </div>
       );
@@ -1592,6 +1600,13 @@ const Home = () => {
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
                 playCustomNotificationSound={playCustomNotificationSound}
+                onViewProfile={(id) => {
+                  startTransition(() => {
+                    setSelectedUserProfileId(id);
+                    setCurrentView('user-public-profile');
+                    setIsChatMenuOpen(false);
+                  });
+                }}
             />
         </div>
       )}
@@ -1781,7 +1796,7 @@ const ChatComponent = ({ user, isDarkMode, playCustomNotificationSound }) => {
 };
 
 // --- CHAT LAYOUT COMPONENT (Reusable for Mobile & Desktop) ---
-const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen, playCustomNotificationSound }) => {
+const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, isChatMenuOpen, setIsChatMenuOpen, playCustomNotificationSound, onViewProfile }) => {
   return (
     <div className={`flex flex-col h-full w-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
        {/* Chat Header */}
@@ -1812,11 +1827,40 @@ const ChatLayout = ({ isMobile, onClose, user, isDarkMode, chatTab, setChatTab, 
                  {isChatMenuOpen && (
                     <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsChatMenuOpen(false)}></div>
-                    <div className={`absolute right-0 top-full mt-2 w-40 rounded-xl shadow-xl border py-1 z-50 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                    <div className={`absolute right-0 top-full mt-2 w-48 rounded-xl shadow-xl border py-1.5 z-50 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <button 
+                          onClick={() => {
+                            if (chatTab === 'admin') {
+                              Swal.fire('Info', 'Anda sedang mengobrol dengan Admin Pusat.', 'info');
+                              setIsChatMenuOpen(false);
+                            } else {
+                              // Jika chat seller diaktifkan, arahkan ke profil seller
+                              onViewProfile && onViewProfile(null); 
+                            }
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                        >
                             <User size={14} /> Lihat Profil
                         </button>
-                        <button className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}>
+                        <button 
+                          onClick={async () => {
+                            const result = await Swal.fire({
+                              title: 'Bersihkan Chat?',
+                              text: "Semua pesan di obrolan ini akan dihapus permanen dari database.",
+                              icon: 'warning',
+                              showCancelButton: true,
+                              confirmButtonColor: '#ef4444',
+                              confirmButtonText: 'Ya, Bersihkan',
+                              cancelButtonText: 'Batal'
+                            });
+                            if (result.isConfirmed) {
+                              await remove(ref(db, `chats/${user.uid}/messages`));
+                              Swal.fire('Berhasil!', 'Chat berhasil dibersihkan!', 'success');
+                              setIsChatMenuOpen(false);
+                            }
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}
+                        >
                             <Trash2 size={14} /> Bersihkan Chat
                         </button>
                     </div>

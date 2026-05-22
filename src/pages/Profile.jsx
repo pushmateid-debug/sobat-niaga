@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store } from 'lucide-react';
+import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store, AlertCircle } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
 import { updateProfile, signOut } from 'firebase/auth';
-import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
+import { ref as dbRef, set, get, update, onValue, query as dbQuery, orderByChild, equalTo } from 'firebase/database';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
@@ -91,9 +91,34 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
 
   const handleSave = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
+
+    // 1. Validasi Format (Regex)
+    // Mendukung 08... atau +628... dengan total digit (tanpa +) antara 10-13
+    const phoneRegex = /^(08|\+628)[0-9]{8,11}$/;
+    if (phoneNumber && !phoneRegex.test(phoneNumber)) {
+      Swal.fire('Format Salah', 'Nomor HP harus diawali 08/+628 dan terdiri dari 10-13 digit.', 'error');
+      return;
+    }
 
     try {
+      setIsLoading(true);
+
+      // 2. Validasi Keunikan (Pengecekan di Database)
+      if (phoneNumber && phoneNumber !== (user?.phoneNumber || '')) {
+        const usersRef = dbRef(db, 'users');
+        const q = dbQuery(usersRef, orderByChild('phoneNumber'), equalTo(phoneNumber));
+        const snapshot = await get(q);
+        
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const existingUids = Object.keys(data);
+          // Jika ada UID lain yang sudah pakai nomor ini
+          if (existingUids.some(uid => uid !== user.uid)) {
+            throw new Error('Nomor telepon sudah terdaftar pada akun lain!');
+          }
+        }
+      }
+
       let newPhotoURL = user.photoURL;
 
       // 1. Upload Foto ke Cloudinary (jika ada perubahan)
@@ -323,11 +348,26 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
 
             <div className="space-y-2">
               <label className={`text-sm font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}><Phone size={16} className={isDarkMode ? 'text-sky-400' : 'text-sky-600'} /> Nomor HP</label>
-              <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className={`w-full px-4 py-2.5 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-400 focus:ring-2 focus:ring-sky-900/20' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} placeholder="08xx-xxxx-xxxx" />
+              <input 
+                type="tel" 
+                value={phoneNumber} 
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+]/g, ''))} 
+                className={`w-full px-4 py-2.5 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-400 focus:ring-2 focus:ring-sky-900/20' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} 
+                placeholder="08xx-xxxx-xxxx" 
+              />
+              {phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber) && (
+                <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
+                  <AlertCircle size={12} /> Format nomor HP tidak valid! (08... / +628...)
+                </p>
+              )}
             </div>
 
             <div className="pt-4">
-              <button type="submit" disabled={isLoading} className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>
+              <button 
+                type="submit" 
+                disabled={isLoading || (phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber))} 
+                className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${(isLoading || (phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber))) ? (isDarkMode ? 'bg-slate-700 cursor-not-allowed text-gray-500' : 'bg-gray-300 cursor-not-allowed text-gray-500') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}
+              >
                 {isLoading ? <><Loader2 size={20} className="animate-spin" /> Menyimpan...</> : <><Save size={20} /> Simpan Perubahan</>}
               </button>
             </div>

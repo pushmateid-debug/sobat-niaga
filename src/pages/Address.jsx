@@ -122,9 +122,26 @@ const Address = ({ user, onBack }) => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+
+    // 1. Validasi Format Nomor HP (Indo Regex)
+    // Langkah A: Bersihkan input nomor dari spasi atau karakter aneh (selain + dan angka)
+    const phoneRegex = /^(08|\+628)[0-9]{8,11}$/;
+    const cleanedPhone = formData.phoneNumber.replace(/[^\d+]/g, '');
+
+    // Langkah B & C: Jalankan tes regex dan munculkan alert jika gagal
+    if (!phoneRegex.test(cleanedPhone)) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Nomor HP Tidak Valid',
+        text: 'Gagal: Nomor telepon harus valid (Format 08xx atau +628xx) dan minimal 10-13 digit!',
+        confirmButtonColor: '#ef4444'
+      });
+      return;
+    }
+
     setIsLoading(true);
 
-    // Validasi Sederhana
+    // Validasi Sederhana Wilayah
     if (!formData.provinceId || !formData.cityId || !formData.fullAddress) {
       Swal.fire({
         icon: 'warning',
@@ -141,6 +158,7 @@ const Address = ({ user, onBack }) => {
         // Update alamat yang sudah ada (biar gak numpuk baru terus)
         await update(ref(db, `users/${user.uid}/addresses/${addressId}`), {
           ...formData,
+          phoneNumber: cleanedPhone, // Simpan nomor yang sudah dibersihkan
           updatedAt: new Date().toISOString()
         });
       } else {
@@ -148,6 +166,7 @@ const Address = ({ user, onBack }) => {
         const newAddressRef = push(ref(db, `users/${user.uid}/addresses`));
         await set(newAddressRef, {
           ...formData,
+          phoneNumber: cleanedPhone, // Simpan nomor yang sudah dibersihkan
           createdAt: new Date().toISOString()
         });
       }
@@ -343,10 +362,12 @@ const Address = ({ user, onBack }) => {
           <div className="pt-4">
             <button
               type="submit"
-              disabled={isLoading}
+              // 2. UX Upgrade: Disable tombol jika format nomor HP belum benar (min 10 digit)
+              // Kita gunakan regex yang sama untuk pengecekan realtime di atribut disabled
+              disabled={isLoading || !/^(08|\+628)[0-9]{8,11}$/.test(formData.phoneNumber.replace(/[^\d+]/g, ''))}
               className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${
-                isLoading 
-                  ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') 
+                (isLoading || !/^(08|\+628)[0-9]{8,11}$/.test(formData.phoneNumber.replace(/[^\d+]/g, '')))
+                  ? (isDarkMode ? 'bg-slate-700 cursor-not-allowed text-gray-500' : 'bg-gray-300 cursor-not-allowed text-gray-500') 
                   : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')
               }`}
             >

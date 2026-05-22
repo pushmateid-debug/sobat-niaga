@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { 
   LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
-  Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
+  Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield, MoreVertical, Trash2,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
   Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload
 } from 'lucide-react';
 import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
+import { useNavigate } from 'react-router-dom';
 import { collection, query as queryFirestore, where, onSnapshot, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
 import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction, set, child } from 'firebase/database'; // Import ref, update, onValue, push, serverTimestamp, get, query, orderByChild, equalTo, remove, runTransaction, set, child
 import Swal from 'sweetalert2';
@@ -108,6 +109,7 @@ const calculateAdminFee = (amount) => {
 };
 
 const AdminDashboard = ({ onBack, user }) => {
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -215,6 +217,7 @@ const AdminDashboard = ({ onBack, user }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [adminMessage, setAdminMessage] = useState('');
   const messagesEndRef = useRef(null);
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false);
 
   // Derived state for mobile chat view
   const isMobileChatOpen = activeTab === 'chat' && selectedChat;
@@ -2220,6 +2223,51 @@ const AdminDashboard = ({ onBack, user }) => {
                          {selectedChat.userPhoto ? <img src={selectedChat.userPhoto} className="w-full h-full object-cover" /> : <User size={16} className="m-2 text-gray-500" />}
                       </div>
                       <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{selectedChat.userName}</h3>
+                      
+                      {/* DROPDOWN MENU CHAT ADMIN */}
+                      <div className="relative ml-auto">
+                        <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-gray-100'}`}>
+                          <MoreVertical size={20} />
+                        </button>
+                        {isChatMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsChatMenuOpen(false)}></div>
+                            <div className={`absolute right-0 top-full mt-2 w-48 rounded-xl shadow-xl border py-1.5 z-50 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                              <button 
+                                onClick={() => {
+                                  navigate('/user-public-profile/' + selectedChat.uid);
+                                  setIsChatMenuOpen(false);
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                              >
+                                <User size={14} /> Lihat Profil User
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  const result = await Swal.fire({
+                                    title: 'Bersihkan Chat User?',
+                                    text: "Seluruh riwayat pesan user ini akan dihapus permanen dari database.",
+                                    icon: 'warning',
+                                    showCancelButton: true,
+                                    confirmButtonColor: '#ef4444',
+                                    confirmButtonText: 'Ya, Bersihkan',
+                                    cancelButtonText: 'Batal'
+                                  });
+                                  if (result.isConfirmed) {
+                                    await remove(ref(realDb, `chats/${selectedChat.uid}/messages`));
+                                    await update(ref(realDb, `chats/${selectedChat.uid}`), { hasUnreadAdmin: false, hasUnreadUser: false });
+                                    Swal.fire('Berhasil!', 'Chat user berhasil dibersihkan!', 'success');
+                                    setIsChatMenuOpen(false);
+                                  }
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}
+                              >
+                                <Trash2 size={14} /> Bersihkan Chat
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
                       {chatMessages.map((msg, idx) => (

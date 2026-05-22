@@ -1630,6 +1630,26 @@ const NiagaGo = ({ onOpenProfile }) => {
        return;
     }
 
+    // --- VALIDASI NOMOR HP (REGEX & UNIQUENESS) ---
+    const phoneRegex = /^(08|\+628)[0-9]{8,11}$/;
+    if (!phoneRegex.test(regForm.phone)) {
+      Swal.fire('Format Salah', 'Format nomor HP tidak valid! (Gunakan 08/628, 10-13 digit)', 'error');
+      return;
+    }
+
+    // Cek Keunikan Nomor di Database
+    const usersRef = ref(realDb, 'users');
+    const phoneQuery = realQuery(usersRef, orderByChild('phoneNumber'), equalTo(regForm.phone));
+    const phoneSnap = await get(phoneQuery);
+    
+    if (phoneSnap.exists()) {
+      const existingUids = Object.keys(phoneSnap.val());
+      if (existingUids.some(uid => uid !== userProfile.uid)) {
+        Swal.fire('Gagal Daftar', 'Nomor telepon sudah terdaftar pada akun lain!', 'error');
+        return;
+      }
+    }
+
     // Validasi Layanan
     if (!regForm.services.niagaGo && !regForm.services.niagaFood) {
       Swal.fire('Pilih Layanan', 'Mohon pilih minimal satu layanan yang ingin diambil (Niaga Go / Niaga Food).', 'warning');
@@ -1837,7 +1857,12 @@ const NiagaGo = ({ onOpenProfile }) => {
 
                 <div className="space-y-1">
                   <label className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Nomor WhatsApp</label>
-                  <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="08xxxxxxxxxx" required />
+                  <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value.replace(/[^0-9+]/g, '')})} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} placeholder="08xxxxxxxxxx" required />
+                  {regForm.phone && !/^(08|\+628)[0-9]{8,11}$/.test(regForm.phone) && (
+                    <p className="text-[10px] text-red-500 font-bold flex items-center gap-1">
+                      <AlertCircle size={12} /> Format tidak valid (08... / +628...)
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1926,7 +1951,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   </div>
                 </div>
 
-                <button type="submit" disabled={isRegistering} className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 transition-all mt-4 flex justify-center items-center gap-2">
+                <button type="submit" disabled={isRegistering || (regForm.phone && !/^(08|\+628)[0-9]{8,11}$/.test(regForm.phone))} className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 transition-all mt-4 flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                   {isRegistering ? 'Mengirim Data...' : 'Kirim Pendaftaran 🚀'}
                 </button>
               </form>
