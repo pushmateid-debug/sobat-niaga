@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, Store, ChevronRight, Music } from 'lucide-react';
+import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, signOut } from 'firebase/auth';
 import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
@@ -208,40 +208,6 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
     });
   };
 
-  const handleSoundChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Filter format .mp3 khusus sesuai request
-    if (file.type !== 'audio/mpeg' && !file.name.endsWith('.mp3')) {
-      Swal.fire('Format Salah', 'Harap upload file format MP3 saja, Bro!', 'warning');
-      return;
-    }
-
-    // Batasi ukuran (Maksimal 2MB) biar nggak berat pas load
-    if (file.size > 2 * 1024 * 1024) {
-      Swal.fire('File Kegedean', 'Maksimal ukuran file 2MB ya, Bro!', 'warning');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const soundRef = sRef(storage, `notification_sounds/${user.uid}.mp3`);
-      await uploadBytes(soundRef, file);
-      const downloadURL = await getDownloadURL(soundRef);
-
-      // Simpan ke DB & LocalStorage untuk cache
-      await update(dbRef(db, `users/${user.uid}`), { notificationSoundUrl: downloadURL });
-      localStorage.setItem('custom_notif_sound', downloadURL);
-
-      Swal.fire('Berhasil!', 'Suara notifikasi custom kamu sudah aktif.', 'success');
-    } catch (error) {
-      Swal.fire('Gagal Upload', error.message, 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen pb-20 transition-colors duration-300 relative" style={{ backgroundColor: 'var(--bg-main)' }}>
       {/* Loading Overlay - Fix Blank Screen Issue */}
@@ -311,18 +277,6 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
                 <PlusCircle size={14} /> Top Up
               </button>
             </div>
-
-          {/* Custom Notification Sound Upload */}
-          <div className={`px-4 pt-2 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            <label className={`w-full py-3 border rounded-xl flex items-center justify-between px-4 transition-all cursor-pointer ${isDarkMode ? 'bg-slate-700 border-slate-600 hover:bg-slate-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
-                <span className={`text-sm font-bold flex items-center gap-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                  <Music size={18} className={isDarkMode ? 'text-purple-400' : 'text-purple-600'}/> 
-                  Custom Notif Sound (.mp3)
-                </span>
-                <input type="file" accept="audio/mp3" onChange={handleSoundChange} className="hidden" />
-                <ChevronRight size={16} className="text-gray-400" />
-            </label>
-          </div>
 
             {/* Dashboard Seller / Mulai Jualan (Baris Menu) */}
             <button onClick={onViewSellerDashboard} className={`w-full py-3 border rounded-xl flex items-center justify-between px-4 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 hover:bg-slate-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>

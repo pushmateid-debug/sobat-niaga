@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense, useTransition, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { Autoplay, Pagination, EffectCoverflow } from 'swiper/modules';
+import { Autoplay, Pagination, EffectCoverflow, Navigation } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import 'swiper/css/effect-coverflow';
 import ProductCard from '../components/ProductCard';
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
-import { auth, db } from '../config/firebase';
-import { ref, onValue, push, update, query, orderByChild, equalTo, serverTimestamp } from 'firebase/database';
+import { auth, db, dbFirestore } from '../config/firebase';
+import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
@@ -38,7 +39,6 @@ const AllCategories = React.lazy(() => import('./AllCategories'));
 const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
 const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
-import { Navigation } from 'swiper/modules';
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,13 +82,44 @@ const Home = () => {
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
 
+  // State Global Config dari DB
+  const [globalNotifSound, setGlobalNotifSound] = useState('');
+  useEffect(() => {
+    // Get dari dokumen global settings di Realtime/Firestore (Saya buat di Firestore sesuai request)
+    // Menggunakan getDoc sekali saja di awal home mount
+    const fetchGlobalConfig = async () => {
+        const snap = await get(child(ref(db), 'app_config/settings'));
+        if (snap.exists()) setGlobalNotifSound(snap.val().notificationSoundUrl);
+    };
+    fetchGlobalConfig();
+  }, []);
+
   // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
-  const playCustomNotificationSound = () => {
-    const savedSound = localStorage.getItem('custom_notif_sound') || user?.notificationSoundUrl;
-    const defaultSound = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-    const audio = new Audio(savedSound || defaultSound);
-    audio.play().catch(err => console.log("Gagal putar suara:", err));
-  };
+  const playCustomNotificationSound = useCallback(async () => {
+    try {
+      // Update: Ambil dari Realtime Database sesuai instruksi Dani
+      const dbRef = ref(db);
+      const snapshot = await get(child(dbRef, "app_config/settings"));
+      let targetUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
+      if (snapshot.exists() && snapshot.val().notificationSoundUrl) {
+        targetUrl = snapshot.val().notificationSoundUrl;
+      }
+
+      const audio = new Audio(`${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${new Date().getTime()}`);
+      audio.crossOrigin = "anonymous";
+      await audio.play();
+    } catch (error) {
+      console.error("Gagal putar audio:", error);
+    }
+  }, []);
+
+  // --- CLEANUP LOCALSTORAGE ---
+  useEffect(() => {
+    // Hapus sisa-sisa key lama agar tidak mengganggu logika baru
+    localStorage.removeItem('notif_sound');
+    localStorage.removeItem('custom_notif_sound');
+  }, []);
 
   // Refs for Auto-Scroll Sections
   const populerRef = useRef(null);
@@ -264,26 +295,53 @@ const Home = () => {
   const prevNotifCount = useRef(0);
   const isFirstLoadNotif = useRef(true);
 
+  // --- GLOBAL REAL-TIME NOTIFICATION LISTENER (REALTIME DATABASE) ---
   useEffect(() => {
-    if (user?.uid) {
-      const notifRef = query(ref(db, 'notifications'), orderByChild('userId'), equalTo(user.uid));
-      const unsubscribe = onValue(notifRef, (snapshot) => {
-        const data = snapshot.val();
-        const loadedNotifs = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+    if (!user?.uid) return;
 
-        // Trigger suara jika ada notifikasi baru (bukan saat pertama kali load)
-        const count = loadedNotifs.length;
-        if (!isFirstLoadNotif.current && count > prevNotifCount.current) {
-            playCustomNotificationSound();
-        }
-        prevNotifCount.current = count;
-        isFirstLoadNotif.current = false;
+    // 1. Tentukan apakah user ini admin atau user biasa
+    const isAdmin = user.email === 'pushmate.id@gmail.com'; // Admin Global
+    const notifRef = ref(db, 'notifications');
+    let notifQuery;
 
-        setNotifications(loadedNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      });
-      return () => unsubscribe();
+    if (isAdmin) {
+      // Jalur Admin: Dengerin seluruh notifikasi unread global
+      notifQuery = dbQuery(notifRef, orderByChild('status'), equalTo('unread'));
+    } else {
+      // Jalur User Biasa: Cuma dengerin notifikasi yang ditujukan buat UID dia (pake recipientId sesuai Rules)
+      notifQuery = dbQuery(notifRef, orderByChild('recipientId'), equalTo(user.uid));
     }
-  }, [user]);
+
+    // Sync UI (Daftar di Lonceng) via onValue
+    const unsubscribeValue = onValue(notifQuery, (snapshot) => {
+      const data = snapshot.val();
+      const loadedNotifs = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      
+      // Filter manual unread untuk user biasa karena query RTDB terbatas 1 filter field
+      const finalNotifs = isAdmin ? loadedNotifs : loadedNotifs.filter(n => n.status === 'unread');
+
+      setNotifications(finalNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      
+      // Tandai batch awal selesai diproses (sync burst)
+      isFirstLoadNotif.current = false;
+    });
+
+    // 2. Mainkan suara HANYA saat ada DATA ANAK BARU masuk (realtime)
+    const unsubscribeAdded = onChildAdded(notifQuery, (snapshot) => {
+      // Skip bunyi untuk data lama saat aplikasi baru dibuka
+      if (isFirstLoadNotif.current) return;
+      
+      const data = snapshot.val();
+      if (data && data.status === 'unread') {
+        playCustomNotificationSound();
+      }
+    });
+
+    return () => {
+      unsubscribeValue();
+      unsubscribeAdded();
+    };
+  }, [user?.uid, user?.email, playCustomNotificationSound]);
 
   // Click Outside & Escape Key Functionality
   useEffect(() => {
@@ -454,11 +512,11 @@ const Home = () => {
   };
 
   // Notification Helpers
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.length; // Karena query sudah difilter 'unread'
 
   const handleNotificationClick = (notif) => {
-    if (!notif.isRead) {
-      update(ref(db, `notifications/${notif.id}`), { isRead: true });
+    if (notif.status === 'unread') {
+      update(ref(db, `notifications/${notif.id}`), { status: 'read' });
     }
     
     // Reset Highlight
@@ -489,19 +547,21 @@ const Home = () => {
   };
 
   const handleMarkAllRead = () => {
-    const updates = {};
-    notifications.forEach(n => {
-      if (!n.isRead) updates[`notifications/${n.id}/isRead`] = true;
+    notifications.forEach(async (n) => {
+      if (n.status === 'unread') {
+        try {
+          await update(ref(db, `notifications/${n.id}`), { status: 'read' });
+        } catch (e) { console.error("Gagal mark read:", e); }
+      }
     });
-    if (Object.keys(updates).length > 0) update(ref(db), updates);
   };
 
   const handleClearAllNotifications = () => {
-    const updates = {};
-    notifications.forEach(n => {
-      updates[`notifications/${n.id}`] = null;
+    notifications.forEach(async (n) => {
+      try {
+        await remove(ref(db, `notifications/${n.id}`));
+      } catch (e) { console.error("Gagal hapus notif:", e); }
     });
-    if (Object.keys(updates).length > 0) update(ref(db), updates);
   };
 
   const getTimeAgo = (dateString) => {
@@ -669,15 +729,15 @@ const Home = () => {
         <Profile 
           user={user} 
           onBack={() => startTransition(() => setCurrentView('home'))} 
-          onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })} 
+          onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })}
           onViewHistory={() => startTransition(() => setCurrentView('history'))} 
           onViewSellerDashboard={() => startTransition(() => setCurrentView('dashboard-seller'))}
         />
       );
       case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
-      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} />;
       case 'product-detail': return (
-        <ProductDetail 
+        <ProductDetail
           product={selectedProduct} 
           onBack={() => startTransition(() => setCurrentView(previousView))} 
           onGoToCart={() => startTransition(() => setCurrentView('cart'))} 
@@ -701,8 +761,8 @@ const Home = () => {
         />
       );
       case 'payment': return <Payment order={currentOrder} onBack={() => startTransition(() => setCurrentView('cart'))} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
-      case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} />;
-      case 'admin-dashboard': return <AdminDashboard onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} playCustomNotificationSound={playCustomNotificationSound} />;
+      case 'admin-dashboard': return <AdminDashboard user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
       case 'store-profile': return <StoreProfile sellerId={selectedSellerId} onBack={() => startTransition(() => setCurrentView(previousView))} onProductClick={handleProductClick} />;
       case 'digital-center': return <DigitalCenter onBack={() => startTransition(() => setCurrentView('home'))} onGameSelect={handleGameSelect} />;
       case 'search-results': return <SearchResults onBack={() => startTransition(() => setCurrentView(previousView))} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
@@ -1396,7 +1456,9 @@ const Home = () => {
               >
                 <Bell size={20} className="md:w-[22px] md:h-[22px]" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-white bg-red-500"></span>
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white animate-in zoom-in">
+                    {unreadCount}
+                  </span>
                 )}
               </button>
 
@@ -1427,8 +1489,8 @@ const Home = () => {
                           </div>
                           <div className="flex-1">
                             <div className="flex justify-between items-start">
-                              <h4 className={`text-sm ${!notif.isRead ? 'font-bold theme-text' : 'font-medium theme-text-muted'}`}>{notif.title}</h4>
-                              {!notif.isRead && <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5"></div>}
+                              <h4 className={`text-sm ${notif.status === 'unread' ? 'font-bold theme-text' : 'font-medium theme-text-muted'}`}>{notif.title}</h4>
+                              {notif.status === 'unread' && <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5"></div>}
                             </div>
                             <p className="text-xs theme-text-muted line-clamp-2 mt-0.5 leading-relaxed">{notif.message}</p>
                             <p className="text-[10px] text-gray-400 mt-1">{getTimeAgo(notif.createdAt)}</p>
@@ -1518,10 +1580,10 @@ const Home = () => {
             <ChatLayout 
                 isMobile={false} 
                 onClose={() => setIsDesktopChatOpen(false)} 
-                user={user} 
+                user={user}
                 isDarkMode={isDarkMode} 
                 chatTab={chatTab} 
-                setChatTab={setChatTab} 
+                setChatTab={setChatTab}
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
                 playCustomNotificationSound={playCustomNotificationSound}

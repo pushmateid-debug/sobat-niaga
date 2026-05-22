@@ -24,12 +24,12 @@ import {
 // Registrasi Chart.js
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-const calculateAdminFee = (amount) => {
+const calculateAdminFee = (amount) => { // This is for marketplace, not NiagaGo
   if (amount < 15000) return 500;
   return 2000;
 };
 
-const DashboardSeller = ({ user, onBack }) => {
+const DashboardSeller = ({ user, onBack, playCustomNotificationSound }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [isVerifiedSeller, setIsVerifiedSeller] = useState(false);
@@ -138,7 +138,6 @@ const DashboardSeller = ({ user, onBack }) => {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [selectedTaggedProducts, setSelectedTaggedProducts] = useState([]);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
-
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -260,8 +259,7 @@ const DashboardSeller = ({ user, onBack }) => {
             
             // Notifikasi Real-time (Bunyi Ting!)
             if (!isFirstLoad.current && processedCount > prevIncomingCountRef.current) {
-                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                audio.play().catch(e => console.log("Audio play failed", e));
+                if (playCustomNotificationSound) playCustomNotificationSound();
                 
                 Swal.fire({
                     title: 'Ting! Pesanan Baru Masuk 📦',

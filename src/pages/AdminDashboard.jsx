@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, Users, DollarSign, 
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
-  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown,
-  Eye, Mail, HeartHandshake, UtensilsCrossed
+  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
+  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload
 } from 'lucide-react';
-import { dbFirestore, db as realDb, auth } from '../config/firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
-import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction } from 'firebase/database';
-// import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
+import { collection, query as queryFirestore, where, onSnapshot, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
+import { ref, update, onValue, push, serverTimestamp, get, query as realQuery, orderByChild, equalTo, remove, runTransaction, set, child } from 'firebase/database'; // Import ref, update, onValue, push, serverTimestamp, get, query, orderByChild, equalTo, remove, runTransaction, set, child
 import Swal from 'sweetalert2';
 import Cropper from 'react-cropper';
+import axios from 'axios'; // Import axios
 // import 'cropperjs/dist/cropper.css'; // Disable local import to fix build error
 import { Line } from 'react-chartjs-2';
 import {
@@ -38,6 +38,19 @@ ChartJS.register(
   Legend,
   Filler
 );
+
+// Helper: Upload Audio ke Cloudinary
+const uploadAudioToCloudinary = async (file) => {
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli'; // Pastikan ini nama Cloudinary kamu
+
+  const formData = new FormData();
+  // Cuma butuh 2 baris ini biar gak kena eror 400 Unsigned
+  formData.append('file', file); 
+  formData.append('upload_preset', 'sobatniaga_audio'); 
+
+  const response = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, formData);
+  return response.data.secure_url;
+};
 
 const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIcon = false }) => {
   const imgSrc = typeof currentUrl === 'object' ? currentUrl?.url : currentUrl;
@@ -94,10 +107,23 @@ const calculateAdminFee = (amount) => {
   return 2000;
 };
 
-const AdminDashboard = ({ onBack }) => {
+const AdminDashboard = ({ onBack, user }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // --- SECURITY GUARD: EMAIL CHECK ---
+  if (user?.email !== 'pushmate.id@gmail.com') {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-10 text-center">
+        <Shield size={64} className="text-red-500 mb-4 animate-pulse" />
+        <h1 className="text-2xl font-black">ACCESS DENIED</h1>
+        <p className="text-gray-400 mt-2">Akses hanya diizinkan untuk akun Administrator Utama.</p>
+        <button onClick={onBack} className="mt-8 px-8 py-3 bg-sky-600 rounded-xl font-bold">Kembali ke Home</button>
+      </div>
+    );
+  }
+
   const [activeTab, setActiveTab] = useState('dashboard');
   
   // State Stats (Dipindahkan ke paling atas agar tidak ReferenceError)
@@ -111,20 +137,45 @@ const AdminDashboard = ({ onBack }) => {
   });
 
   const prevPendingTrxRef = useRef(0);
-  const isFirstLoadTrx = useRef(true);
+  const isFirstLoadTrx = useRef(true); // For marketplace transactions
   const prevPendingNiagaRef = useRef(0);
   const isFirstLoadNiaga = useRef(true);
   const prevUnreadMessagesRef = useRef(0);
   const [showSmartNotif, setShowSmartNotif] = useState(null);
   const notifTimeoutRef = useRef(null);
   
+  // State Global Sound Settings
+  const [globalSoundUrl, setGlobalSoundUrl] = useState('');
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+
+  // Fetch Global Sound Configuration
+  useEffect(() => {
+    const configRef = ref(realDb, 'app_config/settings');
+    const unsub = onValue(configRef, (snap) => {
+      if (snap.exists()) setGlobalSoundUrl(snap.val().notificationSoundUrl);
+    });
+    return () => unsub();
+  }, []);
+
   // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
-  const playCustomNotificationSound = () => {
-    const savedSound = localStorage.getItem('custom_notif_sound') || auth.currentUser?.notificationSoundUrl;
-    const defaultSound = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-    const audio = new Audio(savedSound || defaultSound);
-    audio.play().catch(err => console.log("Gagal putar suara:", err));
-  };
+  const playCustomNotificationSound = useCallback(async () => {
+    try {
+      const dbRef = ref(realDb);
+      const configSnap = await get(child(dbRef, "app_config/settings"));
+      let finalUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
+      if (configSnap.exists() && configSnap.val().notificationSoundUrl) {
+        finalUrl = configSnap.val().notificationSoundUrl;
+      }
+
+      // Anti-cache technique sesuai request
+      const audio = new Audio(`${finalUrl}${finalUrl.includes('?') ? '&' : '?'}v=${new Date().getTime()}`);
+      audio.crossOrigin = "anonymous";
+      await audio.play();
+    } catch (error) {
+      console.error("Admin Audio Error:", error);
+    }
+  }, []);
 
   // NOTIFIKASI SUARA PESAN BARU
   useEffect(() => {
@@ -132,7 +183,7 @@ const AdminDashboard = ({ onBack }) => {
         playCustomNotificationSound();
     }
     prevUnreadMessagesRef.current = stats?.unreadMessages || 0;
-  }, [stats?.unreadMessages]);
+  }, [stats?.unreadMessages, playCustomNotificationSound]);
 
   // State Drivers
   const [driverRequests, setDriverRequests] = useState([]);
@@ -280,10 +331,7 @@ const AdminDashboard = ({ onBack }) => {
         const pending = queue.length;
         setStats(prev => ({ ...prev, totalSales: total, pendingTransactions: pending }));
 
-        // --- NOTIFIKASI SUARA (CTING!) ---
-        if (!isFirstLoadTrx.current && pending > prevPendingTrxRef.current) {
-            playCustomNotificationSound();
-
+        if (!isFirstLoadTrx.current && pending > prevPendingTrxRef.current) { // Only trigger if count increases
             // Pemicu Smart Notification
             if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
             setShowSmartNotif({ type: 'Marketplace', count: pending });
@@ -303,7 +351,7 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fetch NiagaGo Orders (Firestore) untuk Laporan Keuangan
   useEffect(() => {
-    const q = query(collection(dbFirestore, 'ojek_orders'), where('status', '==', 'completed'));
+    const q = queryFirestore(collection(dbFirestore, 'ojek_orders'), where('status', '==', 'completed'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ 
           id: doc.id, 
@@ -617,7 +665,7 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fetch Data Pendaftaran Driver (Pending)
   useEffect(() => {
-    const q = query(collection(dbFirestore, 'driver_registrations'), where('status', '==', 'pending'));
+    const q = queryFirestore(collection(dbFirestore, 'driver_registrations'), where('status', '==', 'pending'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDriverRequests(data);
@@ -628,16 +676,13 @@ const AdminDashboard = ({ onBack }) => {
 
   // Fetch NiagaGo Orders Pending Verification (Firestore)
   useEffect(() => {
-    const q = query(collection(dbFirestore, 'ojek_orders'), where('status', '==', 'paid'));
+    const q = queryFirestore(collection(dbFirestore, 'ojek_orders'), where('status', '==', 'paid'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setNiagaOrdersToVerify(data);
 
-      // --- NOTIFIKASI SUARA NIAGAGO (DING!) ---
       const pendingCount = data.length;
-      if (!isFirstLoadNiaga.current && pendingCount > prevPendingNiagaRef.current) {
-          playCustomNotificationSound();
-
+      if (!isFirstLoadNiaga.current && pendingCount > prevPendingNiagaRef.current) { // Only trigger if count increases
           // Pemicu Smart Notification
           if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
           setShowSmartNotif({ type: 'NiagaGo', count: pendingCount });
@@ -1446,6 +1491,35 @@ const AdminDashboard = ({ onBack }) => {
           confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-gray-600 hover:bg-gray-700 shadow-lg transition-all !opacity-100'
         }
       });
+    }
+  };
+
+  // --- LOGIKA UPLOAD AUDIO NOTIFIKASI GLOBAL ---
+  const handleUploadAudioNotif = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.mp3')) return Swal.fire('Format Salah', 'Wajib file .mp3 ya Bro!', 'warning');
+
+    setIsUploadingAudio(true);
+    try {
+      Swal.fire({ title: 'Mengganti Suara Sistem...', didOpen: () => Swal.showLoading() });
+      
+      // Menggunakan Cloudinary untuk upload audio
+      const downloadURL = await uploadAudioToCloudinary(file);
+
+      // Simpan ke Realtime Database Config Global (Node baru yang legal)
+      await set(ref(realDb, 'app_config/settings'), {
+        notificationSoundUrl: downloadURL,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.email
+      });
+
+      Swal.fire('Berhasil!', 'Suara notifikasi global telah diperbarui.', 'success');
+    } catch (error) {
+      console.error("Detail Eror Cloudinary:", error.response?.data);
+      Swal.fire('Gagal', error.response?.data?.error?.message || error.message, 'error');
+    } finally {
+      setIsUploadingAudio(false);
     }
   };
 
@@ -2539,6 +2613,16 @@ const AdminDashboard = ({ onBack }) => {
                       </div>
                       <span className="font-bold text-xs text-center">Event Juara</span>
                     </button>
+
+                    <button 
+                      onClick={() => setSettingsView('audio_notif')} 
+                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div className="p-4 bg-purple-100 text-purple-600 rounded-full dark:bg-purple-900/30 dark:text-purple-400">
+                        <Music size={28} />
+                      </div>
+                      <span className="font-bold text-xs text-center">Audio Notifikasi</span>
+                    </button>
                   </div>
 
                   {/* Grup Informasi & Legalitas */}
@@ -2833,6 +2917,33 @@ const AdminDashboard = ({ onBack }) => {
                             Simpan Pengaturan Event
                         </button>
                     </form>
+                </div>
+                )}
+
+                {/* Pengaturan Audio Notifikasi Global (NEW) */}
+                {settingsView === 'audio_notif' && (
+                <div className={`p-6 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Volume2 size={20} className="text-purple-500"/> Audio Notifikasi Sistem (Global)</h3>
+                    <div className="space-y-6">
+                        <div className={`p-4 rounded-xl border border-dashed text-center ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+                            <p className="text-xs text-gray-500 mb-4">Suara saat ini:</p>
+                            {globalSoundUrl ? (
+                                <audio controls src={globalSoundUrl} className="mx-auto mb-4 h-10 w-full max-w-xs" />
+                            ) : (
+                                <p className="text-xs font-bold text-red-400 mb-4 italic">Suara default sistem digunakan.</p>
+                            )}
+                            
+                            <label className={`inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-xl font-bold text-sm cursor-pointer hover:bg-purple-700 transition-all ${isUploadingAudio ? 'opacity-50 cursor-wait' : ''}`}>
+                                {isUploadingAudio ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />}
+                                {isUploadingAudio ? 'Mengupload...' : 'Ganti Suara Global (.mp3)'}
+                                <input type="file" accept="audio/mp3" onChange={handleUploadAudioNotif} className="hidden" disabled={isUploadingAudio} />
+                            </label>
+                        </div>
+                        <div className={`p-4 rounded-xl text-[10px] leading-relaxed border ${isDarkMode ? 'bg-purple-900/20 border-purple-800/50 text-purple-300' : 'bg-purple-50 border-purple-100 text-purple-700'}`}>
+                            <p className="font-bold uppercase mb-1 flex items-center gap-1"><Shield size={10}/> Security Info:</p>
+                            File ini akan menggantikan suara notifikasi untuk SELURUH user SobatNiaga secara realtime. Pastikan durasi pendek (max 2 detik) dan file berukuran kecil.
+                        </div>
+                    </div>
                 </div>
                 )}
 

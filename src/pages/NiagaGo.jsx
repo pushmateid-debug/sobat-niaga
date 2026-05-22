@@ -625,11 +625,9 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     if (isDriverMode) {
       // Driver melihat:
-      // 1. Ojek: orderan pending (cari penumpang) ATAU orderan yang dia ambil
-      // 2. Food: orderan makanan yang dia ambil
-      // Untuk simplicity, kita fetch semua orderan yang relevan dengan driver ini
-      // Note: Idealnya query dipisah, tapi untuk demo kita filter di client side saja biar simpel
-      q = query(ordersRef); 
+      // Driver hanya boleh query orderan yang statusnya 'pending' untuk antrean, 
+      // atau gunakan query spesifik per-status agar tidak melanggar Security Rules.
+      q = query(ordersRef, where('status', '==', 'pending')); 
     } else {
       // User melihat orderan miliknya sendiri (history)
       q = query(ordersRef, where('userId', '==', userProfile.uid));

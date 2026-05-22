@@ -11,7 +11,7 @@ const calculateAdminFee = (amount) => {
   return 2000;
 };
 
-const isNiagaFood = (order) => (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food');
+const isNiagaFood = (order) => (Array.isArray(order.items) ? order.items : Object.values(order.items || {})).some(i => i.category === 'Niaga Food'); // Helper to identify Niaga Food orders
 
 const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId }) => {
   const { theme } = useTheme();
@@ -28,7 +28,6 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '', videoFile: null, videoPreview: null });
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-
   // Fetch Competition Settings
   useEffect(() => {
     const compRef = ref(db, 'admin/competitionSettings');
@@ -36,7 +35,6 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
       if(snap.exists()) setCompSettings(snap.val());
     });
   }, []);
-
   // Efek Pindah Tab Otomatis
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
