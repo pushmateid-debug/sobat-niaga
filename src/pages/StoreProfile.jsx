@@ -346,7 +346,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                             {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
                         </button>
                         <button
-                            onClick={handleChat}
+                            onClick={() => onChatClick(sellerId)} // Langsung panggil onChatClick dari props
                             className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95" // Outline Biru
                         >
                             <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
