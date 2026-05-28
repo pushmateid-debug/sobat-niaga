@@ -33,17 +33,23 @@ export const ChatLayout = ({
 
   // LOGIKA 1 & 2: Pisahkan Alur Simpan & Filter Path Berdasarkan Tab Aktif
   const getChatConfig = () => {
+    const buyerId = isSellerView ? chatBuyerId : user.uid;
+    
     if (chatTab === 'admin') {
+      const roomId = `admin_${buyerId}`;
       return {
-        messagesPath: `admin_chats/${user.uid}/messages`,
-        metaPath: `admin_chats/${user.uid}`
+        messagesPath: `chats/admin_rooms/${roomId}/messages`,
+        metaPath: `chats/admin_rooms/${roomId}`,
+        roomId
       };
     } else {
-      // Format Room ID unik: buyerId_sellerId
-      const roomId = isSellerView ? `${chatBuyerId}_${user.uid}` : `${user.uid}_${chatSellerId}`;
+      // Format Room ID unik: room_buyerId_sellerId (Mendukung Self-Chat untuk Testing)
+      const currentSellerId = isSellerView ? user.uid : chatSellerId;
+      const roomId = `room_${buyerId}_${currentSellerId}`;
+      
       return {
-        messagesPath: `seller_chats/${roomId}/messages`,
-        metaPath: `seller_chats/${roomId}`,
+        messagesPath: `chats/seller_rooms/${roomId}/messages`,
+        metaPath: `chats/seller_rooms/${roomId}`,
         roomId
       };
     }
@@ -51,7 +57,9 @@ export const ChatLayout = ({
 
   // LOGIKA 3: Ambil Pesan Realtime Berdasarkan Path Sesuai Tab
   useEffect(() => {
+    if (chatTab === 'seller' && !chatSellerId && !isSellerView) return;
     setLoading(true);
+    
     const config = getChatConfig();
     const msgQuery = query(ref(db, config.messagesPath), limitToLast(50));
 
@@ -61,13 +69,13 @@ export const ChatLayout = ({
         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         setMessages(list);
       } else {
-        setMessages([]);
+        setMessages([]); // Pastikan array kosong agar loading berhenti
       }
-      setLoading(false);
+      setLoading(false); // Matikan loading baik ada data maupun kosong
     });
 
     return () => unsubscribe();
-  }, [chatTab, chatSellerId, chatBuyerId]);
+  }, [chatTab, chatSellerId, chatBuyerId, isSellerView]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
