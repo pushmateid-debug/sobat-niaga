@@ -16,14 +16,31 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
 
-  // Fetch Data Seller & Produk
+  // Fetch Data Seller & Produk & Follow Status
   useEffect(() => {
     if (!sellerId) return;
 
+    let isMounted = true; // Flag to prevent state updates on unmounted component
+    let productsLoaded = false;
+    let sellerDataLoaded = false;
+
+    const checkAndSetLoading = () => {
+      if (isMounted && productsLoaded && sellerDataLoaded) {
+        setIsLoading(false);
+      }
+    };
+
     // 1. Ambil Info Seller (Sekali ambil saja)
     get(ref(db, `users/${sellerId}`)).then(userSnap => {
-      if (userSnap.exists()) {
-        setSellerData(userSnap.val());
+      if (isMounted) {
+        if (userSnap.exists()) {
+          setSellerData(userSnap.val());
+        } else {
+          // Handle case where seller data doesn't exist
+          setSellerData(null); // Explicitly set to null
+        }
+        sellerDataLoaded = true;
+        checkAndSetLoading();
       }
     }).catch(err => console.error("Gagal ambil info seller:", err));
 
@@ -55,7 +72,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
         }
       });
       setVouchers(uniqueVouchers);
-      setIsLoading(false);
+      productsLoaded = true;
+      checkAndSetLoading();
     });
 
     // 3. Realtime listener untuk Status Follow (Firestore)
@@ -73,6 +91,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
     // Cleanup: Matikan semua listener pas pindah halaman
     return () => {
       unsubProducts();
+      isMounted = false; // Prevent state updates
       unsubFollow(); // Cukup panggil fungsi unsubFollow
     };
   }, [sellerId, currentUserId]);
@@ -197,6 +216,20 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
     );
   }
 
+  // Handle case where sellerData is null after loading (e.g., seller doesn't exist)
+  if (!sellerData) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-700 p-4 text-center">
+        <Flag size={48} className="text-gray-400 mb-4" />
+        <h2 className="text-xl font-bold">Toko Tidak Ditemukan</h2>
+        <p className="mt-2">Profil toko yang Anda cari tidak ada atau telah dihapus.</p>
+        <button onClick={onBack} className="mt-6 px-6 py-2 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700">
+          Kembali
+        </button>
+      </div>
+    );
+  }
+
   // Helper Variables for Display (Fallback Logic)
   const displayStoreName = sellerData?.sellerInfo?.storeName || (products.length > 0 ? products[0].storeName : 'Nama Toko');
   const displayAddress = sellerData?.sellerInfo?.storeAddress || 'Lokasi tidak tersedia';
@@ -281,7 +314,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
             </div>
 
             {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
-            <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 shrink-0">
                 {String(currentUserId) === String(sellerId) ? (
                     // Jika ini toko milik user sendiri
                     <>
