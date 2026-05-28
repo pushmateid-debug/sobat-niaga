@@ -742,6 +742,12 @@ const Home = () => {
               setCurrentView('chat'); 
             });
           }} 
+          // Prop baru untuk navigasi ke profil user sendiri (jika ini toko user)
+          onViewMyProfile={() => {
+            startTransition(() => {
+              setCurrentView('profile');
+            });
+          }}
         />
       );
       case 'profile': return (

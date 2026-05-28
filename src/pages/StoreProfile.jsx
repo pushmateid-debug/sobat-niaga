@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check } from 'lucide-react';
+import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check, User, Edit } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase'; // Import dbFirestore
 import { ref, onValue, query, orderByChild, equalTo, get } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore'; // Import Firestore functions
 import Swal from 'sweetalert2';
 
-const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatClick }) => {
+const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatClick, onViewMyProfile }) => {
   const [sellerData, setSellerData] = useState(null);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -282,30 +282,44 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
             {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                <button
-                    onClick={handleFollow}
-                    disabled={followLoading || String(currentUserId) === String(sellerId)}
-                    className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 ${
-                        isFollowing
-                            ? 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-                            : String(currentUserId) === String(sellerId)
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50' // Tampilan disabled buat pemilik
-                                : 'bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700' // Hijau Solid
-                    }`}
-                >
-                    {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
-                </button>
-                <button
-                    onClick={handleChat}
-                    disabled={String(currentUserId) === String(sellerId)}
-                    className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all ${
-                        String(currentUserId) === String(sellerId)
-                            ? 'bg-gray-50 border border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
-                            : 'bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95' // Outline Biru
-                    }`}
-                >
-                    <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
-                </button>
+                {String(currentUserId) === String(sellerId) ? (
+                    // Jika ini toko milik user sendiri
+                    <>
+                        <button
+                            onClick={onViewMyProfile} // Arahkan ke halaman profil user
+                            className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700"
+                        >
+                            <Edit size={14}/> Edit Profil
+                        </button>
+                        <button
+                            onClick={handleShare} // Fungsi bagikan link toko
+                            className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95"
+                        >
+                            <Share2 size={14}/> Bagikan Profil
+                        </button>
+                    </>
+                ) : (
+                    // Jika ini toko orang lain (Pembeli yang lihat)
+                    <>
+                        <button
+                            onClick={handleFollow}
+                            disabled={followLoading}
+                            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 ${
+                                isFollowing
+                                    ? 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                                    : 'bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700' // Hijau Solid
+                            }`}
+                        >
+                            {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
+                        </button>
+                        <button
+                            onClick={handleChat}
+                            className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95" // Outline Biru
+                        >
+                            <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
+                        </button>
+                    </>
+                )}
             </div>
           </div>
         </div>
