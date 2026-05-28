@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid } from 'lucide-react';
-import { db } from '../config/firebase';
+import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check } from 'lucide-react';
+import { db, dbFirestore } from '../config/firebase'; // Import dbFirestore
 import { ref, onValue, query, orderByChild, equalTo, get } from 'firebase/database';
+import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore'; // Import Firestore functions
 import Swal from 'sweetalert2';
 
-const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
+const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatClick }) => {
   const [sellerData, setSellerData] = useState(null);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -12,56 +13,69 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [vouchers, setVouchers] = useState([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // State Hamburger Menu
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   // Fetch Data Seller & Produk
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 1. Ambil Info Seller (User Profile + Seller Info)
-        const userSnap = await get(ref(db, `users/${sellerId}`));
-        if (userSnap.exists()) {
-          const data = userSnap.val();
-          setSellerData(data);
-        }
+    if (!sellerId) return;
 
-        // 2. Ambil Produk Seller Ini
-        const productsRef = query(ref(db, 'products'), orderByChild('sellerId'), equalTo(sellerId));
-        onValue(productsRef, (snapshot) => {
-          const data = snapshot.val();
-          const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-          
-          // Filter Produk Aktif Saja
-          const activeProducts = loadedProducts.filter(p => p.isActive !== false);
-
-          // Sort Terbaru
-          activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-          setProducts(activeProducts);
-
-          // 3. Ekstrak Voucher Unik dari Produk
-          const uniqueVouchers = [];
-          const seenCodes = new Set();
-          
-          activeProducts.forEach(p => {
-            if (p.voucherCode && p.voucherAmount && !seenCodes.has(p.voucherCode)) {
-              seenCodes.add(p.voucherCode);
-              uniqueVouchers.push({
-                code: p.voucherCode,
-                amount: p.voucherAmount,
-                minPurchase: 0 // Simplifikasi
-              });
-            }
-          });
-          setVouchers(uniqueVouchers);
-          setIsLoading(false);
-        });
-      } catch (error) {
-        console.error("Error fetching store data:", error);
-        setIsLoading(false);
+    // 1. Ambil Info Seller (Sekali ambil saja)
+    get(ref(db, `users/${sellerId}`)).then(userSnap => {
+      if (userSnap.exists()) {
+        setSellerData(userSnap.val());
       }
-    };
+    }).catch(err => console.error("Gagal ambil info seller:", err));
 
-    if (sellerId) fetchData();
-  }, [sellerId]);
+    // 2. Realtime listener untuk Produk (Realtime DB)
+    const productsRef = query(ref(db, 'products'), orderByChild('sellerId'), equalTo(sellerId));
+    const unsubProducts = onValue(productsRef, (snapshot) => {
+      const data = snapshot.val();
+      const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      
+      // Filter Produk Aktif Saja
+      const activeProducts = loadedProducts.filter(p => p.isActive !== false);
+
+      // Sort Terbaru
+      activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setProducts(activeProducts);
+
+      // Ekstrak Voucher Unik dari Produk
+      const uniqueVouchers = [];
+      const seenCodes = new Set();
+      
+      activeProducts.forEach(p => {
+        if (p.voucherCode && p.voucherAmount && !seenCodes.has(p.voucherCode)) {
+          seenCodes.add(p.voucherCode);
+          uniqueVouchers.push({
+            code: p.voucherCode,
+            amount: p.voucherAmount,
+            minPurchase: 0
+          });
+        }
+      });
+      setVouchers(uniqueVouchers);
+      setIsLoading(false);
+    });
+
+    // 3. Realtime listener untuk Status Follow (Firestore)
+    const userFirestoreRef = doc(dbFirestore, 'users', sellerId);
+    const unsubFollow = onSnapshot(userFirestoreRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const isUserFollowing = currentUserId && Array.isArray(data.followersList) && data.followersList.includes(currentUserId);
+            setIsFollowing(!!isUserFollowing);
+        } else {
+            setIsFollowing(false);
+        }
+    });
+
+    // Cleanup: Matikan semua listener pas pindah halaman
+    return () => {
+      unsubProducts();
+      unsubFollow(); // Cukup panggil fungsi unsubFollow
+    };
+  }, [sellerId, currentUserId]);
 
   // Copy Voucher Code
   const handleCopyVoucher = (code) => {
@@ -79,13 +93,60 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
 
   // Handle Chat WhatsApp
   const handleChat = () => {
+    if (onChatClick) {
+      onChatClick(sellerId);
+      return;
+    }
+
     const phone = sellerData?.phoneNumber;
     if (phone) {
       const formattedPhone = phone.replace(/^0/, '62');
-      const message = `Halo ${displayStoreName}, saya ingin tanya produk di SobatNiaga.`;
+      const message = `Halo ${sellerData?.sellerInfo?.storeName || 'Penjual'}, saya ingin tanya produk di SobatNiaga.`;
       window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
       Swal.fire('Info', 'Nomor penjual tidak tersedia.', 'info');
+    }
+  };
+
+  const handleFollow = async () => {
+    if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti toko ini.', 'warning');
+    if (String(sellerId) === String(currentUserId)) return Swal.fire('Tidak Bisa', 'Anda tidak bisa mengikuti toko Anda sendiri.', 'warning');
+    if (followLoading) return;
+
+    setFollowLoading(true);
+    const batch = writeBatch(dbFirestore);
+    const targetStoreRef = doc(dbFirestore, 'users', sellerId); // Seller's user document
+    const currentUserRef = doc(dbFirestore, 'users', currentUserId); // Current user's document
+
+    try {
+        if (isFollowing) {
+            // UNFOLLOW
+            batch.update(targetStoreRef, {
+                followersList: arrayRemove(currentUserId),
+                followersCount: increment(-1)
+            });
+            batch.update(currentUserRef, {
+                followingList: arrayRemove(sellerId),
+                followingCount: increment(-1)
+            });
+        } else {
+            // FOLLOW
+            batch.update(targetStoreRef, {
+                followersList: arrayUnion(currentUserId),
+                followersCount: increment(1)
+            });
+            batch.update(currentUserRef, {
+                followingList: arrayUnion(sellerId),
+                followingCount: increment(1)
+            });
+        }
+        await batch.commit();
+        // UI will update via onSnapshot listener
+    } catch (error) {
+        console.error("Error toggling follow:", error);
+        Swal.fire('Gagal', 'Terjadi kesalahan saat memproses permintaan.', 'error');
+    } finally {
+        setFollowLoading(false);
     }
   };
 
@@ -149,96 +210,104 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
     <div className="min-h-screen bg-white pb-24 font-sans">
       
       {/* 1. Sticky Header (Navigasi) */}
-      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all h-[52px]">
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all">
         <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between h-full">
           <button onClick={onBack} className="p-1 rounded-full hover:bg-sky-50 transition-colors text-sky-600">
             <ChevronLeft size={32} />
           </button>
           
-          <div className="flex items-center gap-1">
-             <button className="p-1 text-sky-600 hover:bg-sky-50 rounded-full">
-                <Search size={24} />
-             </button>
-             <div className="relative">
-                <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-1 text-sky-600 hover:bg-sky-50 rounded-full">
-                    <Menu size={24} />
-                </button>
-                {/* Pop-up Menu Hamburger */}
-                {isMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-[60] animate-in fade-in slide-in-from-top-2">
-                        <button onClick={() => { handleShare(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-3">
-                            <Share2 size={16} /> Share Toko
-                        </button>
-                        <button className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-3">
-                            <Flag size={16} /> Laporkan
-                        </button>
-                        <button className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-3">
-                            <HelpCircle size={16} /> Bantuan
-                        </button>
-                    </div>
-                )}
-             </div>
+          <div className="flex-1 max-w-md mx-4 hidden md:block">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Cari produk di toko ini..." 
+                className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
+
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-1 text-sky-600 hover:bg-sky-50 rounded-full">
+              <Menu size={24} />
+          </button>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto">
         
-        {/* 2. Header Toko (Profile Style - Clean & Centered) */}
-        <div className="relative bg-gradient-to-b from-sky-100/50 to-white pt-2 pb-2 px-4 text-center">
-            <div className="relative inline-block mb-1">
-                <div className="w-16 h-16 rounded-full p-0.5 bg-white shadow-md mx-auto">
-                    <img 
-                        src={displayPhoto} 
-                        alt="Store Profile" 
-                        className="w-full h-full object-cover rounded-full"
-                        onError={(e) => { e.target.src = '/placeholder.png'; }} // Ganti ke path lokal
-                    />
-                </div>
-                {isTrusted && (
-                    <div className="absolute bottom-0 right-0 bg-white rounded-full p-0.5">
-                        <CheckCircle size={14} className="text-blue-500 fill-blue-100" />
-                    </div>
-                )}
-            </div>
-
-            <h2 className="text-lg font-bold text-gray-900 leading-tight">{displayStoreName}</h2>
+        {/* 2. Header Toko (Modern Flexbox Style) */}
+        <div className="bg-gradient-to-b from-sky-50 to-white border-b border-gray-100">
+          <div className="max-w-5xl mx-auto p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
             
-            {/* Online Indicator & Location */}
-            <div className="flex items-center justify-center gap-2 mb-3 mt-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                <span className="text-[10px] font-bold text-green-600">Online</span>
-                <span className="text-gray-300 text-[10px]">•</span>
-                <div className="flex items-center gap-1 text-gray-500 text-[10px]">
-                    <MapPin size={10} />
-                    <span>{displayAddress}</span>
+            {/* Sisi Kiri: Profil Image & Info Utama */}
+            <div className="flex items-center gap-4 md:gap-8">
+              <div className="relative shrink-0">
+                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full p-1 bg-white shadow-md">
+                      <img 
+                          src={displayPhoto} 
+                          alt="Store Profile" 
+                          className="w-full h-full object-cover rounded-full"
+                          onError={(e) => { e.target.src = 'https://via.placeholder.com/150'; }} 
+                      />
+                  </div>
+                  {isTrusted && (
+                      <div className="absolute bottom-1 right-1 bg-white rounded-full p-0.5 shadow">
+                          <CheckCircle size={20} className="text-blue-500 fill-blue-100" />
+                      </div>
+                  )}
+              </div>
+
+              <div className="text-left min-w-0">
+                <div className="flex items-center gap-2">
+                    <h2 className="text-base md:text-2xl font-black text-gray-900 leading-tight truncate">{displayStoreName}</h2>
+                    <div className="flex items-center gap-1 bg-yellow-400/10 px-1.5 py-0.5 rounded-lg border border-yellow-400/20">
+                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                        <span className="text-[10px] md:text-xs font-black text-yellow-700">{avgRating}</span>
+                    </div>
                 </div>
+                <div className="flex items-center gap-2 mt-0.5 md:mt-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-xs font-bold text-green-600 uppercase tracking-tighter">Online</span>
+                    <span className="text-gray-300 hidden sm:inline">•</span>
+                    <div className="hidden sm:flex items-center gap-1 text-gray-500 text-xs">
+                        <MapPin size={12} />
+                        <span className="font-medium truncate max-w-[150px] md:max-w-none">{displayAddress}</span>
+                    </div>
+                </div>
+                <p className="text-[10px] md:text-xs text-gray-500 mt-1 font-bold"><span className="text-gray-900">{totalSold}+</span> Terjual</p>
+              </div>
             </div>
 
-            {/* Statistik Bar (Horizontal) */}
-            <div className="flex justify-center items-center gap-3 md:gap-12 bg-white rounded-xl shadow-sm border border-gray-100 py-2 px-2 mx-0 md:mx-10">
-                <div className="flex-1">
-                    <div className="flex items-center justify-center gap-1 font-bold text-gray-900 text-xs">
-                        <Star size={12} className="fill-yellow-400 text-yellow-400" /> {avgRating}
-                    </div>
-                    <p className="text-[9px] text-gray-400">Rating</p>
-                </div>
-                <div className="w-px h-6 bg-gray-100"></div>
-                <div className="flex-1">
-                    <p className="font-bold text-gray-900 text-xs">{products.length}</p>
-                    <p className="text-[9px] text-gray-400">Produk</p>
-                </div>
-                <div className="w-px h-6 bg-gray-100"></div>
-                <div className="flex-1">
-                    <p className="font-bold text-gray-900 text-xs">{totalSold}+</p>
-                    <p className="text-[9px] text-gray-400">Terjual</p>
-                </div>
-                <div className="w-px h-6 bg-gray-100"></div>
-                <div className="flex-1">
-                    <p className="font-bold text-gray-900 text-xs">± 15 Mnt</p>
-                    <p className="text-[9px] text-gray-400">Respon</p>
-                </div>
+            {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                <button
+                    onClick={handleFollow}
+                    disabled={followLoading || String(currentUserId) === String(sellerId)}
+                    className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 ${
+                        isFollowing
+                            ? 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                            : String(currentUserId) === String(sellerId)
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50' // Tampilan disabled buat pemilik
+                                : 'bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700' // Hijau Solid
+                    }`}
+                >
+                    {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
+                </button>
+                <button
+                    onClick={handleChat}
+                    disabled={String(currentUserId) === String(sellerId)}
+                    className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all ${
+                        String(currentUserId) === String(sellerId)
+                            ? 'bg-gray-50 border border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                            : 'bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95' // Outline Biru
+                    }`}
+                >
+                    <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
+                </button>
             </div>
+          </div>
         </div>
 
         {/* 3. Section Voucher Toko (Blue Theme) */}
@@ -309,28 +378,28 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
                     <p className="text-xs text-gray-400 mt-1">(Fitur Kategori Segera Hadir)</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3 pb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 pb-12">
                     {filteredProducts.map((product, index) => (
                         <div 
-                            key={product.id} 
+                            key={product.id}
                             onClick={() => onProductClick(product)}
-                            className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300 cursor-pointer group"
+                            className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group hover:-translate-y-1"
                         >
                             <div className="relative aspect-square bg-gray-50 overflow-hidden">
                                 <img 
-                                    src={product.mediaUrl || '/placeholder.png'} // Ganti ke path lokal
+                                    src={product.mediaUrl || 'https://via.placeholder.com/300'}
                                     alt={product.name} 
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                                    loading="lazy" // Tambahkan lazy loading
+                                    loading="lazy"
                                 />
                                 {product.voucherCode && (
-                                    <div className="absolute bottom-2 left-2 bg-sky-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                                    <div className="absolute top-2 right-2 bg-sky-600/90 backdrop-blur-sm text-white text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                                         <Ticket size={10} /> Promo
                                     </div>
                                 )}
                             </div>
                             <div className="p-3">
-                                <h3 className="font-bold text-gray-900 text-sm line-clamp-2 mb-1 leading-snug min-h-[2.5em]">{product.name}</h3>
+                                <h3 className="font-bold text-gray-900 text-xs md:text-sm line-clamp-2 mb-1 leading-snug min-h-[2.5em]">{product.name}</h3>
                                 <div className="flex items-end justify-between mt-2">
                                     <p className="font-sans text-sm font-bold text-sky-600">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
                                     <div className="text-[10px] text-gray-400 flex items-center gap-0.5">
@@ -343,16 +412,6 @@ const StoreProfile = ({ sellerId, onBack, onProductClick }) => {
                 </div>
             )}
         </div>
-      </div>
-
-      {/* Sticky Bottom Bar (Chat) */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-         <button 
-            onClick={handleChat}
-            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 rounded-full shadow-lg shadow-sky-200 transition-all flex items-center justify-center gap-2 active:scale-95"
-         >
-            <MessageCircle size={20} /> Chat Penjual
-         </button>
       </div>
 
     </div>

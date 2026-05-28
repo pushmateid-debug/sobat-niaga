@@ -782,7 +782,20 @@ const Home = () => {
       case 'payment': return <Payment order={currentOrder} onBack={() => startTransition(() => setCurrentView('cart'))} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
       case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} playCustomNotificationSound={playCustomNotificationSound} />;
       case 'admin-dashboard': return <AdminDashboard user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
-      case 'store-profile': return <StoreProfile sellerId={selectedSellerId} onBack={() => startTransition(() => setCurrentView(previousView))} onProductClick={handleProductClick} />;
+      case 'store-profile': return (
+        <StoreProfile 
+          sellerId={selectedSellerId} 
+          currentUserId={user?.uid} 
+          onBack={() => startTransition(() => setCurrentView(previousView))} 
+          onProductClick={handleProductClick} 
+          onChatClick={(id) => { 
+            startTransition(() => {
+              setChatTab('seller'); 
+              setCurrentView('chat'); 
+            });
+          }} 
+        />
+      );
       case 'digital-center': return <DigitalCenter onBack={() => startTransition(() => setCurrentView('home'))} onGameSelect={handleGameSelect} />;
       case 'search-results': return <SearchResults onBack={() => startTransition(() => setCurrentView(previousView))} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
       case 'about': return renderStaticPage('about', 'Tentang Kami');
@@ -1599,6 +1612,7 @@ const Home = () => {
         onClose={() => setIsProductModalOpen(false)} 
         user={user} 
         onGoToCart={() => startTransition(() => { setIsProductModalOpen(false); setCurrentView('cart'); })}
+        onVisitStore={handleVisitStore}
       />
 
       {/* Customer Service Chat Widget */}

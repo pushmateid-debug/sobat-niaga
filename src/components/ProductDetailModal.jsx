@@ -1,14 +1,42 @@
-import React, { useState } from 'react';
-import { X, Star, ShoppingCart, MessageCircle, ShieldCheck, Zap, Cpu, Battery, Smartphone, Loader2 } from 'lucide-react';
-import { db } from '../config/firebase';
-import { ref, push, get } from 'firebase/database';
+import React, { useState, useEffect } from 'react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, PlayCircle, Image as ImageIcon, UserPlus, Check } from 'lucide-react';
+import { db, dbFirestore } from '../config/firebase';
+import { ref, push, get, query, orderByChild, equalTo, onValue } from 'firebase/database';
+import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import Swal from 'sweetalert2';
+import { useNavigate } from 'react-router-dom';
 
-const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart }) => {
+const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisitStore }) => {
+  const navigate = useNavigate();
   const [isAdding, setIsAdding] = useState(false);
-  const [selectedColor, setSelectedColor] = useState('Titanium Grey');
-  const [selectedSize, setSelectedVariant] = useState('256GB');
+  const [reviews, setReviews] = useState([]);
+  const [activeTab, setActiveTab] = useState('about');
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
+  // Fetch Follow Status from Firestore
+  useEffect(() => {
+    const sid = product?.sellerId;
+    if (!sid || !user?.uid || !isOpen) return;
+
+    const userFirestoreRef = doc(dbFirestore, 'users', sid);
+    const unsubFollow = onSnapshot(userFirestoreRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const isUserFollowing = user.uid && 
+                               Array.isArray(data.followersList) && 
+                               data.followersList.includes(user.uid);
+        setIsFollowing(Boolean(isUserFollowing));
+      } else {
+        setIsFollowing(false);
+      }
+    });
+
+    return () => unsubFollow();
+  }, [product?.sellerId, user?.uid, isOpen]);
+
+  // Return kondisional dipindah ke SINI (Setelah semua hook didefinisikan)
   if (!isOpen || !product) return null;
 
   const {
@@ -16,11 +44,48 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart }) => {
     price = 0,
     description = 'Tidak ada deskripsi produk.',
     mediaUrl,
-    image,
+    image, 
     storeName = 'Toko',
     rating = 4.8,
     category = 'Kategori',
+    sold = 0,
+    sellerId,
+    voucherCode,
+    voucherAmount
   } = product;
+
+  const handleFollow = async () => {
+    if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
+    if (String(sellerId) === String(user.uid)) return;
+    if (followLoading) return;
+
+    setFollowLoading(true);
+    const batch = writeBatch(dbFirestore);
+    const targetStoreRef = doc(dbFirestore, 'users', sellerId);
+    const currentUserRef = doc(dbFirestore, 'users', user.uid);
+
+    try {
+      if (isFollowing) {
+        batch.update(targetStoreRef, { followersList: arrayRemove(user.uid), followersCount: increment(-1) });
+        batch.update(currentUserRef, { followingList: arrayRemove(sellerId), followingCount: increment(-1) });
+      } else {
+        batch.update(targetStoreRef, { followersList: arrayUnion(user.uid), followersCount: increment(1) });
+        batch.update(currentUserRef, { followingList: arrayUnion(sellerId), followingCount: increment(1) });
+      }
+      await batch.commit();
+    } catch (error) {
+      console.error("Error toggling follow:", error);
+      Swal.fire('Gagal', 'Terjadi kesalahan saat memproses permintaan.', 'error');
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleChatInternal = () => {
+    Swal.fire('Info', 'Fitur chat langsung sedang disiapkan. Silakan kunjungi toko untuk diskusi lebih lanjut!', 'info');
+  };
+
+  const maskName = (name) => (name ? name.charAt(0) + '***' + name.charAt(name.length - 1) : 'Pembeli');
 
   const displayImage = mediaUrl || image || 'https://via.placeholder.com/400';
   const displayPrice = parseInt(price).toLocaleString('id-ID');
@@ -40,7 +105,10 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart }) => {
         const currentCart = cartSnap.val();
         const existingItemKey = Object.keys(currentCart).find(key => currentCart[key].productId === product.id);
         if (existingItemKey) {
-          Swal.fire({ title: 'Sudah di Keranjang', text: 'Produk ini sudah ada di keranjangmu.', icon: 'info', showCancelButton: true, confirmButtonText: 'Lihat Keranjang' }).then((res) => { if (res.isConfirmed) onGoToCart(); });
+          Swal.fire({ title: 'Sudah di Keranjang', text: 'Produk ini sudah ada di keranjangmu.', icon: 'info', showCancelButton: true, confirmButtonText: 'Lihat Keranjang' }).then((res) => {
+            if (res.isConfirmed) onGoToCart();
+            else Swal.close(); // Tutup modal SweetAlert jika dibatalkan
+          });
           setIsAdding(false);
           return;
         }
@@ -48,8 +116,18 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart }) => {
 
       await push(cartRef, { productId: product.id, name, price: parseInt(price), image: displayImage, quantity: 1, storeName, sellerId: product.sellerId, selected: true, createdAt: new Date().toISOString() });
       Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Masuk keranjang 🛒', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
+      onClose(); // Tutup modal produk setelah berhasil tambah ke keranjang
     } catch (error) {
+      console.error("Error adding to cart:", error);
       Swal.fire({ icon: 'error', title: 'Gagal', text: 'Terjadi kesalahan.' });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleBuyNow = async () => {
+    try {
+      await handleAddToCart(true); // Tambahkan ke keranjang lalu redirect
     } finally {
       setIsAdding(false);
     }
@@ -57,91 +135,178 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart }) => {
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden relative flex flex-col md:flex-row max-h-[90vh]">
+      <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden relative flex flex-col md:flex-row max-h-[90vh]">
         
         {/* Close Button */}
-        <button onClick={onClose} className="absolute top-6 right-6 z-10 p-2 bg-gray-100 dark:bg-slate-800 rounded-full text-gray-500 hover:text-red-500 transition-all shadow-sm">
+        <button onClick={onClose} className="absolute top-6 right-6 z-10 p-2 bg-gray-100 rounded-full text-gray-500 hover:text-red-500 transition-all shadow-sm">
           <X size={24} />
         </button>
 
+        {/* Top Right Action Buttons (Desktop Only) */}
+        <div className="absolute top-6 right-20 z-10 hidden md:flex items-center gap-2">
+            {user?.uid !== sellerId && (
+                <>
+                    <button
+                        onClick={handleFollow}
+                        disabled={followLoading}
+                        className={`px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-tighter transition-all active:scale-95 flex items-center gap-2 ${
+                            isFollowing
+                                ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                                : 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700'
+                        }`}
+                    >
+                        {followLoading ? <Loader2 size={12} className="animate-spin" /> : (isFollowing ? <><Check size={12}/> Mengikuti</> : <><UserPlus size={12}/> Ikuti</>)}
+                    </button>
+                    <button
+                        onClick={handleChatInternal}
+                        className="p-2 bg-white border border-gray-200 rounded-full text-gray-600 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+                        title="Chat Penjual"
+                    >
+                        <MessageCircle size={18} />
+                    </button>
+                </>
+            )}
+        </div>
+
         {/* Sisi Kiri: Konten Visual */}
-        <div className="w-full md:w-1/2 p-10 flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-800/30">
-          <div className="relative w-full aspect-square max-w-[420px] rounded-[3rem] bg-white dark:bg-slate-800 shadow-xl flex items-center justify-center p-12 overflow-hidden group">
+        <div className="w-full md:w-1/2 p-10 flex flex-col items-center justify-center bg-gray-50">
+          <div className="relative w-full aspect-square max-w-[420px] rounded-none bg-white shadow-xl flex items-center justify-center p-12 overflow-hidden group">
             <img src={displayImage} alt={name} className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700" />
           </div>
-          <p className="mt-8 text-sm font-bold text-gray-400 uppercase tracking-widest">
-            Pilihan: <span className="text-sky-600">{selectedColor}</span>
-          </p>
         </div>
 
         {/* Sisi Kanan: Konten Informasi */}
         <div className="w-full md:w-1/2 p-10 md:p-14 overflow-y-auto flex flex-col">
           <div className="mb-auto">
-            <span className="text-[11px] font-black text-sky-600 uppercase tracking-[0.3em] mb-3 block">{category} Official</span>
-            <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white leading-tight mb-4">{name}</h1>
+            <span className="text-[11px] font-black text-sky-600 uppercase tracking-[0.4em] mb-3 block font-sans">{category} Official</span>
+            <h1 className="text-4xl font-black text-gray-900 leading-tight mb-4 font-sans tracking-tighter">{name}</h1>
             
             <div className="flex items-center gap-3 mb-8">
               <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20">
                 <Star size={18} className="fill-yellow-400 text-yellow-400" />
-                <span className="text-base font-black text-yellow-700 dark:text-yellow-500">{rating}</span>
+                <span className="text-base font-black text-yellow-700">{rating}</span>
               </div>
-              <span className="text-sm font-bold text-gray-400">1.5k Terjual</span>
+              <span className="text-sm font-bold text-gray-400">{sold} Terjual</span>
             </div>
 
             <div className="mb-10">
-              <span className="text-4xl font-black text-sky-600 tracking-tighter">Rp {displayPrice}</span>
-              <p className="text-xs text-gray-400 mt-2 font-medium line-clamp-3">{description}</p>
+              <span className="text-4xl font-black text-sky-600 tracking-tighter font-sans">Rp {displayPrice}</span>
+              {voucherCode && (
+                <div className="flex items-center gap-2 mt-2 bg-green-50 text-green-700 px-3 py-1.5 rounded-xl border border-green-100 font-sans">
+                  <Tag size={16} />
+                  <span className="text-xs font-bold tracking-tight">Diskon Rp {parseInt(voucherAmount).toLocaleString('id-ID')} dengan kode <span className="font-mono">{voucherCode}</span></span>
+                </div>
+              )}
             </div>
 
-            {/* Varian Warna */}
-            <div className="mb-6">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Warna</label>
-                <div className="flex gap-3">
-                    {['Titanium Grey', 'Midnight', 'Silver'].map(c => (
-                        <button key={c} onClick={() => setSelectedColor(c)} className={`px-5 py-2.5 rounded-xl text-xs font-bold border transition-all ${selectedColor === c ? 'bg-sky-600 border-sky-600 text-white shadow-lg shadow-sky-200' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500'}`}>{c}</button>
-                    ))}
-                </div>
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100 mb-4 font-sans">
+                {['about', 'gallery', 'review'].map(tab => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`flex-1 pb-2 text-xs font-black uppercase tracking-widest transition-all relative ${
+                            activeTab === tab ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        {tab}
+                        {activeTab === tab && (
+                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-0.5 bg-sky-600 rounded-t-full"></div>
+                        )}
+                    </button>
+                ))}
             </div>
 
-            {/* Spek Unggulan */}
-            <div className="bg-gray-50 dark:bg-slate-800/80 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 grid grid-cols-2 gap-6 mb-10">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-white dark:bg-slate-700 rounded-xl shadow-sm"><Cpu size={20} className="text-sky-500" /></div>
-                    <div>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase">Processor</p>
-                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">A17 Pro Chip</p>
+            {/* Tab Content */}
+            <div className="min-h-[200px]">
+                {activeTab === 'about' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 font-sans">
+                        {/* Operated By */}
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
+                                    <Store size={16} className="text-gray-400" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">Operated by</p>
+                                    <h3 className="font-black text-gray-900 text-xs tracking-tight">{storeName}</h3>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
+                                className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-[10px] font-black text-gray-700 hover:bg-gray-50 transition-colors uppercase tracking-tighter"
+                            >
+                                Kunjungi
+                            </button>
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                            <h3 className="font-black text-gray-900 text-sm mb-1 uppercase tracking-tighter">Description</h3>
+                            <div className={`text-xs text-gray-600 leading-relaxed tracking-tight relative ${!isDescExpanded ? 'max-h-[3.6em] overflow-hidden' : ''}`}>
+                                {description}
+                                {!isDescExpanded && (
+                                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent"></div>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setIsDescExpanded(!isDescExpanded)}
+                                className="mt-1 text-xs font-black text-sky-600 hover:text-sky-700 transition-colors uppercase tracking-tighter"
+                            >
+                                {isDescExpanded ? 'Sembunyikan' : 'Baca selengkapnya'}
+                            </button>
+                        </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-white dark:bg-slate-700 rounded-xl shadow-sm"><Battery size={20} className="text-green-500" /></div>
-                    <div>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase">Battery</p>
-                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">Video up to 29h</p>
+                )}
+
+                {activeTab === 'gallery' && (
+                    <div className="grid grid-cols-3 gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="aspect-square rounded-xl overflow-hidden bg-gray-100">
+                            <img src={displayImage} className="w-full h-full object-cover" alt="Gallery 1" />
+                        </div>
+                        {/* Placeholder for more images */}
+                        <div className="aspect-square rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center text-gray-300">
+                            <ImageIcon size={24} />
+                        </div>
+                        <div className="aspect-square rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center text-gray-300">
+                            <ImageIcon size={24} />
+                        </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-white dark:bg-slate-700 rounded-xl shadow-sm"><Smartphone size={20} className="text-purple-500" /></div>
-                    <div>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase">Camera</p>
-                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">48MP Main</p>
+                )}
+
+                {activeTab === 'review' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 font-sans">
+                        {reviews.length === 0 ? (
+                            <p className="text-gray-500 text-center py-10 font-bold text-sm tracking-tight italic">Belum ada ulasan.</p>
+                        ) : (
+                            reviews.map((review, idx) => (
+                                <div key={idx} className="flex gap-4 border-b border-gray-50 pb-4 last:border-0">
+                                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                        {review.buyerPhoto ? <img src={review.buyerPhoto} alt="Buyer" className="w-full h-full object-cover" /> : <User size={20} className="m-2 text-gray-400" />}
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm font-black text-gray-800 tracking-tight">{maskName(review.buyerName)}</p>
+                                        <div className="flex items-center gap-1 mt-0.5 mb-1">
+                                            {[...Array(5)].map((_, i) => (
+                                                <Star key={i} size={10} className={`${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                                            ))}
+                                        </div>
+                                        <p className="text-sm text-gray-600">{review.comment}</p>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-white dark:bg-slate-700 rounded-xl shadow-sm"><ShieldCheck size={20} className="text-emerald-500" /></div>
-                    <div>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase">Security</p>
-                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">Face ID</p>
-                    </div>
-                </div>
+                )}
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4 pt-6 border-t dark:border-slate-800">
-            <button onClick={handleAddToCart} disabled={isAdding} className="flex-[3] bg-sky-600 hover:bg-sky-700 text-white font-black py-5 rounded-[1.25rem] shadow-2xl shadow-sky-200 dark:shadow-none transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-wider text-sm">
+          <div className="flex gap-4 pt-6 border-t border-gray-100 font-sans">
+            <button onClick={handleAddToCart} disabled={isAdding} className="flex-[3] bg-sky-600 hover:bg-sky-700 text-white font-black py-5 rounded-[1.25rem] shadow-2xl shadow-sky-200 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-[0.1em] text-sm">
               {isAdding ? <Loader2 className="animate-spin" size={20} /> : <><ShoppingCart size={20} /> Tambah Ke Keranjang</>}
             </button>
-            <button className="flex-1 bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 py-5 rounded-[1.25rem] hover:bg-gray-200 transition-all flex items-center justify-center"><MessageCircle size={24} /></button>
+            <button onClick={handleBuyNow} className="flex-1 bg-gray-100 text-gray-500 py-5 rounded-[1.25rem] hover:bg-gray-200 transition-all flex items-center justify-center"><MessageCircle size={24} /></button>
           </div>
         </div>
       </div>
