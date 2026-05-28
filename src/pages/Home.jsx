@@ -10,6 +10,7 @@ import 'swiper/css/pagination';
 import 'swiper/css/effect-coverflow';
 import ProductCard from '../components/ProductCard';
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
+import ProductDetailModal from '../components/ProductDetailModal'; // Import Modal Detail Desktop
 import { auth, db, dbFirestore } from '../config/firebase';
 import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
 import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
@@ -56,6 +57,8 @@ const Home = () => {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
   const [previousView, setPreviousView] = useState('home');
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false); // State Modal Produk
+  const [selectedModalProduct, setSelectedModalProduct] = useState(null); // Data Produk Modal
   const [products, setProducts] = useState([]); // Real Products State
   const [cartCount, setCartCount] = useState(0);
   const [currentOrder, setCurrentOrder] = useState(null);
@@ -439,7 +442,17 @@ const Home = () => {
   };
 
   const handleProductClick = (product) => {
-    startTransition(() => { setPreviousView(currentView); setSelectedProduct(product); setCurrentView('product-detail'); });
+    // --- LOGIKA PEMISAH RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
+    if (window.innerWidth >= 768) {
+      setSelectedModalProduct(product);
+      setIsProductModalOpen(true);
+    } else {
+      startTransition(() => { 
+        setPreviousView(currentView); 
+        setSelectedProduct(product); 
+        setCurrentView('product-detail'); 
+      });
+    }
   };
 
   const handleCheckout = (orderId) => {
@@ -1578,6 +1591,15 @@ const Home = () => {
           user={user} 
           onClose={() => setSelectedGame(null)} />
       )}
+
+      {/* Modal Detail Produk (Khusus Desktop) */}
+      <ProductDetailModal 
+        isOpen={isProductModalOpen} 
+        product={selectedModalProduct} 
+        onClose={() => setIsProductModalOpen(false)} 
+        user={user} 
+        onGoToCart={() => startTransition(() => { setIsProductModalOpen(false); setCurrentView('cart'); })}
+      />
 
       {/* Customer Service Chat Widget */}
       {currentView !== 'chat' && !isDesktopChatOpen && (
