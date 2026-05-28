@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -29,7 +29,7 @@ const calculateAdminFee = (amount) => { // This is for marketplace, not NiagaGo
   return 2000;
 };
 
-const DashboardSeller = ({ user, onBack, playCustomNotificationSound }) => {
+const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbox }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [isVerifiedSeller, setIsVerifiedSeller] = useState(false);
@@ -1605,6 +1605,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound }) => {
                         <button onClick={() => setMobileView('finance')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Wallet size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Keuangan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><BarChart2 size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Statistik</span></button>
                         <button onClick={() => setIsScannerOpen(true)} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 group-active:scale-95 transition-transform"><QrCode size={20}/></div><span className="text-[10px] font-bold text-center leading-tight text-emerald-600">Scan Bantuan</span></button>
+                        <button onClick={onViewInbox} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-slate-700 text-white group-active:scale-95 transition-transform shadow-md"><MessageCircle size={20}/></div><span className="text-[10px] font-bold text-center leading-tight">Pesan</span></button>
                         <button onClick={() => setMobileView('sharing_recap')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><RotateCcw size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Rekap Bantuan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Award size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Poin Seller</span></button>
                         <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><Megaphone size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Promosi</span></button>

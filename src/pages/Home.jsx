@@ -42,6 +42,7 @@ const AllCategories = React.lazy(() => import('./AllCategories'));
 const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
 const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
+const SellerInbox = React.lazy(() => import('./SellerInbox'));
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,6 +86,7 @@ const Home = () => {
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
   const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop (Floating)
   const [chatSellerId, setChatSellerId] = useState(null); // ID Seller untuk chat aktif
+  const [activeChatBuyerId, setActiveChatBuyerId] = useState(null); // ID Buyer untuk chat aktif (Sisi Seller)
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
 
@@ -771,7 +773,7 @@ const Home = () => {
         />
       );
       case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
-      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} />;
+      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} onViewInbox={() => startTransition(() => setCurrentView('seller-inbox'))} />;
       case 'product-detail': return (
         <ProductDetail
           product={selectedProduct} 
@@ -818,6 +820,18 @@ const Home = () => {
       case 'all-categories': return <AllCategories onBack={() => startTransition(() => setCurrentView('home'))} onNavigate={(view) => startTransition(() => setCurrentView(view))} />;
       case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => startTransition(() => setCurrentView('all-categories'))} />;
       
+      // --- HALAMAN KOTAK MASUK PENJUAL ---
+      case 'seller-inbox': return (
+        <SellerInbox 
+            user={user} 
+            onBack={() => startTransition(() => setCurrentView('dashboard-seller'))} 
+            onChatClick={(buyerId) => {
+                setActiveChatBuyerId(buyerId);
+                startTransition(() => setCurrentView('seller-chat'));
+            }}
+        />
+      );
+
       // --- HALAMAN LIVE CHAT INTERNAL ---
       case 'chat':
         return (
@@ -844,6 +858,32 @@ const Home = () => {
           </div>
         );
       
+      // --- HALAMAN CHAT SISI PENJUAL (MOBILE) ---
+      case 'seller-chat':
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
+              <ChatLayout
+                  isMobile={true}
+                  onClose={() => startTransition(() => setCurrentView('seller-inbox'))}
+                  user={user}
+                  isDarkMode={isDarkMode}
+                  chatTab="seller"
+                  chatBuyerId={activeChatBuyerId}
+                  isSellerView={true}
+                  isChatMenuOpen={isChatMenuOpen}
+                  setIsChatMenuOpen={setIsChatMenuOpen}
+                  playCustomNotificationSound={playCustomNotificationSound}
+                  onViewProfile={(id) => {
+                    startTransition(() => {
+                      setSelectedUserProfileId(id);
+                      setCurrentView('user-public-profile');
+                      setIsChatMenuOpen(false);
+                    });
+                  }}
+              />
+          </div>
+        );
+
       // --- HALAMAN MENU PROFIL (MOBILE) ---
       case 'account-menu': return (
         <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
@@ -869,6 +909,7 @@ const Home = () => {
             {[
               { label: 'Profil Saya', icon: <User size={20} />, action: () => startTransition(() => setCurrentView('profile')) },
               { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => startTransition(() => setCurrentView('dashboard-seller')) },
+              { label: 'Chat Pelanggan', icon: <MessageCircle size={20} />, action: () => startTransition(() => setCurrentView('seller-inbox')), hidden: !user?.sellerInfo?.isVerifiedSeller },
               { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => startTransition(() => setCurrentView('history')) },
               { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => startTransition(() => setCurrentView('address')) },
               { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => startTransition(() => setCurrentView('admin-dashboard')), hidden: user?.email !== 'pushmate.id@gmail.com' },
@@ -1608,7 +1649,9 @@ const Home = () => {
 
       {/* MAIN CONTENT AREA - INI YANG TADI ILANG BRO! */}
       <main className="flex-1">
-        {renderContent()}
+        <Suspense fallback={<div className="flex flex-col items-center justify-center py-20 opacity-50"><Loader2 size={40} className="animate-spin text-sky-500 mb-2" /><p className="text-sm">Memuat...</p></div>}>
+          {renderContent()}
+        </Suspense>
       </main>
 
       {/* Modal Top Up Game (Global) */}
