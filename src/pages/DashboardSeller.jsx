@@ -1597,7 +1597,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       </aside>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="hidden md:flex flex-1 flex-col h-full overflow-hidden">
         
         {/* Content Header (Mobile Friendly Header) */}
         <header className={`flex items-center justify-between px-6 py-4 border-b md:bg-transparent ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
@@ -2176,7 +2176,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
       {/* --- MOBILE (Shopee Style Grid) --- */}
       {/* Bagian ini tetap dipertahankan untuk responsivitas HP (Hidden di md) */}
-      <div className={`md:hidden flex-1 overflow-y-auto w-full ${isVerifiedSeller ? 'block' : 'hidden'}`}>
+      <div className={`md:hidden flex-1 overflow-y-auto w-full md:flex-1 ${isVerifiedSeller ? 'block' : 'hidden'}`}>
           {/* ... (Seluruh UI Mobile Anda yang lama taruh di sini agar tidak hilang saat di buka di HP) ... */}
           {/* Gue tambahin pengecekan agar mobile tetap dapet Shopee-style lo yang keren */}
           <div className="max-w-7xl mx-auto px-6 py-4 space-y-6">
