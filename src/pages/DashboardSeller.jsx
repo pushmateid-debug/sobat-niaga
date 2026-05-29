@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle, LayoutDashboard, Send } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -54,6 +54,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     isActive: true, // Status Produk (Aktif/Arsip)
   });
   const [mediaFile, setMediaFile] = useState(null);
+  const [selectedImages, setSelectedImages] = useState([]); // Array untuk menampung {file, url, isNew}
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState('image');
   const [isUploading, setIsUploading] = useState(false);
@@ -449,13 +450,33 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   };
 
   // Handle File Select (Image Picker Estetik)
-  const handleMediaChange = (e, type) => {
-    const file = e.target.files[0];
-    if (file) {
-      setMediaFile(file);
-      setMediaPreview(URL.createObjectURL(file));
-      setMediaType(type);
+  const handleMediaChange = (e, type = 'image') => {
+    if (type === 'video') {
+        const file = e.target.files[0];
+        if (file) {
+            setMediaFile(file);
+            setMediaPreview(URL.createObjectURL(file));
+            setMediaType('video');
+            setSelectedImages([]); // Reset foto kalau upload video
+        }
+        return;
     }
+
+    const files = Array.from(e.target.files);
+    if (selectedImages.length + files.length > 3) {
+        Swal.fire('Limit Foto', 'Maksimal hanya bisa mengunggah 3 foto produk, Bro!', 'warning');
+        return;
+    }
+
+    const newImages = files.map(file => ({
+        file,
+        url: URL.createObjectURL(file),
+        isNew: true
+    }));
+
+    setSelectedImages(prev => [...prev, ...newImages]);
+    setMediaType('image');
+    setMediaFile(null); // Reset video kalau upload foto
   };
 
   // Handle Simpan / Update Produk
@@ -470,17 +491,28 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     }
 
     try {
-      // Gunakan media lama jika tidak ada file baru yang diupload saat edit
-      let mediaData = { url: productForm.mediaUrl || '', type: productForm.mediaType || 'image' };
-      
-      if (mediaFile) {
-        mediaData = await uploadToCloudinary(mediaFile);
+      // 1. Upload semua gambar baru ke Cloudinary secara paralel
+      const imageUploadPromises = selectedImages.map(img => {
+        if (img.isNew && img.file) return uploadToCloudinary(img.file);
+        return { url: img.url, type: 'image' }; // Keep existing URL
+      });
+
+      const uploadedImagesResults = await Promise.all(imageUploadPromises);
+      const imageUrls = uploadedImagesResults.map(res => res.url);
+
+      // 2. Upload Video (Jika ada dan tipe media adalah video)
+      let videoData = null;
+      if (mediaType === 'video') {
+          if (mediaFile) videoData = await uploadToCloudinary(mediaFile);
+          else if (productForm.mediaUrl && productForm.mediaType === 'video') videoData = { url: productForm.mediaUrl };
       }
 
       const productData = {
         ...productForm,
-        mediaUrl: mediaData.url,
-        mediaType: mediaData.type,
+        // mediaUrl adalah foto utama atau video URL
+        mediaUrl: videoData ? videoData.url : (imageUrls[0] || ''),
+        mediaType: videoData ? 'video' : 'image',
+        gallery: imageUrls, // Simpan array semua foto
         voucherAmount: productForm.voucherAmount ? parseInt(productForm.voucherAmount) : 0, // Ensure number
         // --- LOGIKA INPUT FIELDS GAME ---
         fieldInputType: productForm.fieldInputType || 'ID Only', // Tambahkan tipe input
@@ -520,6 +552,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       setProductForm({ name: '', description: '', price: '', stock: '', category: 'Niaga Food', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
       setMediaFile(null);
       setMediaPreview(null);
+      setSelectedImages([]);
       setMediaType('image');
       
       setActiveTab('product_list');
@@ -549,13 +582,23 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
         voucherCode: product.voucherCode || '',
         voucherAmount: product.voucherAmount || '',
         isActive: product.isActive !== undefined ? product.isActive : true,
-        mediaUrl: product.mediaUrl, // Simpan URL lama
+        mediaUrl: product.mediaUrl,
         mediaType: product.mediaType
     });
-    setMediaPreview(product.mediaUrl);
+
+    // Inisialisasi Galeri Foto
+    if (product.mediaType === 'video') {
+        setMediaPreview(product.mediaUrl);
+        setSelectedImages([]);
+    } else {
+        const initialGallery = product.gallery || (product.mediaUrl ? [product.mediaUrl] : []);
+        setSelectedImages(initialGallery.map(url => ({ url, isNew: false })));
+        setMediaPreview(null);
+    }
+
     setMediaType(product.mediaType || 'image');
     setMediaFile(null);
-    
+
     // Otomatis Alihkan ke Menu Tambah Produk (Form)
     setActiveTab('add_product');
     setMobileView('add_product');
@@ -570,7 +613,12 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     setProductForm({ name: '', description: '', price: '', stock: '', category: 'Niaga Food', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
     setMediaFile(null);
     setMediaPreview(null);
+    setSelectedImages([]);
     setMediaType('image');
+  };
+
+  const handleRemoveImage = (indexToRemove) => {
+    setSelectedImages(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
   // Handle Redeem Fitur Video
@@ -1699,17 +1747,18 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                     <form onSubmit={handleSaveProduct} className="space-y-6">
                       {/* 1. SEKTOR MEDIA (SIDE BY SIDE) */}
                       <div className="grid grid-cols-2 gap-4">
-                        <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-sky-500 transition-all cursor-pointer relative h-36 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-sky-50'}`}>
-                          <input type="file" accept="image/*" onChange={(e) => handleMediaChange(e, 'image')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                          {mediaType === 'image' && mediaPreview ? (
-                            <img src={mediaPreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
-                          ) : (
-                            <>
-                              <ImageIcon size={28} className="mb-2 text-sky-600" />
-                              <span className="text-xs font-bold">Upload Foto</span>
-                            </>
-                          )}
-                        </div>
+                        {selectedImages.length < 3 ? (
+                          <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-sky-500 transition-all cursor-pointer relative h-36 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-sky-50'}`}>
+                            <input type="file" multiple accept="image/*" onChange={(e) => handleMediaChange(e, 'image')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                            <ImageIcon size={28} className="mb-2 text-sky-600" />
+                            <span className="text-xs font-bold">Tambah Foto ({selectedImages.length}/3)</span>
+                          </div>
+                        ) : (
+                          <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 h-36 ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
+                            <CheckCircle size={28} className="mb-2 text-green-500" />
+                            <span className="text-xs font-bold text-green-500">Maksimal (3/3)</span>
+                          </div>
+                        )}
 
                         {sellerInfo?.canUploadVideo ? (
                           <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-purple-500 transition-all cursor-pointer relative h-36 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-purple-50'}`}>
@@ -1730,6 +1779,24 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                           </div>
                         )}
                       </div>
+
+                      {/* Thumbnail Preview Row */}
+                      {mediaType === 'image' && selectedImages.length > 0 && (
+                        <div className="flex gap-2 mt-3 overflow-x-auto pb-2 scrollbar-hide">
+                          {selectedImages.map((img, index) => (
+                            <div key={index} className="relative w-20 h-20 md:w-24 md:h-24 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 group shrink-0 shadow-sm">
+                              <img src={img.url} alt={`preview-${index}`} className="w-full h-full object-cover" />
+                              <button 
+                                type="button"
+                                onClick={() => handleRemoveImage(index)}
+                                className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold"
+                              >
+                                HAPUS
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* 2. LOGIKA KATEGORI & SUB-KATEGORI */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2585,17 +2652,18 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                   {/* Split Media Input */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Input Foto */}
-                    <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-sky-500 transition-all cursor-pointer relative h-32 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-300 bg-gray-50 hover:bg-sky-50'}`}>
-                      <input type="file" accept="image/*" onChange={(e) => handleMediaChange(e, 'image')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                      {mediaType === 'image' && mediaPreview ? (
-                        <img src={mediaPreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
-                      ) : (
-                        <>
-                          <ImageIcon size={24} className="mb-2 text-sky-600" />
-                          <span className="text-xs font-bold">Upload Foto</span>
-                        </>
-                      )}
-                    </div>
+                    {selectedImages.length < 3 ? (
+                      <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-sky-500 transition-all cursor-pointer relative h-32 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-300 bg-gray-50 hover:bg-sky-50'}`}>
+                        <input type="file" multiple accept="image/*" onChange={(e) => handleMediaChange(e, 'image')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                        <ImageIcon size={24} className="mb-2 text-sky-600" />
+                        <span className="text-xs font-bold">Tambah Foto ({selectedImages.length}/3)</span>
+                      </div>
+                    ) : (
+                      <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 h-32 ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
+                        <CheckCircle size={24} className="mb-2 text-green-500" />
+                        <span className="text-xs font-bold text-green-500">Maksimal (3/3)</span>
+                      </div>
+                    )}
 
                     {/* Input Video (Locked/Unlocked) */}
                     {sellerInfo?.canUploadVideo ? (
@@ -2617,6 +2685,24 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                       </div>
                     )}
                   </div>
+
+                  {/* Mobile Thumbnail Row */}
+                  {mediaType === 'image' && selectedImages.length > 0 && (
+                    <div className="flex gap-2 mt-2 overflow-x-auto pb-1 scrollbar-hide">
+                      {selectedImages.map((img, index) => (
+                        <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 shrink-0 shadow-sm">
+                          <img src={img.url} alt={`preview-${index}`} className="w-full h-full object-cover" />
+                          <button 
+                            type="button"
+                            onClick={() => handleRemoveImage(index)}
+                            className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 active:opacity-100 transition-opacity text-white text-[10px] font-bold"
+                          >
+                            HAPUS
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Dropdown Kategori */}
                   <div className="relative">
