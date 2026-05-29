@@ -11,6 +11,7 @@ export const ChatLayout = ({
   chatTab, 
   setChatTab, 
   chatSellerId, 
+  setChatSellerId,
   chatBuyerId,
   isSellerView,
   setIsChatMenuOpen, 
@@ -21,6 +22,7 @@ export const ChatLayout = ({
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sellerChatPartners, setSellerChatPartners] = useState([]);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -30,6 +32,32 @@ export const ChatLayout = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // --- LOGIKA FETCH LIST PARTNER PENJUAL (SISI PEMBELI) ---
+  useEffect(() => {
+    if (chatTab === 'seller' && !chatSellerId && user?.uid) {
+      setLoading(true);
+      const partnersRef = ref(db, `users/${user.uid}/chat_partners`);
+      const unsubscribe = onValue(partnersRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const list = Object.keys(data).map(key => ({ 
+            id: key, 
+            sellerId: key, 
+            ...data[key] 
+          }));
+          setSellerChatPartners(list.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
+        } else {
+          setSellerChatPartners([]);
+        }
+        setLoading(false);
+      }, (error) => {
+        console.error("Gagal ambil daftar partner:", error);
+        setLoading(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [chatTab, chatSellerId, user?.uid]);
 
   // LOGIKA 1 & 2: Pisahkan Alur Simpan & Filter Path Berdasarkan Tab Aktif
   const getChatConfig = () => {
@@ -42,23 +70,21 @@ export const ChatLayout = ({
         metaPath: `chats/${buyerId}`,
         roomId: buyerId
       };
-    } else {
-      // MATIKAN ENGINE SELLER: Return null agar tidak memicu query ke Firebase
+    } else if (chatTab === 'seller' && chatSellerId) {
+      const roomId = `${buyerId}_${chatSellerId}`;
       return {
-        messagesPath: null,
-        metaPath: null,
-        roomId: null
+        messagesPath: `chats/${roomId}/messages`,
+        metaPath: `seller_chats/${roomId}`,
+        roomId: roomId
       };
+    } else {
+      return { messagesPath: null, metaPath: null, roomId: null };
     }
   };
 
   // LOGIKA 3: Ambil Pesan Realtime Berdasarkan Path Sesuai Tab
   useEffect(() => {
-    if (chatTab === 'seller') {
-      setMessages([]);
-      setLoading(false);
-      return;
-    }
+    if (chatTab === 'seller' && !chatSellerId) return;
 
     setLoading(true);
     const config = getChatConfig();
@@ -85,15 +111,17 @@ export const ChatLayout = ({
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputText.trim() || chatTab !== 'admin') return;
+    if (!inputText.trim()) return;
 
     const config = getChatConfig();
+    if (!config.messagesPath) return;
+
     const messageData = {
       senderId: user.uid,
       senderName: user.displayName,
       text: inputText,
       timestamp: serverTimestamp(),
-      sender: 'user', // Identitas untuk Admin Panel
+      sender: chatTab === 'admin' ? 'user' : 'buyer', 
       status: 'sent'
     };
 
@@ -106,10 +134,25 @@ export const ChatLayout = ({
         userName: user.displayName,
         userPhoto: user.photoURL || '',
         userEmail: user.email,
-        hasUnreadAdmin: true // Notifikasi titik merah di Dashboard Admin
+        [chatTab === 'admin' ? 'hasUnreadAdmin' : 'hasUnreadSeller']: true 
       };
 
+      if (chatTab === 'seller' && chatSellerId) {
+        metaData.sellerId = chatSellerId;
+      }
+
       await update(ref(db, config.metaPath), metaData);
+
+      // Update Metadata di list partner pembeli (chat_partners)
+      if (chatTab === 'seller' && chatSellerId) {
+        const userPartnerPath = `users/${user.uid}/chat_partners/${chatSellerId}`;
+        await update(ref(db, userPartnerPath), {
+          lastMessageText: inputText,
+          lastMessageTime: serverTimestamp(),
+          sellerId: chatSellerId
+        });
+      }
+
       setInputText('');
     } catch (error) {
       console.error("Gagal kirim pesan:", error);
@@ -121,10 +164,20 @@ export const ChatLayout = ({
       {/* Header Chat */}
       <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-600 text-white'}`}>
         <div className="flex items-center gap-3">
-          {isMobile && <button onClick={onClose}><ChevronLeft size={24} /></button>}
+          {isMobile && (
+            <button onClick={() => {
+              if (chatTab === 'seller' && chatSellerId) {
+                setChatSellerId(null); // Balik ke list partner
+              } else {
+                onClose(); // Keluar ke Home
+              }
+            }}>
+              <ChevronLeft size={24} />
+            </button>
+          )}
           <div className="flex flex-col">
             <span className="font-bold text-sm">
-              {chatTab === 'admin' ? 'Customer Service' : 'Chat Penjual'}
+              {chatTab === 'admin' ? 'Customer Service' : (chatSellerId ? sellerChatPartners.find(p => p.sellerId === chatSellerId)?.storeName || 'Chat Penjual' : 'Kotak Masuk')}
             </span>
             <span className="text-[10px] opacity-80">Online</span>
           </div>
@@ -135,32 +188,48 @@ export const ChatLayout = ({
         </div>
       </div>
 
-      {/* Tab Switcher (Khusus Desktop) */}
-      {!isMobile && (
-        <div className={`flex border-b text-xs font-bold ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50'}`}>
-          <button 
-            onClick={() => setChatTab('admin')}
-            className={`flex-1 py-2 border-b-2 transition-all ${chatTab === 'admin' ? 'border-sky-500 text-sky-500' : 'border-transparent text-gray-400'}`}
-          >Bantuan Admin</button>
-          <button 
-            onClick={() => setChatTab('seller')}
-            className={`flex-1 py-2 border-b-2 transition-all ${chatTab === 'seller' ? 'border-sky-500 text-sky-500' : 'border-transparent text-gray-400'}`}
-          >Chat Penjual</button>
-        </div>
-      )}
+      {/* --- TAB NAVIGATION (MOBILE & DESKTOP) --- */}
+      <div className={`flex border-b text-xs font-bold ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50'}`}>
+        <button 
+          onClick={() => { setChatTab('admin'); setChatSellerId(null); }}
+          className={`flex-1 py-3 border-b-2 transition-all ${chatTab === 'admin' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-400'}`}
+        >Bantuan Admin</button>
+        <button 
+          onClick={() => setChatTab('seller')}
+          className={`flex-1 py-3 border-b-2 transition-all ${chatTab === 'seller' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-400'}`}
+        >Chat Penjual</button>
+      </div>
 
       {/* List Pesan */}
       <div className={`flex-1 overflow-y-auto p-4 custom-scrollbar ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-        {chatTab === 'seller' ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 opacity-70">
-            <div className="p-4 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full">
-              <Settings size={40} className="animate-spin" />
+        {chatTab === 'seller' && !chatSellerId ? (
+          loading ? (
+            <div className="flex justify-center py-10"><Loader2 className="animate-spin text-sky-500" /></div>
+          ) : sellerChatPartners.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+              <MessageCircle size={48} className="mb-2" />
+              <p className="text-sm font-bold">Belum ada percakapan dengan penjual.</p>
             </div>
-            <div>
-              <h4 className="font-black text-sm uppercase tracking-wider">Maintenance</h4>
-              <p className="text-xs mt-1">Fitur Chat Penjual sedang diperbaiki.<br/>Gunakan Bantuan Admin untuk sementara.</p>
+          ) : (
+            <div className="space-y-2">
+              {sellerChatPartners.map(partner => (
+                <div 
+                  key={partner.id} 
+                  onClick={() => setChatSellerId(partner.sellerId)}
+                  className={`p-4 rounded-2xl border flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98] ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-100 hover:bg-sky-50'}`}
+                >
+                  <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                    {partner.storePhoto ? <img src={partner.storePhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold uppercase">{partner.storeName?.charAt(0) || 'S'}</div>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm truncate">{partner.storeName || 'Penjual'}</h3>
+                    <p className="text-xs truncate text-gray-500 mt-0.5">{partner.lastMessageText || 'Klik untuk melihat pesan'}</p>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-300" />
+                </div>
+              ))}
             </div>
-          </div>
+          )
         ) : loading ? (
           <div className="flex justify-center py-10"><Loader2 className="animate-spin text-sky-500" /></div>
         ) : (
@@ -188,15 +257,15 @@ export const ChatLayout = ({
       </div>
 
       {/* Form Input */}
-      {chatTab === 'admin' && (
+      {(chatTab === 'admin' || (chatTab === 'seller' && chatSellerId)) && (
         <form onSubmit={handleSendMessage} className={`p-3 border-t flex gap-2 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
           <input 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ketik pesan untuk Admin..."
+            placeholder={`Ketik pesan untuk ${chatTab === 'admin' ? 'Admin' : 'Penjual'}...`}
             className={`flex-1 px-4 py-2 rounded-full text-sm outline-none ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-800'}`}
           />
-          <button type="submit" className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200"><Send size={20} /></button>
+          <button type="submit" disabled={!inputText.trim()} className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200 disabled:opacity-50"><Send size={20} /></button>
         </form>
       )}
     </div>

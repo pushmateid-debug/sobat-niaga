@@ -844,6 +844,7 @@ const Home = () => {
                   chatTab={chatTab}
                   setChatTab={setChatTab}
                   chatSellerId={chatSellerId}
+                  setChatSellerId={setChatSellerId}
                   isChatMenuOpen={isChatMenuOpen}
                   setIsChatMenuOpen={setIsChatMenuOpen}
                   playCustomNotificationSound={playCustomNotificationSound}
@@ -870,6 +871,7 @@ const Home = () => {
                   chatTab="seller"
                   chatBuyerId={activeChatBuyerId}
                   isSellerView={true}
+                  setChatSellerId={() => {}}
                   isChatMenuOpen={isChatMenuOpen}
                   setIsChatMenuOpen={setIsChatMenuOpen}
                   playCustomNotificationSound={playCustomNotificationSound}
@@ -1691,6 +1693,7 @@ const Home = () => {
                 chatTab={chatTab} 
                 setChatTab={setChatTab}
                 chatSellerId={chatSellerId}
+                setChatSellerId={setChatSellerId}
                 isChatMenuOpen={isChatMenuOpen} 
                 setIsChatMenuOpen={setIsChatMenuOpen} 
                 playCustomNotificationSound={playCustomNotificationSound}
@@ -1719,7 +1722,14 @@ const Home = () => {
             <span className="text-[10px] font-medium">Video</span>
           </button>
           
-          <button onClick={() => startTransition(() => setCurrentView('chat'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+          <button 
+            onClick={() => startTransition(() => { 
+              setChatSellerId(null); // Reset room aktif pas klik dari bawah
+              setChatTab('admin'); 
+              setCurrentView('chat'); 
+            })} 
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}
+          >
             <MessageCircle size={24} />
             <span className="text-[10px] font-medium">Chat</span>
           </button>
