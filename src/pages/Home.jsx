@@ -468,8 +468,16 @@ const Home = () => {
   };
 
   // --- LOGIKA PEMISAH CHAT RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
-  const handleChatClick = (sellerId) => {
-    setChatSellerId(sellerId); // Set ID seller yang mau di-chat
+  const handleChatClick = (sellerId, storeName = null, storePhoto = null) => {
+    setChatSellerId(sellerId);
+    // Simpan info toko sementara untuk inisialisasi metadata chat
+    if (storeName) {
+      const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
+      update(ref(db, `seller_chats/${roomId}`), {
+        storeName: storeName,
+        storePhoto: storePhoto || ''
+      });
+    }
     setChatTab(sellerId ? 'seller' : 'admin'); // Jika ada sellerId, chat seller. Jika tidak, chat admin.
 
     if (window.innerWidth >= 768) {

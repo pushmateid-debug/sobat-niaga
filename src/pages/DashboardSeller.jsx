@@ -166,11 +166,16 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       const unsubscribe = onValue(chatsRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          const loaded = Object.keys(data).map(key => ({
+          const loaded = Object.keys(data).map(key => {
+            const parts = key.split('_');
+            // buyerId adalah salah satu UID yang bukan UID seller saat ini
+            const bId = parts[0] === user.uid ? parts[1] : parts[0];
+            return {
               id: key,
-              buyerId: key.split('_')[0],
+              buyerId: bId,
               ...data[key]
-          }));
+            };
+          });
           setChatRooms(loaded.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
         } else {
           setChatRooms([]);
@@ -183,8 +188,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   // --- LOGIKA FETCH PESAN DALAM ROOM ---
   useEffect(() => {
     if (selectedBuyer && user?.uid) {
-      const roomId = `${selectedBuyer.buyerId}_${user.uid}`;
-      const msgsRef = ref(db, `chats/${roomId}/messages`);
+      const msgsRef = ref(db, `seller_chats/${selectedBuyer.id}/messages`);
       const unsubscribe = onValue(msgsRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
@@ -195,7 +199,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       });
 
       // Mark as Read (Seller side)
-      update(ref(db, `seller_chats/${roomId}`), { hasUnreadSeller: false });
+      update(ref(db, `seller_chats/${selectedBuyer.id}`), { hasUnreadSeller: false });
 
       return () => unsubscribe();
     }
@@ -841,7 +845,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     e.preventDefault();
     if (!replyText.trim() || !selectedBuyer) return;
 
-    const roomId = `${selectedBuyer.buyerId}_${user.uid}`;
+    const roomId = selectedBuyer.id;
     const msgData = {
       text: replyText,
       sender: 'seller',
@@ -850,7 +854,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     };
 
     try {
-      await push(ref(db, `chats/${roomId}/messages`), msgData);
+      await push(ref(db, `seller_chats/${roomId}/messages`), msgData);
       await update(ref(db, `seller_chats/${roomId}`), {
         lastMessageText: replyText,
         lastMessageTime: serverTimestamp(),

@@ -17,11 +17,14 @@ const SellerInbox = ({ user, onBack, onChatClick }) => {
     const unsubscribe = onValue(chatsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const loaded = Object.keys(data).map(key => ({
+        const loaded = Object.keys(data).map(key => {
+          const parts = key.split('_');
+          return {
             id: key,
-            buyerId: key.split('_')[0],
+            buyerId: parts[0] === user.uid ? parts[1] : parts[0],
             ...data[key]
-        }));
+          };
+        });
         setChatRooms(loaded.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
       } else {
         setChatRooms([]);

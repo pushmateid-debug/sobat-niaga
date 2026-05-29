@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, MessageCircle, X, MoreVertical, ChevronLeft, User, Loader2, Settings } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, push, onValue, serverTimestamp, update, query, limitToLast } from 'firebase/database';
+import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo } from 'firebase/database';
 
 export const ChatLayout = ({ 
   isMobile, 
@@ -37,13 +37,14 @@ export const ChatLayout = ({
   useEffect(() => {
     if (chatTab === 'seller' && !chatSellerId && user?.uid) {
       setLoading(true);
-      const partnersRef = ref(db, `users/${user.uid}/chat_partners`);
-      const unsubscribe = onValue(partnersRef, (snapshot) => {
+      // Query terpusat ke seller_chats dimana saya adalah pembelinya
+      const chatsRef = query(ref(db, 'seller_chats'), orderByChild('buyerId'), equalTo(user.uid));
+      const unsubscribe = onValue(chatsRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const list = Object.keys(data).map(key => ({ 
             id: key, 
-            sellerId: key, 
+            sellerId: data[key].sellerId, 
             ...data[key] 
           }));
           setSellerChatPartners(list.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
@@ -61,21 +62,30 @@ export const ChatLayout = ({
 
   // LOGIKA 1 & 2: Pisahkan Alur Simpan & Filter Path Berdasarkan Tab Aktif
   const getChatConfig = () => {
-    // KEMBALI KE PATH ASLI: Admin chat menggunakan UID user langsung sebagai Room ID
-    const buyerId = user.uid;
+    const currentId = user?.uid;
+    if (!currentId) return { messagesPath: null, metaPath: null, roomId: null };
     
     if (chatTab === 'admin') {
       return {
-        messagesPath: `chats/${buyerId}/messages`,
-        metaPath: `chats/${buyerId}`,
-        roomId: buyerId
+        messagesPath: `chats/${currentId}/messages`,
+        metaPath: `chats/${currentId}`,
+        roomId: currentId
       };
-    } else if (chatTab === 'seller' && chatSellerId) {
-      const roomId = `${buyerId}_${chatSellerId}`;
+    } else if (chatTab === 'seller') {
+      const partnerId = isSellerView ? chatBuyerId : chatSellerId;
+      if (!partnerId) return { messagesPath: null, metaPath: null, roomId: null };
+
+      // Logika konsisten: sort alfabetis UID tanpa prefix agar tidak menabrak rules 'chats' admin
+      const buyerId = isSellerView ? partnerId : currentId;
+      const sellerId = isSellerView ? currentId : partnerId;
+      const roomId = buyerId < sellerId ? `${buyerId}_${sellerId}` : `${sellerId}_${buyerId}`;
+
       return {
-        messagesPath: `chats/${roomId}/messages`,
+        messagesPath: `seller_chats/${roomId}/messages`,
         metaPath: `seller_chats/${roomId}`,
-        roomId: roomId
+        roomId: roomId,
+        buyerId,
+        sellerId
       };
     } else {
       return { messagesPath: null, metaPath: null, roomId: null };
@@ -84,11 +94,10 @@ export const ChatLayout = ({
 
   // LOGIKA 3: Ambil Pesan Realtime Berdasarkan Path Sesuai Tab
   useEffect(() => {
-    if (chatTab === 'seller' && !chatSellerId) return;
-
-    setLoading(true);
     const config = getChatConfig();
     if (!config.messagesPath) return;
+
+    setLoading(true);
 
     const msgQuery = query(ref(db, config.messagesPath), limitToLast(50));
 
@@ -107,7 +116,7 @@ export const ChatLayout = ({
     });
 
     return () => unsubscribe();
-  }, [chatTab, user.uid]);
+  }, [chatTab, chatSellerId, chatBuyerId, user?.uid]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -121,37 +130,34 @@ export const ChatLayout = ({
       senderName: user.displayName,
       text: inputText,
       timestamp: serverTimestamp(),
-      sender: chatTab === 'admin' ? 'user' : 'buyer', 
+      sender: chatTab === 'admin' ? 'user' : (isSellerView ? 'seller' : 'buyer'), 
       status: 'sent'
     };
 
     try {
       await push(ref(db, config.messagesPath), messageData);
 
-      const metaData = {
+      const metaUpdate = {
         lastMessageText: inputText,
         lastMessageTime: serverTimestamp(),
-        userName: user.displayName,
-        userPhoto: user.photoURL || '',
-        userEmail: user.email,
-        [chatTab === 'admin' ? 'hasUnreadAdmin' : 'hasUnreadSeller']: true 
       };
 
-      if (chatTab === 'seller' && chatSellerId) {
-        metaData.sellerId = chatSellerId;
+      if (chatTab === 'admin') {
+        metaUpdate.userName = user.displayName;
+        metaUpdate.userPhoto = user.photoURL || '';
+        metaUpdate.userEmail = user.email;
+        metaUpdate.hasUnreadAdmin = true;
+      } else {
+        metaUpdate.sellerId = config.sellerId;
+        metaUpdate[isSellerView ? 'hasUnreadUser' : 'hasUnreadSeller'] = true;
+        // Jika pembeli yang kirim, update info pembeli untuk seller
+        if (!isSellerView) {
+          metaUpdate.userName = user.displayName;
+          metaUpdate.userPhoto = user.photoURL || '';
+        }
       }
 
-      await update(ref(db, config.metaPath), metaData);
-
-      // Update Metadata di list partner pembeli (chat_partners)
-      if (chatTab === 'seller' && chatSellerId) {
-        const userPartnerPath = `users/${user.uid}/chat_partners/${chatSellerId}`;
-        await update(ref(db, userPartnerPath), {
-          lastMessageText: inputText,
-          lastMessageTime: serverTimestamp(),
-          sellerId: chatSellerId
-        });
-      }
+      await update(ref(db, config.metaPath), metaUpdate);
 
       setInputText('');
     } catch (error) {

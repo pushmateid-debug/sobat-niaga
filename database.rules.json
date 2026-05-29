@@ -3,6 +3,11 @@
     ".read": "auth != null && auth.token.email == 'pushmate.id@gmail.com'",
     ".write": "auth != null && auth.token.email == 'pushmate.id@gmail.com'",
 
+    "app_config": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'pushmate.id@gmail.com'"
+    },
+
     "users": {
       ".indexOn": ["email", "sellerInfo/isVerifiedSeller", "role", "sellerInfo/isCompetitor"],
       ".read": "auth != null",
@@ -47,8 +52,17 @@
       }
     },
 
+    "seller_chats": {
+      ".indexOn": ["buyerId", "sellerId", "lastMessageTime"],
+      ".read": "auth != null && (query.orderByChild == 'buyerId' && query.equalTo == auth.uid || query.orderByChild == 'sellerId' && query.equalTo == auth.uid)",
+      "$roomId": {
+        ".read": "auth != null && $roomId.contains(auth.uid)",
+        ".write": "auth != null && $roomId.contains(auth.uid)"
+      }
+    },
+
     "notifications": {
-      ".indexOn": ["userId"],
+      ".indexOn": ["userId", "recipientId", "status", "createdAt"],
       ".read": "auth != null",
       ".write": "auth != null"
     },

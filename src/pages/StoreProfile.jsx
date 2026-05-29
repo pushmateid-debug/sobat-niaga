@@ -391,8 +391,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                     Semua Produk
                     {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-600 rounded-t-full"></div>}
                 </button>
-                <button 
-                    onClick={() => setActiveTab('best_seller')}
+                        <button
+                            onClick={() => onChatClick(sellerId, displayStoreName, displayPhoto)} 
                     className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'best_seller' ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'}`}
                 >
                     Terlaris
