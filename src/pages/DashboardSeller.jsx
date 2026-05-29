@@ -1457,8 +1457,12 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
   // Handle Back Button di Mobile
   const handleMobileBack = () => {
-    if (mobileView !== 'menu') {
+    if (mobileView === 'add_product' && editingProductId) {
+      handleCancelEdit(); // Clear form if editing
+      setMobileView('product_list'); // Go to product list after cancelling edit
+    } else if (mobileView !== 'menu') {
       setMobileView('menu');
+      setEditingProductId(null); // Pastikan clear state edit juga jika ada
     } else {
       onBack();
     }
@@ -2177,6 +2181,14 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       {/* --- MOBILE (Shopee Style Grid) --- */}
       {/* Bagian ini tetap dipertahankan untuk responsivitas HP (Hidden di md) */}
       <div className={`md:hidden flex-1 overflow-y-auto w-full md:flex-1 ${isVerifiedSeller ? 'block' : 'hidden'}`}>
+          {/* Header Mobile dengan Tombol Kembali */}
+          <div className={`sticky top-0 z-50 p-4 border-b flex items-center gap-4 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'} ${mobileView === 'menu' ? 'hidden' : 'flex'}`}>
+              <button onClick={handleMobileBack} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}>
+                  <ArrowLeft size={24} />
+              </button>
+              <h1 className={`text-xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{menuItems.find(item => item.id === mobileView)?.label || 'Dashboard Seller'}</h1>
+          </div>
+
           {/* ... (Seluruh UI Mobile Anda yang lama taruh di sini agar tidak hilang saat di buka di HP) ... */}
           {/* Gue tambahin pengecekan agar mobile tetap dapet Shopee-style lo yang keren */}
           <div className="max-w-7xl mx-auto px-6 py-4 space-y-6">
@@ -2283,7 +2295,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </div>
 
                 {/* 2. Order Status Row */}
-                <div className={`rounded-xl p-4 shadow-sm border mb-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                <div className={`rounded-xl p-4 shadow-sm border mb-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'menu' ? 'block' : 'hidden'}`}>
                     <div className="flex justify-between items-center mb-3">
                         <h3 className={`text-xs font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Status Pesanan</h3>
                         <button onClick={() => setMobileView('orders')} className="text-[10px] text-gray-500 flex items-center gap-1">Riwayat <ChevronRight size={12}/></button>
@@ -2312,7 +2324,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </div>
 
                 {/* 3. Main Menu Grid */}
-                <div className={`rounded-xl p-4 shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                <div className={`rounded-xl p-4 shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'menu' ? 'block' : 'hidden'}`}>
                     <h3 className={`text-xs font-bold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Menu Toko</h3>
                     <div className="grid grid-cols-4 gap-y-6 gap-x-2">
                         <button onClick={() => {
@@ -2332,7 +2344,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                     </div>
                 </div>
           </div>
-
+          {/* Konten Mobile Dinamis (Bukan Menu Utama) */}
             {/* --- SHARING RECAP VIEW (MOBILE) --- */}
             <div className={`space-y-4 ${mobileView === 'sharing_recap' ? 'block' : 'hidden'}`}>
               <div className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg"> <p className="text-xs opacity-80 uppercase font-bold">Total Klaim Hari Ini</p>
@@ -2370,7 +2382,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             </div>
 
             {/* 1. Mobile Finance View */}
-            <div className={`flex flex-col gap-4 ${mobileView === 'finance' ? 'block' : 'hidden'}`}>
+            <div className={`flex flex-col gap-4 animate-in fade-in duration-300 ${mobileView === 'finance' ? 'block' : 'hidden'}`}>
               {/* Card 1: Total Pendapatan */}
               <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                 <div>
@@ -2402,7 +2414,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
 
               {/* Card 2: Pesanan Masuk */}
-              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex animate-in fade-in duration-300'}`}>
                 <div>
                   <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Pesanan Masuk</p>
                   <h3 className={`text-xl md:text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{incomingOrdersCount} <span className="text-xs md:text-sm font-medium text-gray-400">Perlu Dikirim</span></h3>
@@ -2411,7 +2423,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
 
               {/* Card 3: Pengunjung Toko (Slot Kosong Diisi) */}
-              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex animate-in fade-in duration-300'}`}>
                 <div>
                   <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Pengunjung Toko</p>
                   <h3 className={`text-xl md:text-3xl font-extrabold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>0 <span className="text-xs md:text-sm font-medium text-gray-400">Orang</span></h3>
@@ -2420,7 +2432,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
 
               {/* Card 4: Poin Seller */}
-              <div className={`p-4 md:p-5 rounded-2xl shadow-md border-2 flex flex-col justify-between relative overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-sky-900' : 'bg-white border-sky-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-md border-2 flex flex-col justify-between relative overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-sky-900' : 'bg-white border-sky-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:flex animate-in fade-in duration-300'}`}>
                 <div className="flex justify-between items-start w-full mb-3">
                   <div>
                     <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Poin Seller</p>
@@ -2481,7 +2493,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
 
               {/* Card 5: Informasi Pembayaran Toko (New) */}
-              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden md:flex'}`}>
+              <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden md:flex animate-in fade-in duration-300'}`}>
                 <div>
                   <div className="flex justify-between items-start">
                     <p className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">Rekening Pencairan</p>
@@ -2500,7 +2512,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
           </div>
 
             {/* 2. Mobile Stats View */}
-            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden'}`}>
+            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors animate-in fade-in duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden'}`}>
               {/* Mobile Header for Stats (Visible only on Mobile) */}
               {mobileView === 'stats' && (
                 <div className="flex flex-col items-center mb-6 md:hidden">
