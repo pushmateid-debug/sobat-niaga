@@ -5,7 +5,7 @@ import { db } from '../config/firebase';
 import { ref, push, query, orderByChild, equalTo, onValue, get, update } from 'firebase/database';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
+const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChatWithProduct }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
 
@@ -249,8 +249,8 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                 {activeTab === 'about' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Operated By */}
-                        <div className={`flex items-center justify-between p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
-                            <div className="flex items-center gap-2">
+                        <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
+                            <div className="flex items-center gap-2 mb-3">
                                 <div className={`w-8 h-8 rounded-full border overflow-hidden flex items-center justify-center ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200'}`}>
                                     <Store size={16} className={isDarkMode ? 'text-gray-500' : 'text-gray-400'} />
                                 </div>
@@ -259,12 +259,20 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                                     <h3 className={`font-bold text-xs ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => onVisitStore(product.sellerId)}
-                                className={`px-3 py-1.5 border rounded-full text-[10px] font-bold transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-300 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                            >
-                                Kunjungi
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => onVisitStore(product.sellerId)}
+                                    className={`flex-1 py-2 border rounded-xl text-[10px] font-bold transition-colors text-center ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-300 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'} w-1/2`}
+                                >
+                                    Kunjungi Toko
+                                </button>
+                                <button
+                                    onClick={() => onChatWithProduct(realtimeProduct || product)}
+                                    className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1.5 ${isDarkMode ? 'bg-sky-600 text-white hover:bg-sky-700 shadow-sm' : 'bg-sky-50 text-sky-600 border border-sky-200 hover:bg-sky-100 shadow-sm'} w-1/2`}
+                                >
+                                    <MessageCircle size={14} /> Chat Penjual
+                                </button>
+                            </div>
                         </div>
 
                         {/* Description */}

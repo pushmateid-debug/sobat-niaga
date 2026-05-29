@@ -2132,9 +2132,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                         <div className="flex-1 overflow-y-auto p-4 space-y-4">
                           {chatMessages.map((msg, idx) => (
                             <div key={idx} className={`flex ${msg.sender === 'seller' ? 'justify-end' : 'justify-start'}`}>
-                               <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'seller' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800 border border-gray-100') + ' rounded-tl-none'}`}>
                                <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'seller' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800 border border-gray-100') + ' rounded-tl-none'}`}>
-                                  {/* ATTACHED PRODUCT CARD (SELLER VIEW) */}
+                                   {/* ATTACHED PRODUCT CARD */}
                                   {msg.attachedProduct && (
                                     <div className={`mb-2 p-2 rounded-xl border flex gap-3 ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
                                       <img src={msg.attachedProduct.image} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" alt="" />
@@ -2144,6 +2143,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                                       </div>
                                     </div>
                                   )}
+                                  {/* END ATTACHED PRODUCT CARD */}
+
                                   {msg.text}
                                   <p className={`text-[9px] mt-1 text-right ${msg.sender === 'seller' ? 'text-sky-100' : 'text-gray-400'}`}>
                                     {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}

@@ -303,7 +303,21 @@ export const ChatLayout = ({
                       ? 'bg-sky-500 text-white rounded-tr-none' 
                       : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800') + ' rounded-tl-none'
                   }`}>
+                    {/* ATTACHED PRODUCT CARD */}
+                    {msg.attachedProduct && (
+                      <div className={`mb-2 p-2 rounded-xl border flex gap-3 ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+                        <img src={msg.attachedProduct.image} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" alt="" />
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className={`text-[10px] font-bold truncate ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{msg.attachedProduct.name}</p>
+                          <p className="text-[10px] text-sky-500 font-bold mt-1">Rp {parseInt(msg.attachedProduct.price || 0).toLocaleString('id-ID')}</p>
+                        </div>
+                      </div>
+                    )}
                     {msg.text}
+                    {/* Menampilkan Jam Pesan */}
+                    <p className={`text-[9px] mt-1 text-right ${msg.senderId === user.uid ? 'text-sky-100' : 'text-gray-400'}`}>
+                      {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                    </p>
                   </div>
                 </div>
               ))
