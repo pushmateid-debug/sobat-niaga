@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageCircle, X, MoreVertical, ChevronLeft, User, Loader2, Settings } from 'lucide-react';
+import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo } from 'firebase/database';
+import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get } from 'firebase/database';
 
 export const ChatLayout = ({ 
   isMobile, 
@@ -35,25 +35,25 @@ export const ChatLayout = ({
 
   // --- LOGIKA FETCH LIST PARTNER PENJUAL (SISI PEMBELI) ---
   useEffect(() => {
-    if (chatTab === 'seller' && !chatSellerId && user?.uid) {
+    const isInsideRoom = isSellerView ? !!chatBuyerId : !!chatSellerId;
+
+    if (chatTab === 'seller' && !isInsideRoom && user?.uid) {
       setLoading(true);
-      // Query terpusat ke seller_chats dimana saya adalah pembelinya
-      const chatsRef = query(ref(db, 'seller_chats'), orderByChild('buyerId'), equalTo(user.uid));
-      const unsubscribe = onValue(chatsRef, (snapshot) => {
+      // Ambil riwayat langsung dari index partner milik user
+      const partnersRef = ref(db, `users/${user.uid}/chat_partners`);
+      const unsubscribe = onValue(partnersRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const list = Object.keys(data).map(key => ({ 
             id: key, 
-            sellerId: data[key].sellerId, 
             ...data[key] 
           }));
-          setSellerChatPartners(list.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
+          setSellerChatPartners(list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
         } else {
           setSellerChatPartners([]);
         }
         setLoading(false);
       }, (error) => {
-        console.error("Gagal ambil daftar partner:", error);
         setLoading(false);
       });
       return () => unsubscribe();
@@ -116,7 +116,7 @@ export const ChatLayout = ({
     });
 
     return () => unsubscribe();
-  }, [chatTab, chatSellerId, chatBuyerId, user?.uid]);
+  }, [chatTab, chatSellerId, chatBuyerId, user?.uid, isSellerView]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -158,6 +158,34 @@ export const ChatLayout = ({
       }
 
       await update(ref(db, config.metaPath), metaUpdate);
+
+      // SYNC RIWAYAT CHAT (Double-Sided Indexing)
+      const partnerId = isSellerView ? config.buyerId : config.sellerId;
+      const now = Date.now();
+
+      // 1. Update riwayat di sisi SAYA
+      const myUpdate = {
+        lastMessage: inputText,
+        timestamp: now
+      };
+      
+      if (isSellerView) {
+        myUpdate.partnerName = metaUpdate.userName || 'Pembeli';
+        myUpdate.partnerPhoto = metaUpdate.userPhoto || '';
+      } else {
+        const roomSnap = await get(ref(db, config.metaPath));
+        myUpdate.partnerName = roomSnap.val()?.storeName || 'Toko';
+        myUpdate.partnerPhoto = roomSnap.val()?.storePhoto || '';
+      }
+      await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), myUpdate);
+
+      // 2. Update riwayat di sisi LAWAN (Inbox mereka)
+      await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), {
+        partnerName: user.displayName || 'User',
+        partnerPhoto: user.photoURL || '',
+        lastMessage: inputText,
+        timestamp: now
+      });
 
       setInputText('');
     } catch (error) {
@@ -208,7 +236,8 @@ export const ChatLayout = ({
 
       {/* List Pesan */}
       <div className={`flex-1 overflow-y-auto p-4 custom-scrollbar ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-        {chatTab === 'seller' && !chatSellerId ? (
+        {/* FIX BLANK SCREEN (Problem 2): Cek apakah sedang melihat list inbox atau isi chat */}
+        {chatTab === 'seller' && !chatSellerId && !isSellerView ? (
           loading ? (
             <div className="flex justify-center py-10"><Loader2 className="animate-spin text-sky-500" /></div>
           ) : sellerChatPartners.length === 0 ? (
@@ -221,15 +250,15 @@ export const ChatLayout = ({
               {sellerChatPartners.map(partner => (
                 <div 
                   key={partner.id} 
-                  onClick={() => setChatSellerId(partner.sellerId)}
+                  onClick={() => setChatSellerId(partner.id)}
                   className={`p-4 rounded-2xl border flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98] ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-100 hover:bg-sky-50'}`}
                 >
                   <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-                    {partner.storePhoto ? <img src={partner.storePhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold uppercase">{partner.storeName?.charAt(0) || 'S'}</div>}
+                    {partner.partnerPhoto || partner.storePhoto ? <img src={partner.partnerPhoto || partner.storePhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold uppercase">{(partner.partnerName || partner.storeName)?.charAt(0) || 'S'}</div>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm truncate">{partner.storeName || 'Penjual'}</h3>
-                    <p className="text-xs truncate text-gray-500 mt-0.5">{partner.lastMessageText || 'Klik untuk melihat pesan'}</p>
+                    <h3 className="font-bold text-sm truncate">{partner.partnerName || partner.storeName || 'Penjual'}</h3>
+                    <p className="text-xs truncate text-gray-500 mt-0.5">{partner.lastMessage || 'Klik untuk melihat pesan'}</p>
                   </div>
                   <ChevronRight size={16} className="text-gray-300" />
                 </div>
@@ -242,7 +271,7 @@ export const ChatLayout = ({
           <div className="space-y-3">
             {messages.length === 0 ? (
               <div className="text-center py-10 text-gray-400 text-xs italic">
-                Belum ada percakapan. Silakan tulis pesan untuk bantuan Admin.
+                Belum ada percakapan. Silakan kirim pesan untuk memulai.
               </div>
             ) : (
               messages.map((msg) => (

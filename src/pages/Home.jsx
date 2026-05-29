@@ -474,8 +474,18 @@ const Home = () => {
     if (storeName) {
       const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
       update(ref(db, `seller_chats/${roomId}`), {
+        buyerId: user.uid,
+        sellerId: sellerId,
         storeName: storeName,
         storePhoto: storePhoto || ''
+      });
+      // Daftarkan di riwayat chat pembeli (Inbox Index) agar riwayat muncul di tab 'Chat Penjual'
+      update(ref(db, `users/${user.uid}/chat_partners/${sellerId}`), {
+        partnerId: sellerId,
+        partnerName: storeName,
+        partnerPhoto: storePhoto || '',
+        lastMessage: 'Memulai chat...',
+        timestamp: Date.now()
       });
     }
     setChatTab(sellerId ? 'seller' : 'admin'); // Jika ada sellerId, chat seller. Jika tidak, chat admin.
