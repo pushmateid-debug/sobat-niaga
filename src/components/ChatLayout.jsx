@@ -180,7 +180,7 @@ export const ChatLayout = ({
       await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), myUpdate);
 
       // 2. Update riwayat di sisi LAWAN (Inbox mereka)
-      await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), {
+      await update(ref(db, `users/${partnerId}/chat_partners/${user.uid}`), {
         partnerName: user.displayName || 'User',
         partnerPhoto: user.photoURL || '',
         lastMessage: inputText,
@@ -292,12 +292,12 @@ export const ChatLayout = ({
       </div>
 
       {/* Form Input */}
-      {(chatTab === 'admin' || (chatTab === 'seller' && chatSellerId)) && (
+      {(chatTab === 'admin' || (chatTab === 'seller' && (chatSellerId || (isSellerView && chatBuyerId)))) && (
         <form onSubmit={handleSendMessage} className={`p-3 border-t flex gap-2 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
           <input 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={`Ketik pesan untuk ${chatTab === 'admin' ? 'Admin' : 'Penjual'}...`}
+            placeholder={chatTab === 'admin' ? "Ketik pesan untuk Admin..." : (isSellerView ? "Ketik balasan untuk pelanggan..." : "Ketik pesan untuk Penjual...")}
             className={`flex-1 px-4 py-2 rounded-full text-sm outline-none ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-800'}`}
           />
           <button type="submit" disabled={!inputText.trim()} className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200 disabled:opacity-50"><Send size={20} /></button>
