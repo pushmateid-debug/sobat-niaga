@@ -2133,6 +2133,17 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                           {chatMessages.map((msg, idx) => (
                             <div key={idx} className={`flex ${msg.sender === 'seller' ? 'justify-end' : 'justify-start'}`}>
                                <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'seller' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800 border border-gray-100') + ' rounded-tl-none'}`}>
+                               <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'seller' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800 border border-gray-100') + ' rounded-tl-none'}`}>
+                                  {/* ATTACHED PRODUCT CARD (SELLER VIEW) */}
+                                  {msg.attachedProduct && (
+                                    <div className={`mb-2 p-2 rounded-xl border flex gap-3 ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+                                      <img src={msg.attachedProduct.image} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" alt="" />
+                                      <div className="flex-1 min-w-0 text-left">
+                                        <p className={`text-[10px] font-bold truncate ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{msg.attachedProduct.name}</p>
+                                        <p className="text-[10px] text-sky-500 font-bold mt-1">Rp {parseInt(msg.attachedProduct.price).toLocaleString('id-ID')}</p>
+                                      </div>
+                                    </div>
+                                  )}
                                   {msg.text}
                                   <p className={`text-[9px] mt-1 text-right ${msg.sender === 'seller' ? 'text-sky-100' : 'text-gray-400'}`}>
                                     {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}

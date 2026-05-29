@@ -3,8 +3,12 @@ import { ArrowLeft, Minus, Plus, ShoppingCart, Share2, Star, CheckCircle, MapPin
 import Swal from 'sweetalert2';
 import { db } from '../config/firebase';
 import { ref, push, query, orderByChild, equalTo, onValue, get, update } from 'firebase/database';
+import { useTheme } from '../context/ThemeContext';
 
 const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
+  const { theme } = useTheme();
+  const isDarkMode = theme === 'dark';
+
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [reviews, setReviews] = useState([]);
@@ -170,7 +174,7 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
   if (!product) return null;
 
   return (
-    <div className="min-h-screen pb-24 font-sans transition-colors duration-300 bg-white">
+    <div className={`min-h-screen pb-24 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
         {/* Image Section with Navigation */}
         <div className="relative w-full h-[45vh] md:h-[50vh] bg-gray-100 overflow-hidden group">
             <img src={displayImage} alt={name} className="w-full h-full object-cover" />
@@ -200,22 +204,22 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
             )}
         </div>
 
-        <div className="max-w-5xl mx-auto px-4 -mt-8 relative z-20 bg-white rounded-t-3xl pt-5 md:mt-0 md:rounded-none md:pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <div className={`max-w-5xl mx-auto px-4 -mt-8 relative z-20 rounded-t-3xl pt-5 md:mt-0 md:rounded-none md:pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
             
             {/* Title & Add to Cart */}
             <div className="flex justify-between items-start gap-3 mb-3">
                 <div className="flex-1">
-                    <h1 className="text-lg font-bold text-gray-900 leading-snug font-sans">{name}</h1>
+                    <h1 className={`text-lg font-bold leading-snug font-sans ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
                     <div className="flex items-center gap-1 mt-1">
                         <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                        <span className="text-xs font-bold text-gray-700">{rating}</span>
+                        <span className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{rating}</span>
                         <span className="text-xs text-gray-400">({reviews.length} ulasan)</span>
                     </div>
                 </div>
                 <button 
                     onClick={() => !isMyProduct && handleAddToCart(false)} 
                     disabled={isAdding || isMyProduct}
-                    className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${isMyProduct ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
+                    className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${isMyProduct ? (isDarkMode ? 'bg-slate-800 text-gray-600' : 'bg-gray-100 text-gray-400') : 'bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
                     title={isMyProduct ? "Ini barang dagangan Anda" : "Tambah ke Keranjang"}
                 >
                     {isAdding ? <span className="animate-spin text-xs">...</span> : (isMyProduct ? <X size={20} /> : <ShoppingCart size={20} />)}
@@ -223,13 +227,13 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-gray-100 mb-4">
+            <div className={`flex border-b mb-4 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
                 {['about', 'gallery', 'review'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={`flex-1 pb-2 text-xs font-bold capitalize transition-all relative ${
-                            activeTab === tab ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'
+                            activeTab === tab ? 'text-sky-600' : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600')
                         }`}
                     >
                         {tab}
@@ -245,19 +249,19 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                 {activeTab === 'about' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Operated By */}
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <div className={`flex items-center justify-between p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-gray-50 border-gray-100'}`}>
                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
-                                    <Store size={16} className="text-gray-400" />
+                                <div className={`w-8 h-8 rounded-full border overflow-hidden flex items-center justify-center ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200'}`}>
+                                    <Store size={16} className={isDarkMode ? 'text-gray-500' : 'text-gray-400'} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-gray-500">Operated by</p>
-                                    <h3 className="font-bold text-gray-900 text-xs">{storeName}</h3>
+                                    <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>Operated by</p>
+                                    <h3 className={`font-bold text-xs ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
                                 </div>
                             </div>
                             <button 
                                 onClick={() => onVisitStore(product.sellerId)}
-                                className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-[10px] font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                className={`px-3 py-1.5 border rounded-full text-[10px] font-bold transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-300 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 Kunjungi
                             </button>
@@ -265,11 +269,11 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
 
                         {/* Description */}
                         <div>
-                            <h3 className="font-bold text-gray-900 text-sm mb-1">Description</h3>
-                            <div className={`text-xs text-gray-600 leading-relaxed relative ${!isDescExpanded ? 'max-h-[3.6em] overflow-hidden' : ''}`}>
+                            <h3 className={`font-bold text-sm mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>Description</h3>
+                            <div className={`text-xs leading-relaxed relative ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} ${!isDescExpanded ? 'max-h-[3.6em] overflow-hidden' : ''}`}>
                                 {description}
                                 {!isDescExpanded && (
-                                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent"></div>
+                                    <div className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${isDarkMode ? 'from-slate-900' : 'from-white'} to-transparent`}></div>
                                 )}
                             </div>
                             <button 
@@ -304,18 +308,18 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
                             <p className="text-gray-500 text-center py-10 italic text-sm">Belum ada ulasan.</p>
                         ) : (
                             reviews.map((review, idx) => (
-                                <div key={idx} className="flex gap-4 border-b border-gray-50 pb-4 last:border-0">
-                                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                                        {review.buyerPhoto ? <img src={review.buyerPhoto} alt="Buyer" className="w-full h-full object-cover" /> : <User size={20} className="m-2 text-gray-400" />}
+                                <div key={idx} className={`flex gap-4 border-b pb-4 last:border-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-50'}`}>
+                                    <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${isDarkMode ? 'bg-slate-800' : 'bg-gray-200'}`}>
+                                        {review.buyerPhoto ? <img src={review.buyerPhoto} alt="Buyer" className="w-full h-full object-cover" /> : <User size={20} className={`m-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`} />}
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-bold text-gray-800">{maskName(review.buyerName)}</p>
+                                        <p className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{maskName(review.buyerName)}</p>
                                         <div className="flex items-center gap-1 mt-0.5 mb-1">
                                             {[...Array(5)].map((_, i) => (
                                                 <Star key={i} size={10} className={`${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
                                             ))}
                                         </div>
-                                        <p className="text-sm text-gray-600">{review.comment}</p>
+                                        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{review.comment}</p>
                                     </div>
                                 </div>
                             ))
@@ -326,16 +330,16 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore }) => {
         </div>
 
         {/* Sticky Bottom Bar */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-3 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <div className={`fixed bottom-0 left-0 right-0 border-t px-4 py-3 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
             <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
                 <div>
-                    <p className="text-[10px] text-gray-400">Total Harga</p>
+                    <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Total Harga</p>
                     <h2 className="text-xl font-bold text-sky-600 font-sans">Rp {displayPrice}</h2>
                 </div>
                 <button 
                     onClick={() => !isMyProduct && handleAddToCart(true)}
                     disabled={isMyProduct}
-                    className={`flex-1 max-w-[180px] h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200'}`}
+                    className={`flex-1 max-w-[180px] h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200')}`}
                 >
                     {isMyProduct ? 'Ini Barang Anda' : 'Beli Sekarang'}
                 </button>

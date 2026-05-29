@@ -502,6 +502,59 @@ const Home = () => {
     }
   };
 
+  // --- LOGIKA CHAT BAWA PRODUK (ATTACH PRODUCT TO CHAT) ---
+  const handleChatWithProduct = async (productData) => {
+    if (!user) {
+      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
+      return;
+    }
+
+    const sellerId = productData.sellerId;
+    const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
+    
+    try {
+      // 1. Kirim pesan otomatis dengan lampiran produk ke room chat
+      const messagesRef = ref(db, `seller_chats/${roomId}/messages`);
+      await push(messagesRef, {
+        senderId: user.uid,
+        senderName: user.displayName || 'Buyer',
+        text: `Halo, saya tertarik dengan produk ini.`,
+        timestamp: serverTimestamp(),
+        sender: 'buyer',
+        status: 'sent',
+        attachedProduct: {
+          id: productData.id,
+          name: productData.name,
+          price: productData.price,
+          image: productData.mediaUrl || productData.image || 'https://via.placeholder.com/150'
+        }
+      });
+
+      // 2. Inisialisasi/Update metadata room agar muncul di inbox
+      await update(ref(db, `seller_chats/${roomId}`), {
+        buyerId: user.uid,
+        userName: user.displayName || '',
+        userPhoto: user.photoURL || '',
+        userEmail: user.email || '',
+        sellerId: sellerId,
+        storeName: productData.storeName || 'Toko',
+        lastMessageText: `Halo, saya tertarik dengan produk ini.`,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadSeller: true
+      });
+
+      // 3. Navigasi & Buka Chat
+      setChatSellerId(sellerId);
+      setChatTab('seller');
+      if (window.innerWidth >= 768) {
+        setIsDesktopChatOpen(true);
+        setIsProductModalOpen(false); 
+      } else {
+        startTransition(() => setCurrentView('chat'));
+      }
+    } catch (err) { console.error("Gagal attach produk:", err); }
+  };
+
   const scrollToSection = (name) => {
     if (name === 'Lainnya') {
       startTransition(() => { setCurrentView('all-categories'); });
@@ -801,6 +854,7 @@ const Home = () => {
           onBack={() => startTransition(() => setCurrentView(previousView))} 
           onGoToCart={() => startTransition(() => setCurrentView('cart'))} 
           user={user} 
+          onChatWithProduct={handleChatWithProduct}
           onVisitStore={handleVisitStore} 
         />
       );
@@ -1691,6 +1745,7 @@ const Home = () => {
         product={selectedModalProduct} 
         onClose={() => setIsProductModalOpen(false)} 
         user={user} 
+        onChatWithProduct={handleChatWithProduct}
         onGoToCart={() => startTransition(() => { setIsProductModalOpen(false); setCurrentView('cart'); })}
         onVisitStore={handleVisitStore}
       />
