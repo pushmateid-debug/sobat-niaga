@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle, LayoutDashboard } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -33,6 +33,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [isVerifiedSeller, setIsVerifiedSeller] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard'); // State untuk Sidebar Desktop
   const [sellerInfo, setSellerInfo] = useState(null);
   
   // State Produk & Form
@@ -82,6 +83,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const isFirstLoad = useRef(true);
   const isCompetitorRef = useRef(false); // Ref untuk akses status di dalam listener
 
+  // LOGIKA GABUNG RIWAYAT PENARIKAN (PENDING + SUKSES)
+  const combinedWithdrawals = useMemo(() => {
+    const pending = pendingWithdrawals.map(p => ({ ...p, status: 'pending' }));
+    const success = withdrawals.map(w => ({ ...w, status: 'success' }));
+    return [...pending, ...success].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [pendingWithdrawals, withdrawals]);
+
   // LOGIKA GABUNG PESANAN (AUTO-GROUP)
   const groupedOrders = useMemo(() => {
     const groups = [];
@@ -123,8 +131,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const [qrisFile, setQrisFile] = useState(null);
   const [qrisPreview, setQrisPreview] = useState(null);
   const [editingProductId, setEditingProductId] = useState(null); // State Mode Edit
+  const [orderFilter, setOrderFilter] = useState('processed'); // 'all' | 'processed'
   const [selectedWithdrawalProof, setSelectedWithdrawalProof] = useState(null); // State Modal Bukti Transfer
   const [mobileView, setMobileView] = useState('menu'); // 'menu', 'add_product', 'product_list', 'finance', 'stats', 'orders'
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false); // Default collapsed di HP
   const [chartFilter, setChartFilter] = useState('1W'); // '1D', '1W', '1M', 'ALL'
@@ -132,6 +142,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [sharingHistory, setSharingHistory] = useState([]);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [chatRooms, setChatRooms] = useState([]); // State List Chat Pelanggan
+  const [selectedBuyer, setSelectedBuyer] = useState(null); // Chat yang sedang dibuka
+  const [chatMessages, setChatMessages] = useState([]); // Isi pesan room
+  const [replyText, setReplyText] = useState(''); // Input balesan seller
+  const chatMessagesEndRef = useRef(null);
   const [videoFile, setVideoFile] = useState(null);
   const [videoDesc, setVideoDesc] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -143,6 +158,56 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // --- LOGIKA FETCH LIST CHAT PELANGGAN (REALTIME) ---
+  useEffect(() => {
+    if (activeTab === 'messages' && user?.uid) {
+      const chatsRef = realQuery(ref(db, 'seller_chats'), orderByChild('sellerId'), equalTo(user.uid));
+      const unsubscribe = onValue(chatsRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loaded = Object.keys(data).map(key => ({
+              id: key,
+              buyerId: key.split('_')[0],
+              ...data[key]
+          }));
+          setChatRooms(loaded.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0)));
+        } else {
+          setChatRooms([]);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [activeTab, user?.uid]);
+
+  // --- LOGIKA FETCH PESAN DALAM ROOM ---
+  useEffect(() => {
+    if (selectedBuyer && user?.uid) {
+      const roomId = `${selectedBuyer.buyerId}_${user.uid}`;
+      const msgsRef = ref(db, `chats/${roomId}/messages`);
+      const unsubscribe = onValue(msgsRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          setChatMessages(Object.values(data).sort((a, b) => a.timestamp - b.timestamp));
+        } else {
+          setChatMessages([]);
+        }
+      });
+
+      // Mark as Read (Seller side)
+      update(ref(db, `seller_chats/${roomId}`), { hasUnreadSeller: false });
+
+      return () => unsubscribe();
+    }
+  }, [selectedBuyer, user?.uid]);
+
+  // Auto Scroll Chat
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
+
 
   // Load data seller saat komponen di-mount
   useEffect(() => {
@@ -447,11 +512,14 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
         Swal.fire({ icon: 'success', title: 'Produk Ditambahkan!', timer: 1500, showConfirmButton: false });
       }
 
-      // Reset Form
+      // Reset Form & Kembalikan ke List Produk
       setProductForm({ name: '', description: '', price: '', stock: '', category: 'Niaga Food', subCategory: '', skinProblem: '', estimation: '', serviceType: '', voucherCode: '', voucherAmount: '', isActive: true });
       setMediaFile(null);
       setMediaPreview(null);
       setMediaType('image');
+      
+      setActiveTab('product_list');
+      setMobileView('product_list');
 
     } catch (error) {
       Swal.fire({ icon: 'error', title: 'Gagal', text: error.message });
@@ -484,6 +552,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     setMediaType(product.mediaType || 'image');
     setMediaFile(null);
     
+    // Otomatis Alihkan ke Menu Tambah Produk (Form)
+    setActiveTab('add_product');
+    setMobileView('add_product');
+
     // Scroll ke atas biar user sadar form sudah terisi
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -762,6 +834,30 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     } finally {
       setIsUploadingVideo(false);
     }
+  };
+
+  // Fungsi Balas Chat
+  const handleSendReply = async (e) => {
+    e.preventDefault();
+    if (!replyText.trim() || !selectedBuyer) return;
+
+    const roomId = `${selectedBuyer.buyerId}_${user.uid}`;
+    const msgData = {
+      text: replyText,
+      sender: 'seller',
+      timestamp: serverTimestamp(),
+      status: 'sent'
+    };
+
+    try {
+      await push(ref(db, `chats/${roomId}/messages`), msgData);
+      await update(ref(db, `seller_chats/${roomId}`), {
+        lastMessageText: replyText,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadUser: true // Kasih tau buyer ada pesan
+      });
+      setReplyText('');
+    } catch (err) { console.error(err); }
   };
 
   // Handle Hapus Produk
@@ -1428,42 +1524,662 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     }
   };
 
+  // Sidebar Menu Items Configuration
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { id: 'messages', label: 'Pesan Pelanggan', icon: <MessageCircle size={20} /> },
+    { id: 'add_product', label: 'Tambah Produk', icon: <PlusSquare size={20} /> },
+    { id: 'product_list', label: 'Produk Saya', icon: <Package size={20} /> },
+    { id: 'orders', label: 'Pesanan Masuk', icon: <ShoppingBag size={20} />, badge: incomingOrdersCount },
+    { id: 'finance', label: 'Rekening Pencairan', icon: <CreditCard size={20} /> },
+    { id: 'withdrawals', label: 'Riwayat Penarikan', icon: <Wallet size={20} /> },
+  ];
+
   return (
-    <div className={`h-[100dvh] overflow-hidden flex flex-col justify-start pb-20 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-[#F8FAFC]'}`}>
-      {/* Header Biru Muda - Konsisten */}
-      {mobileView !== 'stats' && (
-      <div className={`shadow-sm sticky top-0 z-50 border-b transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-100 border-sky-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button onClick={window.innerWidth < 768 ? handleMobileBack : onBack} className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-sky-600'}`}>
-              <ArrowLeft size={24} />
-            </button>
-            <div className="flex items-center gap-2 flex-1">
-              <h1 className={`text-lg md:text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-                {mobileView === 'menu' ? (sellerInfo?.storeName || 'Toko Anda') : 
-                 mobileView === 'add_product' ? 'Tambah Produk' :
-                 mobileView === 'product_list' ? 'Produk Saya' :
-                 mobileView === 'finance' ? 'Keuangan' :
-                 mobileView === 'sharing_recap' ? 'Rekap Bantuan' :
-                 mobileView === 'stats' ? 'Statistik' : 'Pesanan'}
-              </h1>
-              {sellerInfo?.isTrustedSeller && <CheckCircle size={20} className="text-blue-500 fill-blue-100" />}
+    <div className={`h-[100dvh] flex overflow-hidden font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-[#F8FAFC] text-slate-800'}`}>
+      
+      {/* --- SIDEBAR DESKTOP --- */}
+      <aside className={`hidden md:flex flex-col w-72 h-full border-r transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+        {/* Logo & Store Name Area */}
+        <div className="p-6 border-b border-gray-100 dark:border-slate-700">
+          <h1 className="text-2xl font-black text-sky-600 tracking-tighter">SobatNiaga</h1>
+          <div className="mt-4 flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-gray-100 dark:border-slate-700">
+            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 font-bold">
+              {sellerInfo?.storeName?.charAt(0) || 'S'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold opacity-50 uppercase tracking-wider">Toko Saya</p>
+              <h3 className="font-bold text-sm truncate">{sellerInfo?.storeName || 'Store'}</h3>
             </div>
           </div>
         </div>
+
+        {/* Menu List Area */}
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                if (item.action) {
+                  item.action();
+                } else {
+                  // Jika klik 'Tambah Produk' secara manual dari sidebar, bersihkan form edit agar bersih
+                  if (item.id === 'add_product' && editingProductId) handleCancelEdit();
+                  setActiveTab(item.id);
+                }
+              }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all group ${
+                activeTab === item.id 
+                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-200 dark:shadow-none' 
+                  : (isDarkMode ? 'text-slate-400 hover:bg-slate-700 hover:text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-sky-600')
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {item.icon}
+                <span>{item.label}</span>
+              </div>
+              {item.badge > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-gray-100 dark:border-slate-700">
+          <button onClick={onBack} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
+            <ArrowLeft size={20} />
+            <span>Keluar Dashboard</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* --- MAIN CONTENT AREA --- */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
+        
+        {/* Content Header (Mobile Friendly Header) */}
+        <header className={`flex items-center justify-between px-6 py-4 border-b md:bg-transparent ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+           <div className="flex items-center gap-4">
+              <button onClick={onBack} className="md:hidden p-2 rounded-lg bg-gray-100 dark:bg-slate-700">
+                <ArrowLeft size={20} />
+              </button>
+              <h2 className="text-xl font-bold">
+                {menuItems.find(m => m.id === activeTab)?.label || 'Seller Panel'}
+              </h2>
+           </div>
+           <div className="flex items-center gap-3">
+              {sellerInfo?.isTrustedSeller && <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full border border-blue-100 dark:border-blue-800 text-[10px] font-black uppercase tracking-wider"><CheckCircle size={14}/> Verified Seller</div>}
+           </div>
+        </header>
+
+        {/* Dynamic Content Switcher */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          {!isVerifiedSeller ? (
+            <SellerVerification user={user} onVerificationSuccess={handleVerificationSuccess} />
+          ) : (
+            <div className="max-w-6xl mx-auto space-y-8">
+              
+              {/* 1. DASHBOARD VIEW */}
+              {activeTab === 'dashboard' && (
+                <div className="space-y-8 animate-in fade-in duration-500">
+                  {/* Row 1: Ringkasan Hari Ini */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card Saldo */}
+                    <div className={`p-6 rounded-2xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Saldo Virtual (Rekber)</p>
+                       <div className="space-y-2">
+                          <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Tertahan:</span> <span className="font-bold text-orange-500 text-sm">Rp {saldoTertahan.toLocaleString()}</span></div>
+                          <div className="flex justify-between items-end"><span className="text-xs text-gray-500">Siap Cair:</span> <span className="font-black text-green-600 text-xl">Rp {saldoSiapCair.toLocaleString()}</span></div>
+                       </div>
+                       <button onClick={handleRequestWithdrawal} className="w-full mt-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none">Tarik Saldo</button>
+                    </div>
+                    {/* Card Pesanan */}
+                    <div className={`p-6 rounded-2xl border shadow-sm flex flex-col justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pesanan Masuk</p>
+                       <h3 className="text-3xl font-black mt-2">{incomingOrdersCount}</h3>
+                       <p className="text-xs text-gray-500 font-medium">Perlu dikirimkan segera</p>
+                    </div>
+                    {/* Card Poin */}
+                    <div className={`p-6 rounded-2xl border shadow-sm flex flex-col justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Poin Seller</p>
+                       <h3 className="text-3xl font-black text-sky-500 mt-2">{points}</h3>
+                       <div className="w-full bg-gray-100 dark:bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-yellow-400 h-full" style={{width: `${Math.min(points, 100)}%`}}></div></div>
+                    </div>
+                    {/* Card Pengunjung */}
+                    <div className={`p-6 rounded-2xl border shadow-sm flex flex-col justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pengunjung Toko</p>
+                       <h3 className="text-3xl font-black mt-2">0</h3>
+                       <p className="text-xs text-gray-500 font-medium">Statistik kunjungan toko</p>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Grafik Penjualan */}
+                  <div className={`p-6 rounded-3xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="flex justify-between items-center mb-6">
+                       <h3 className="font-bold text-lg flex items-center gap-2"><TrendingUp size={20} className="text-sky-500"/> Tren Penjualan</h3>
+                       <div className="flex gap-2">
+                          <button onClick={() => handleDatePreset('week')} className="px-3 py-1 text-[10px] font-bold rounded-lg bg-gray-100 dark:bg-slate-700">Minggu Ini</button>
+                          <button onClick={() => handleDatePreset('month')} className="px-3 py-1 text-[10px] font-bold rounded-lg bg-gray-100 dark:bg-slate-700">Bulan Ini</button>
+                       </div>
+                    </div>
+                    <div className="h-80 w-full">
+                      <Line options={chartOptions} data={chartData} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. TAMBAH PRODUK VIEW */}
+              {activeTab === 'add_product' && (
+                <div className="max-w-3xl animate-in slide-in-from-right-4 duration-300">
+                  <div className={`p-6 md:p-8 rounded-3xl border shadow-sm transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className={`text-xl font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                            {editingProductId ? <Edit size={22} className="text-orange-500" /> : <PlusSquare size={22} className="text-sky-600" />} 
+                            {editingProductId ? `Edit: ${productForm.name}` : 'Tambah Produk Baru'}
+                        </h3>
+                        {editingProductId && <button onClick={handleCancelEdit} className="text-xs text-red-500 font-bold hover:underline">Batal Edit</button>}
+                    </div>
+                    
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800 mb-6 flex gap-3">
+                        <Info className="text-amber-600 shrink-0" size={20} />
+                        <p className="text-xs text-amber-800 dark:text-amber-300">Minimal harga Rp10.000 untuk menutupi biaya admin marketplace.</p>
+                    </div>
+
+                    <form onSubmit={handleSaveProduct} className="space-y-6">
+                      {/* 1. SEKTOR MEDIA (SIDE BY SIDE) */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-sky-500 transition-all cursor-pointer relative h-36 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-sky-50'}`}>
+                          <input type="file" accept="image/*" onChange={(e) => handleMediaChange(e, 'image')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                          {mediaType === 'image' && mediaPreview ? (
+                            <img src={mediaPreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                          ) : (
+                            <>
+                              <ImageIcon size={28} className="mb-2 text-sky-600" />
+                              <span className="text-xs font-bold">Upload Foto</span>
+                            </>
+                          )}
+                        </div>
+
+                        {sellerInfo?.canUploadVideo ? (
+                          <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:border-purple-500 transition-all cursor-pointer relative h-36 ${isDarkMode ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-purple-50'}`}>
+                            <input type="file" accept="video/*" onChange={(e) => handleMediaChange(e, 'video')} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                            {mediaType === 'video' && mediaPreview ? (
+                              <video src={mediaPreview} className="w-full h-full object-cover rounded-lg" controls />
+                            ) : (
+                              <>
+                                <Video size={28} className="mb-2 text-purple-600" />
+                                <span className="text-xs font-bold">Upload Video</span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 h-36 cursor-not-allowed ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
+                            <Lock size={28} className="mb-2" />
+                            <span className="text-xs font-bold">Video Terkunci</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. LOGIKA KATEGORI & SUB-KATEGORI */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Kategori Utama</label>
+                          <select 
+                            value={productForm.category} 
+                            onChange={e => setProductForm({...productForm, category: e.target.value, subCategory: '', skinProblem: ''})}
+                            className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none appearance-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+                          >
+                            <option value="Niaga Food">Niaga Food</option>
+                            <option value="Skin Care">Skin Care</option>
+                            <option value="Fashion">Fashion</option>
+                            <option value="Isi Pulsa">Isi Pulsa</option>
+                            <option value="Game">Top Up Game</option>
+                            <option value="Jasa">Jasa</option>
+                          </select>
+                        </div>
+
+                        {/* Dynamic Sub-Category based on Category Selection */}
+                        {productForm.category === 'Niaga Food' && (
+                          <div className="space-y-1 animate-in fade-in duration-300">
+                            <label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sub-Kategori Makanan</label>
+                            <select value={productForm.subCategory} onChange={e => setProductForm({...productForm, subCategory: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}>
+                              <option value="">Pilih...</option>
+                              <option value="Ayam">Ayam</option><option value="Minuman">Minuman</option><option value="Snack">Snack</option><option value="Mie">Mie</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {productForm.category === 'Skin Care' && (
+                          <div className="space-y-1 animate-in fade-in duration-300">
+                            <label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Jenis Produk Skincare</label>
+                            <select value={productForm.subCategory} onChange={e => setProductForm({...productForm, subCategory: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}>
+                              <option value="">Pilih...</option>
+                              <option value="Face Wash / Sabun">Face Wash / Sabun</option><option value="Serum / Essence">Serum / Essence</option><option value="Moisturizer / Cream">Moisturizer / Cream</option><option value="Sunscreen">Sunscreen</option><option value="Kosmetik / Makeup">Kosmetik / Makeup</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {productForm.category === 'Fashion' && (
+                          <div className="space-y-1 animate-in fade-in duration-300">
+                            <label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Sub-Kategori Fashion</label>
+                            <select value={productForm.subCategory} onChange={e => setProductForm({...productForm, subCategory: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}>
+                              <option value="">Pilih...</option>
+                              <option value="Pria">Pria</option><option value="Wanita">Wanita</option><option value="Hijab">Hijab</option><option value="Sepatu">Sepatu</option><option value="Aksesoris">Aksesoris</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {productForm.category === 'Game' && (
+                          <div className="space-y-1 animate-in fade-in duration-300">
+                            <label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Pilih Game</label>
+                            <select value={productForm.subCategory} onChange={e => setProductForm({...productForm, subCategory: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}>
+                              <option value="">Pilih...</option>
+                              <option value="Mobile Legends">Mobile Legends</option><option value="Free Fire">Free Fire</option><option value="Valorant">Valorant</option><option value="PUBG Mobile">PUBG Mobile</option><option value="Genshin Impact">Genshin Impact</option><option value="Arena of Valor">Arena of Valor</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3. DETAIL INFORMASI PRODUK */}
+                      <div className="space-y-4">
+                        <div className="space-y-1"><label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Nama Produk</label><input required type="text" placeholder="Nama Produk" value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1"><label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Harga (Rp)</label><input required type="number" placeholder="0" value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} /></div>
+                          <div className="space-y-1"><label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{productForm.category === 'Jasa' ? "Kuota Antrean" : "Stok"}</label><input required type="number" placeholder="0" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} /></div>
+                        </div>
+                        <div className="space-y-1"><label className={`text-xs font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deskripsi Singkat</label><textarea required placeholder="Jelaskan produkmu..." value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} className={`w-full px-4 py-3 rounded-xl border text-sm focus:border-sky-500 outline-none resize-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} rows="3"></textarea></div>
+                      </div>
+
+                      {/* VOUCHER DISKON SECTION */}
+                      <div className={`p-5 rounded-2xl border space-y-4 ${isDarkMode ? 'bg-orange-900/10 border-orange-900/30' : 'bg-orange-50/50 border-orange-100'}`}>
+                        <p className="text-sm font-bold text-orange-700 flex items-center gap-2"><Tag size={18}/> Buat Voucher Diskon (Opsional)</p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1"><label className="text-[10px] font-bold text-orange-600 uppercase">Kode Voucher</label><input type="text" placeholder="MISAL: DISKON5RB" value={productForm.voucherCode} onChange={e => setProductForm({...productForm, voucherCode: e.target.value.toUpperCase()})} className={`w-full px-4 py-2.5 rounded-lg border text-sm uppercase focus:border-orange-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-orange-200'}`} /></div>
+                          <div className="space-y-1"><label className="text-[10px] font-bold text-orange-600 uppercase">Potongan (Rp)</label><input type="number" placeholder="0" value={productForm.voucherAmount} onChange={e => setProductForm({...productForm, voucherAmount: e.target.value})} className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:border-orange-500 outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-orange-200'}`} /></div>
+                        </div>
+                      </div>
+
+                      {/* 4. STATUS PENGONTROL & AKSI UTAMA */}
+                      <div className={`flex items-center justify-between p-4 rounded-2xl border transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div><p className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Status Produk</p><p className="text-[10px] text-gray-500">{productForm.isActive ? 'Produk Tampil di Toko' : 'Produk Disembunyikan'}</p></div>
+                        <button type="button" onClick={() => setProductForm({...productForm, isActive: !productForm.isActive})} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ${productForm.isActive ? 'bg-green-500' : 'bg-gray-300'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${productForm.isActive ? 'translate-x-6' : 'translate-x-1'}`} /></button>
+                      </div>
+
+                      <button disabled={isUploading} type="submit" className={`w-full py-4 rounded-2xl font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-200/50 transition-all flex items-center justify-center gap-2 active:scale-[0.98] ${isUploading ? 'opacity-70 cursor-wait' : ''}`}>
+                        {isUploading ? <Loader2 size={24} className="animate-spin" /> : <><Plus size={24} /> {editingProductId ? 'Update Produk' : 'Simpan Produk'}</>}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. PRODUK ANDA VIEW */}
+              {activeTab === 'product_list' && (
+                <div className="animate-in slide-in-from-right-4 duration-300">
+                   {/* Render Kolom Kanan (List Produk) kesini */}
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {products.map(prod => (
+                        <div key={prod.id} className={`p-4 rounded-2xl border flex gap-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                           <img src={prod.mediaUrl} className="w-20 h-20 rounded-xl object-cover" alt="" />
+                           <div className="flex-1">
+                              <h4 className="font-bold text-sm line-clamp-1">{prod.name}</h4>
+                              <p className="text-sky-600 font-bold">Rp {parseInt(prod.price).toLocaleString()}</p>
+                              <p className="text-xs text-gray-400">Stok: {prod.stock}</p>
+                              <div className="flex gap-2 mt-2">
+                                 <button onClick={() => handleEditClick(prod)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-slate-700"><Edit size={14}/></button>
+                                 <button onClick={() => handleDeleteProduct(prod.id)} className="p-1.5 rounded-lg bg-red-50 text-red-500"><Trash2 size={14}/></button>
+                              </div>
+                           </div>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+              )}
+
+              {/* 4. PESANAN MASUK VIEW */}
+              {activeTab === 'orders' && (
+                <div className="animate-in slide-in-from-bottom-4 duration-300">
+                  <div className={`rounded-3xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="p-6 border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                       <h3 className="font-bold text-lg">Manajemen Order</h3>
+                       <div className={`flex p-1 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
+                          <button 
+                            onClick={() => setOrderFilter('processed')}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${orderFilter === 'processed' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            Perlu Diproses ({incomingOrdersCount})
+                          </button>
+                          <button 
+                            onClick={() => setOrderFilter('all')}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${orderFilter === 'all' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            Semua Pesanan
+                          </button>
+                       </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left relative">
+                            <thead className={`font-bold sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-200' : 'bg-gray-50 text-gray-600'}`}>
+                                <tr>
+                                    <th className="px-6 py-4">ID Pemesanan</th>
+                                    <th className="px-6 py-4">Pembeli</th>
+                                    <th className="px-6 py-4">Produk</th>
+                                    <th className="px-6 py-4">Status</th>
+                                    <th className="px-6 py-4">Total</th>
+                                    <th className="px-6 py-4">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700 text-gray-300' : 'divide-gray-100'}`}>
+                                {(() => {
+                                    const displayOrders = orderFilter === 'processed' 
+                                        ? groupedOrders.filter(o => o.status === 'processed')
+                                        : groupedOrders;
+                                    
+                                    if (displayOrders.length === 0) {
+                                        return (
+                                            <tr>
+                                                <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                                                    <div className="flex flex-col items-center justify-center opacity-40">
+                                                        <Package size={48} className="mb-2" />
+                                                        <p className="font-bold">Belum ada pesanan {orderFilter === 'processed' ? 'yang perlu diproses' : ''}.</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+
+                                    return displayOrders.map(order => {
+                                        const isJasa = order.mergedItems.some(i => i.category === 'Jasa');
+                                        const isNiagaFoodOrder = order.mergedItems.some(i => i.category === 'Niaga Food');
+                                        return (
+                                            <tr key={order.id} className={`hover:transition-colors ${isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-gray-50'}`}>
+                                                <td className="px-6 py-4 font-medium text-xs">#{order.id.slice(-6).toUpperCase()}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-[10px] font-bold">
+                                                            {order.buyerName?.charAt(0) || 'U'}
+                                                        </div>
+                                                        <span className="font-bold">{order.buyerName}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="space-y-1">
+                                                        {order.mergedItems.map((item, idx) => (
+                                                            <div key={idx} className="text-xs">
+                                                                <span className={`font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
+                                                                <span className="text-sky-500 font-black ml-1">(x{item.quantity})</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {getOrderStatusBadge(order.status)}
+                                                </td>
+                                                <td className="px-6 py-4 font-bold text-sky-600">
+                                                    Rp {order.totalPrice.toLocaleString('id-ID')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex gap-2">
+                                                        {order.status === 'processed' ? (
+                                                            isNiagaFoodOrder ? (
+                                                                <button onClick={() => handleAcceptFoodOrder(order.orderIds)} className="text-white bg-green-600 px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-green-700 transition-colors shadow-sm">Terima & Masak</button>
+                                                            ) : (
+                                                                <button onClick={() => handleProcessOrder(order.orderIds, isJasa)} className="text-white bg-sky-600 px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-sky-700 transition-colors shadow-sm">{isJasa ? 'Tandai Selesai' : 'Proses & Kirim'}</button>
+                                                            )
+                                                        ) : (
+                                                            <button className="p-1.5 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-500 hover:text-sky-600 transition-colors">
+                                                                <Eye size={14}/>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    });
+                                })()}
+                            </tbody>
+                        </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 5. REKENING & FINANSIAL */}
+              {activeTab === 'finance' && (
+                <div className="max-w-2xl animate-in slide-in-from-right-4 duration-300">
+                   <div className={`p-8 rounded-3xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                      <h3 className="text-2xl font-bold mb-2">Info Pencairan Dana</h3>
+                      <p className="text-sm text-gray-500 mb-8 leading-relaxed">Admin SobatNiaga akan mentransfer hasil jualan Anda ke rekening di bawah ini setiap Anda melakukan penarikan saldo.</p>
+                      
+                      <form onSubmit={handleSavePaymentSettings} className="space-y-5">
+                         <div className="space-y-2">
+                            <label className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload QRIS Toko (Opsional)</label>
+                            <div className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer relative h-48 transition-all ${isDarkMode ? 'border-slate-600 bg-slate-900/50 hover:bg-slate-700' : 'border-gray-200 bg-gray-50 hover:bg-white hover:border-sky-400'}`}>
+                              <input type="file" accept="image/*" onChange={handleQrisChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                              {qrisPreview ? (
+                                <img src={qrisPreview} alt="QRIS Preview" className="h-full object-contain drop-shadow-md" />
+                              ) : (
+                                <div className="text-gray-400 flex flex-col items-center">
+                                  <QrCode size={48} className="mb-3 opacity-20" />
+                                  <span className="text-xs font-bold">Ketuk untuk upload file QRIS</span>
+                                </div>
+                              )}
+                            </div>
+                         </div>
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><label className="text-xs font-bold opacity-50 uppercase">Nama Bank/E-Wallet</label><input type="text" placeholder="BCA/Dana/Gopay" value={paymentForm.bankName} onChange={e => setPaymentForm({...paymentForm, bankName: e.target.value})} className={`w-full p-3 rounded-xl border outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200 focus:border-sky-500'}`} required /></div>
+                            <div className="space-y-1"><label className="text-xs font-bold opacity-50 uppercase">Atas Nama</label><input type="text" placeholder="Sesuai Buku Tabungan" value={paymentForm.accountHolder} onChange={e => setPaymentForm({...paymentForm, accountHolder: e.target.value})} className={`w-full p-3 rounded-xl border outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200 focus:border-sky-500'}`} required /></div>
+                         </div>
+                         <div className="space-y-1"><label className="text-xs font-bold opacity-50 uppercase">Nomor Rekening/HP</label><input type="number" placeholder="123456789" value={paymentForm.bankAccount} onChange={e => setPaymentForm({...paymentForm, bankAccount: e.target.value})} className={`w-full p-3 rounded-xl border outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200 focus:border-sky-500'}`} required /></div>
+                         <button disabled={isUploading} type="submit" className={`w-full py-4 bg-sky-600 text-white font-bold rounded-2xl shadow-xl shadow-sky-200 transition-all hover:bg-sky-700 active:scale-[0.98] ${isDarkMode ? 'shadow-none' : ''}`}>
+                            {isUploading ? <Loader2 size={24} className="animate-spin mx-auto" /> : 'Simpan Info Pembayaran'}
+                         </button>
+                      </form>
+                   </div>
+                </div>
+              )}
+
+              {/* 6. RIWAYAT PENARIKAN */}
+              {activeTab === 'withdrawals' && (
+                 <div className="animate-in slide-in-from-right-4 duration-300">
+                    <div className={`rounded-3xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <div className="p-6 border-b flex justify-between items-center">
+                           <h3 className="font-bold text-lg">Log Penarikan Dana</h3>
+                           <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                              Total Cair: Rp {withdrawals.reduce((acc, curr) => acc + parseInt(curr.amount || 0), 0).toLocaleString('id-ID')}
+                           </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left relative">
+                                <thead className={`font-bold sticky top-0 z-10 shadow-sm ${isDarkMode ? 'bg-slate-700 text-gray-200' : 'bg-gray-50 text-gray-600'}`}>
+                                    <tr>
+                                        <th className="px-6 py-4">Tanggal</th>
+                                        <th className="px-6 py-4">Nominal</th>
+                                        <th className="px-6 py-4">Metode</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        <th className="px-6 py-4 text-right">Bukti Transfer</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700 text-gray-300' : 'divide-gray-100'}`}>
+                                    {combinedWithdrawals.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                                                <div className="flex flex-col items-center justify-center opacity-40">
+                                                    <Wallet size={48} className="mb-2" />
+                                                    <p className="font-bold">Belum ada riwayat penarikan dana.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        combinedWithdrawals.map((wd) => (
+                                            <tr key={wd.id} className={`hover:transition-colors ${isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-gray-50'}`}>
+                                                <td className="px-6 py-4">
+                                                    <div className={`text-xs font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                                        {new Date(wd.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                                    </div>
+                                                    <div className="text-[10px] text-gray-400">
+                                                        {new Date(wd.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 font-bold text-green-600 whitespace-nowrap">
+                                                    Rp {parseInt(wd.amount || 0).toLocaleString('id-ID')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-xs font-medium">
+                                                        {wd.bankDetails?.bankName || wd.note || 'Transfer Bank'}
+                                                    </div>
+                                                    <div className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                                                        {wd.bankDetails?.bankAccount}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {wd.status === 'pending' ? (
+                                                        <span className="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Pending</span>
+                                                    ) : wd.status === 'success' ? (
+                                                        <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Berhasil</span>
+                                                    ) : (
+                                                        <span className="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Ditolak</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    {wd.status === 'success' && wd.proofUrl ? (
+                                                        <button 
+                                                            onClick={() => setSelectedWithdrawalProof(wd)}
+                                                            className="text-sky-600 hover:text-sky-700 text-xs font-bold flex items-center justify-end gap-1 w-full"
+                                                        >
+                                                            <ImageIcon size={14}/> Lihat Bukti
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[10px] text-gray-400 italic">Belum Ada</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                 </div>
+              )}
+
+              {/* 7. PESAN PELANGGAN VIEW (SPLIT PANEL) */}
+              {activeTab === 'messages' && (
+                <div className={`flex flex-col md:flex-row h-[calc(100dvh-160px)] rounded-3xl border overflow-hidden shadow-sm animate-in fade-in duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-100'}`}>
+                  
+                  {/* PANEL KIRI: LIST PELANGGAN (35%) */}
+                  <div className={`w-full md:w-[35%] border-r flex flex-col ${selectedBuyer ? 'hidden md:flex' : 'flex'} ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                    <div className={`p-5 border-b font-bold text-sm uppercase tracking-widest opacity-70 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                      Daftar Chat
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                      {chatRooms.length === 0 ? (
+                        <div className="p-10 text-center opacity-30">
+                          <MessageCircle size={48} className="mx-auto mb-2" />
+                          <p className="text-xs font-bold">Belum ada chat.</p>
+                        </div>
+                      ) : (
+                        chatRooms.map(room => (
+                          <div 
+                            key={room.id} 
+                            onClick={() => setSelectedBuyer(room)}
+                            className={`p-4 flex items-center gap-3 cursor-pointer border-b transition-all ${selectedBuyer?.id === room.id ? (isDarkMode ? 'bg-slate-800' : 'bg-sky-50') : (isDarkMode ? 'hover:bg-slate-800/50 border-slate-800' : 'hover:bg-gray-50 border-gray-50')}`}
+                          >
+                            <div className="w-11 h-11 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                               {room.userPhoto ? <img src={room.userPhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold">{room.userName?.charAt(0)}</div>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <div className="flex justify-between items-start">
+                                  <h4 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{room.userName}</h4>
+                                  {room.hasUnreadSeller && <div className="w-2.5 h-2.5 bg-sky-500 rounded-full shadow-lg shadow-sky-300 animate-pulse"></div>}
+                               </div>
+                               <p className={`text-xs truncate mt-0.5 ${room.hasUnreadSeller ? 'font-black text-sky-600' : 'text-gray-400'}`}>{room.lastMessageText || 'Klik untuk membalas'}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PANEL KANAN: CONVERSATION ROOM (65%) */}
+                  <div className={`flex-1 flex flex-col ${selectedBuyer ? 'flex' : 'hidden md:flex'} ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50/50'}`}>
+                    {selectedBuyer ? (
+                      <>
+                        {/* Room Header */}
+                        <div className={`p-4 border-b flex items-center gap-3 bg-white dark:bg-slate-800 shadow-sm z-10 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                           <button onClick={() => setSelectedBuyer(null)} className="md:hidden p-2 -ml-2"><ArrowLeft size={20}/></button>
+                           <div className="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                             {selectedBuyer.userPhoto ? <img src={selectedBuyer.userPhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-bold">{selectedBuyer.userName?.charAt(0)}</div>}
+                           </div>
+                           <div>
+                              <h3 className="font-bold text-sm">{selectedBuyer.userName}</h3>
+                              <p className="text-[10px] text-green-500 font-bold">Pelanggan</p>
+                           </div>
+                        </div>
+
+                        {/* Messages Area */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                          {chatMessages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.sender === 'seller' ? 'justify-end' : 'justify-start'}`}>
+                               <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'seller' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800 border border-gray-100') + ' rounded-tl-none'}`}>
+                                  {msg.text}
+                                  <p className={`text-[9px] mt-1 text-right ${msg.sender === 'seller' ? 'text-sky-100' : 'text-gray-400'}`}>
+                                    {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                                  </p>
+                               </div>
+                            </div>
+                          ))}
+                          <div ref={chatMessagesEndRef} />
+                        </div>
+
+                        {/* Reply Input */}
+                        <form onSubmit={handleSendReply} className={`p-4 bg-white dark:bg-slate-800 border-t flex gap-2 items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                          <input 
+                            type="text" 
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Ketik balasan..."
+                            className={`flex-1 px-5 py-2.5 rounded-full text-sm outline-none border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white focus:border-sky-500' : 'bg-gray-100 border-gray-200 focus:border-sky-500'}`}
+                          />
+                          <button 
+                            type="submit" 
+                            disabled={!replyText.trim()}
+                            className="p-2.5 bg-sky-600 text-white rounded-full hover:bg-sky-700 transition-all shadow-md active:scale-90 disabled:opacity-50 disabled:scale-100"
+                          >
+                            <Send size={18} />
+                          </button>
+                        </form>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
+                        <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${isDarkMode ? 'bg-slate-800 text-slate-600' : 'bg-gray-100 text-gray-300'}`}>
+                           <MessageCircle size={40} />
+                        </div>
+                        <h3 className={`text-lg font-bold ${isDarkMode ? 'text-slate-400' : 'text-gray-400'}`}>Room Chat Kosong</h3>
+                        <p className={`text-sm max-w-xs ${isDarkMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                          Pilih salah satu pelanggan di panel kiri untuk mulai membalas pesan mereka.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+            </div>
+          )}
+        </main>
       </div>
-      )}
 
-      <div className="flex-1 overflow-y-auto max-w-7xl mx-auto px-6 py-4 lg:p-6 space-y-4 md:space-y-6 w-full">
-        {/* Kondisi: Belum Verifikasi */}
-        {!isVerifiedSeller && (
-          <SellerVerification user={user} onVerificationSuccess={handleVerificationSuccess} />
-        )}
-
-        {/* Kondisi: Sudah Verifikasi */}
-        {isVerifiedSeller && (
-          <div className="space-y-6">
-
+      {/* --- MOBILE (Shopee Style Grid) --- */}
+      {/* Bagian ini tetap dipertahankan untuk responsivitas HP (Hidden di md) */}
+      <div className={`md:hidden flex-1 overflow-y-auto w-full ${isVerifiedSeller ? 'block' : 'hidden'}`}>
+          {/* ... (Seluruh UI Mobile Anda yang lama taruh di sini agar tidak hilang saat di buka di HP) ... */}
+          {/* Gue tambahin pengecekan agar mobile tetap dapet Shopee-style lo yang keren */}
+          <div className="max-w-7xl mx-auto px-6 py-4 space-y-6">
             {/* Banner Join Competition (Jika Belum Join) */}
             {statusKompetisi && !sellerInfo?.isCompetitor && (
               <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-700">
@@ -1533,8 +2249,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             </div>
             )}
 
-            {/* --- MOBILE DASHBOARD MENU (Shopee Style) --- */}
-            <div className={`md:hidden ${mobileView === 'menu' ? 'block' : 'hidden'}`}>
+            <div className={`${mobileView === 'menu' ? 'block' : 'hidden'}`}>
                 {/* 1. Header Card */}
                 <div className="bg-gradient-to-r from-sky-600 to-blue-600 rounded-xl p-4 text-white mb-4 shadow-lg relative overflow-hidden">
                     <div className="flex items-center gap-3 relative z-10">
@@ -1600,7 +2315,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 <div className={`rounded-xl p-4 shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <h3 className={`text-xs font-bold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Menu Toko</h3>
                     <div className="grid grid-cols-4 gap-y-6 gap-x-2">
-                        <button onClick={() => setMobileView('add_product')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><PlusSquare size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Tambah Produk</span></button>
+                        <button onClick={() => {
+                            if (editingProductId) handleCancelEdit();
+                            setMobileView('add_product');
+                        }} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><PlusSquare size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Tambah Produk</span></button>
                         <button onClick={() => setMobileView('product_list')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Package size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Produk Saya</span></button>
                         <button onClick={() => setMobileView('finance')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Wallet size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Keuangan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><BarChart2 size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Statistik</span></button>
@@ -1613,12 +2331,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                         <button className="flex flex-col items-center gap-2 cursor-default opacity-80"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500"><HelpCircle size={20}/></div><span className="text-[10px] font-medium text-center leading-tight text-gray-400">Bantuan</span></button>
                     </div>
                 </div>
-            </div>
+          </div>
 
             {/* --- SHARING RECAP VIEW (MOBILE) --- */}
             <div className={`space-y-4 ${mobileView === 'sharing_recap' ? 'block' : 'hidden'}`}>
-              <div className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg">
-                <p className="text-xs opacity-80 uppercase font-bold">Total Klaim Hari Ini</p>
+              <div className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg"> <p className="text-xs opacity-80 uppercase font-bold">Total Klaim Hari Ini</p>
                 <h3 className="text-3xl font-black mt-1">Rp {sharingHistory.reduce((acc, curr) => acc + (curr.price || 0), 0).toLocaleString()}</h3>
                 <p className="text-[10px] mt-2 bg-white/20 inline-block px-2 py-1 rounded-lg">Total {sharingHistory.length} Voucher</p>
               </div>
@@ -1652,9 +2369,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               <p className="text-[10px] text-gray-400 text-center px-4 italic">Dana bantuan akan dicairkan otomatis oleh Admin bersamaan dengan dana penjualan reguler.</p>
             </div>
 
-            {/* 1. Header Stats (Grid 2x2) */}
-            {/* Tampil di Mobile jika view='overview', Tampil Selalu di Desktop */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mobileView === 'finance' ? 'flex flex-col gap-4' : 'hidden md:grid'}`}>
+            {/* 1. Mobile Finance View */}
+            <div className={`flex flex-col gap-4 ${mobileView === 'finance' ? 'block' : 'hidden'}`}>
               {/* Card 1: Total Pendapatan */}
               <div className={`p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                 <div>
@@ -1781,11 +2497,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* 2. Grafik Penjualan (Bar Chart + Filter) */}
-            {/* Collapsible on Mobile */}
-            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden md:block'}`}>
-              
+            {/* 2. Mobile Stats View */}
+            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'stats' ? 'block' : 'hidden'}`}>
               {/* Mobile Header for Stats (Visible only on Mobile) */}
               {mobileView === 'stats' && (
                 <div className="flex flex-col items-center mb-6 md:hidden">
@@ -1816,34 +2531,14 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </div>
               )}
 
-              {/* Desktop Header (Visible only on Desktop) */}
-              <div className="hidden md:flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-sky-900 text-sky-300' : 'bg-sky-50 text-sky-600'}`}><TrendingUp size={20} /></div>
-                  <div>
-                    <h3 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Statistik Penjualan</h3>
-                    <p className="text-[10px] text-gray-400 flex items-center gap-1"><Info size={10}/> Grafik menampilkan Total Transaksi Masuk (Gross)</p>
-                  </div>
-                </div>
-                
-                {/* Desktop Date Filter */}
-                <div className="flex items-center gap-3">
-                  <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
-                    <button onClick={() => handleDatePreset('week')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${isDarkMode ? 'text-gray-300 hover:bg-slate-600' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>Minggu Ini</button>
-                    <button onClick={() => handleDatePreset('month')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${isDarkMode ? 'text-gray-300 hover:bg-slate-600' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>Bulan Ini</button>
-                  </div>
-                  <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 shadow-sm ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-200'}`}>
-                    <input type="date" value={dateRange.startDate} onChange={e => setDateRange({...dateRange, startDate: e.target.value})} className={`text-xs font-bold outline-none bg-transparent ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
-                    <span className="text-gray-400">-</span>
-                    <input type="date" value={dateRange.endDate} onChange={e => setDateRange({...dateRange, endDate: e.target.value})} className={`text-xs font-bold outline-none bg-transparent ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
-                  </div>
-                </div>
-              </div>
-
-              <div className={`h-64 md:h-80 w-full`}>
+              <div className={`h-64 w-full`}>
                 <Line options={chartOptions} data={chartData} />
               </div>
             </div>
+
+          {/* MOBILE CONTENT FOR OTHER VIEWS */}
+          <div className="md:hidden space-y-4">
+            {/* (Halaman tambah produk mobile, dll diposisikan di sini sesuai mobileView) */}
 
             {/* 3. Split Screen: Input Produk & List Produk */}
             <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6`}>
@@ -2123,10 +2818,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
             </div>
 
-            {/* 4. Row Bawah: Daftar Pesanan Masuk */}
-            <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'orders' ? 'block' : 'hidden md:block'}`}>
-              <div className={`p-4 md:p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
-                <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Pesanan Masuk Terbaru</h3>
+            {/* 4. Mobile Orders Table */}
+            <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'orders' ? 'block' : 'hidden'}`}>
+              <div className={`p-4 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Status Pesanan</h3>
+
                 <button className="text-sm text-sky-600 font-bold hover:underline">Lihat Semua</button>
               </div>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
@@ -2211,10 +2907,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
             </div>
 
-            {/* 5. Riwayat Penarikan Dana (Withdrawal History) */}
-            <div className={`rounded-2xl shadow-sm border overflow-hidden mt-6 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden md:block'}`}>
-              <div className={`p-4 md:p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
-                <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Riwayat Penarikan Dana</h3>
+            {/* 5. Mobile Withdrawal History */}
+            <div className={`rounded-2xl shadow-sm border overflow-hidden mt-6 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'finance' ? 'block' : 'hidden'}`}>
+              <div className={`p-4 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Log Penarikan</h3>
+
               </div> 
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
                 <table className="w-full text-sm text-left relative">
@@ -2228,23 +2925,38 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700 text-gray-300' : 'divide-gray-100'}`}>
-                    {withdrawals.length === 0 ? (
+                    {combinedWithdrawals.length === 0 ? (
                         <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Belum ada riwayat penarikan.</td></tr>
                     ) : (
-                        withdrawals.map(wd => (
+                        combinedWithdrawals.map(wd => (
                             <tr key={wd.id} className={`hover:transition-colors ${isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-gray-50'}`}>
-                                <td className="px-6 py-4">{new Date(wd.createdAt).toLocaleDateString('id-ID')}</td>
+                                <td className="px-6 py-4">
+                                  <div className="text-xs font-bold">{new Date(wd.createdAt).toLocaleDateString('id-ID')}</div>
+                                  <div className="text-[10px] text-gray-400">{new Date(wd.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                                </td>
                                 <td className="px-6 py-4 font-bold text-green-600">Rp {wd.amount.toLocaleString('id-ID')}</td>
                                 <td className="px-6 py-4">
                                   <span className={`px-2 py-1 rounded border text-xs font-bold ${isDarkMode ? 'bg-slate-600 border-slate-500 text-gray-300' : 'bg-gray-100 border-gray-200 text-gray-600'}`}>
-                                    {wd.note || 'Otomatis'}
+                                    {wd.bankDetails?.bankName || wd.note || 'Otomatis'}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Berhasil</span></td>
                                 <td className="px-6 py-4">
-                                    <button onClick={() => setSelectedWithdrawalProof(wd)} className="text-sky-600 hover:underline text-xs font-bold flex items-center gap-1">
-                                      <ImageIcon size={14}/> Lihat Bukti
-                                    </button>
+                                  {wd.status === 'pending' ? (
+                                      <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-[10px] font-bold">Pending</span>
+                                  ) : wd.status === 'success' ? (
+                                      <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-[10px] font-bold">Berhasil</span>
+                                  ) : (
+                                      <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[10px] font-bold">Ditolak</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    {wd.status === 'success' && wd.proofUrl ? (
+                                      <button onClick={() => setSelectedWithdrawalProof(wd)} className="text-sky-600 hover:underline text-xs font-bold flex items-center gap-1">
+                                        <ImageIcon size={14}/> Lihat Bukti
+                                      </button>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-400 italic">Belum Ada</span>
+                                    )}
                                 </td>
                             </tr>
                         ))
@@ -2254,9 +2966,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
             </div>
           </div>
-        )}
-      </div>
-
+        </div>
       {/* Modal Pengaturan Pembayaran */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
