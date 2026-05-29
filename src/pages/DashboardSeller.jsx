@@ -2081,7 +2081,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                   {/* PANEL KIRI: LIST PELANGGAN (35%) */}
                   <div className={`w-full md:w-[35%] border-r flex flex-col ${selectedBuyer ? 'hidden md:flex' : 'flex'} ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
                     <div className={`p-5 border-b font-bold text-sm uppercase tracking-widest opacity-70 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
-                      Daftar Chat
+                      Daftar Pesan Pelanggan
                     </div>
                     <div className="flex-1 overflow-y-auto">
                       {chatRooms.length === 0 ? (
@@ -2166,7 +2166,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${isDarkMode ? 'bg-slate-800 text-slate-600' : 'bg-gray-100 text-gray-300'}`}>
                            <MessageCircle size={40} />
                         </div>
-                        <h3 className={`text-lg font-bold ${isDarkMode ? 'text-slate-400' : 'text-gray-400'}`}>Room Chat Kosong</h3>
+                        <h3 className={`text-lg font-bold ${isDarkMode ? 'text-slate-400' : 'text-gray-400'}`}>Belum Ada Pesan Terpilih</h3>
                         <p className={`text-sm max-w-xs ${isDarkMode ? 'text-slate-600' : 'text-gray-400'}`}>
                           Pilih salah satu pelanggan di panel kiri untuk mulai membalas pesan mereka.
                         </p>

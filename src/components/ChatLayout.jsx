@@ -211,7 +211,11 @@ export const ChatLayout = ({
           )}
           <div className="flex flex-col">
             <span className="font-bold text-sm">
-              {chatTab === 'admin' ? 'Customer Service' : (chatSellerId ? sellerChatPartners.find(p => p.sellerId === chatSellerId)?.storeName || 'Chat Penjual' : 'Kotak Masuk')}
+              {chatTab === 'admin' 
+                ? 'Customer Service' 
+                : (isSellerView 
+                    ? (chatBuyerId ? sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerName || 'Chat Pelanggan' : 'Kotak Masuk')
+                    : (chatSellerId ? sellerChatPartners.find(p => p.id === chatSellerId)?.partnerName || 'Chat Penjual' : 'Kotak Masuk'))}
             </span>
             <span className="text-[10px] opacity-80">Online</span>
           </div>
@@ -231,13 +235,13 @@ export const ChatLayout = ({
         <button 
           onClick={() => setChatTab('seller')}
           className={`flex-1 py-3 border-b-2 transition-all ${chatTab === 'seller' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-400'}`}
-        >Chat Penjual</button>
+        >{isSellerView ? 'Chat Pelanggan' : 'Chat Penjual'}</button>
       </div>
 
       {/* List Pesan */}
       <div className={`flex-1 overflow-y-auto p-4 custom-scrollbar ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-        {/* FIX BLANK SCREEN (Problem 2): Cek apakah sedang melihat list inbox atau isi chat */}
-        {chatTab === 'seller' && !chatSellerId && !isSellerView ? (
+        {/* FIX BLANK SCREEN: Cek secara dinamis apakah ada partner chat yang aktif */}
+        {chatTab === 'seller' && !(isSellerView ? chatBuyerId : chatSellerId) ? (
           loading ? (
             <div className="flex justify-center py-10"><Loader2 className="animate-spin text-sky-500" /></div>
           ) : sellerChatPartners.length === 0 ? (
