@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisitStore }) => {
+const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisitStore, onChatClick, onChatWithProduct }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
@@ -71,6 +71,9 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
     voucherCode,
     voucherAmount
   } = product;
+
+  // Logic: Cek apakah user yang login adalah pemilik produk
+  const isOwner = user?.uid === sellerId;
 
   const handleFollow = async () => {
     if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
@@ -169,34 +172,6 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
           <X size={24} />
         </button>
 
-        {/* Top Right Action Buttons (Desktop Only) */}
-        <div className="absolute top-6 right-20 z-10 hidden md:flex items-center gap-2">
-            {user?.uid !== sellerId && (
-                <>
-                    <button
-                        onClick={handleFollow}
-                        disabled={followLoading}
-                        className={`px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-tighter transition-all active:scale-95 flex items-center gap-2 ${
-                            isFollowing
-                                ? (isDarkMode ? 'bg-slate-800 text-gray-300 border border-slate-700' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50')
-                                : 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700'
-                        }`}
-                    >
-                        {followLoading ? <Loader2 size={12} className="animate-spin" /> : (isFollowing ? <><Check size={12}/> Mengikuti</> : <><UserPlus size={12}/> Ikuti</>)}
-                    </button>
-                    <button
-                        onClick={handleChatInternal}
-                        className={`p-2 border rounded-full transition-all shadow-sm active:scale-95 ${
-                          isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-400 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                        }`}
-                        title="Chat Penjual"
-                    >
-                        <MessageCircle size={18} />
-                    </button>
-                </>
-            )}
-        </div>
-
         {/* Sisi Kiri: Konten Visual */}
         <div className={`w-full md:w-1/2 p-10 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b]/50' : 'bg-gray-50'}`}>
           {/* Frame Foto Utama Square 1:1 */}
@@ -224,8 +199,8 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
         </div>
 
         {/* Sisi Kanan: Konten Informasi */}
-        <div className={`w-full md:w-1/2 p-10 md:p-14 overflow-y-auto flex flex-col transition-colors duration-300 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          <div className="mb-auto">
+        <div className={`w-full md:w-1/2 flex flex-col transition-colors duration-300 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex-1 overflow-y-auto p-10 md:p-14 md:pb-6 scrollbar-hide">
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block font-sans ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{category} Official</span>
             <h1 className={`text-4xl font-black leading-tight mb-4 font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
             
@@ -251,7 +226,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
 
             {/* Tabs */}
             <div className={`flex border-b mb-4 font-sans transition-colors duration-300 ${isDarkMode ? 'border-slate-700' : 'border-gray-200'}`}>
-                {['about', 'gallery', 'review'].map(tab => (
+                {['about', 'review'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -274,22 +249,35 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
                 {activeTab === 'about' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 font-sans">
                         {/* Operated By */}
-                        <div className={`flex items-center justify-between p-6 rounded-xl border transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b] border-slate-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                            <div className="flex items-center gap-2">
-                                <div className={`w-8 h-8 rounded-full border overflow-hidden flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                                    <Store size={16} className="text-gray-400" />
+                        <div className={`flex items-center justify-between p-5 md:p-6 rounded-xl border transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b] border-slate-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                            {/* Sisi Kiri: Nama Toko di Tengah secara Vertikal */}
+                            <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl border overflow-hidden flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                                    <Store size={20} className="text-gray-400" />
                                 </div>
-                                <div>
+                                <div className="text-left">
+                                    <h3 className={`font-black text-sm tracking-tight transition-colors duration-300 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
                                     <p className={`text-[10px] font-bold uppercase tracking-tighter ${isDarkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Operated by</p>
-                                    <h3 className={`font-black text-xs tracking-tight transition-colors duration-300 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
-                                className={`px-3 py-1.5 border rounded-full text-[10px] font-black uppercase tracking-tighter shadow-sm transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-200 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                            >
-                                Kunjungi
-                            </button>
+
+                            {/* Sisi Kanan: Tombol Kotak Atas-Bawah */}
+                            <div className="flex flex-col gap-2 w-32 md:w-44">
+                                <button
+                                    onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
+                                    className={`w-full py-2 border rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm transition-all active:scale-95 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-200 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                >
+                                    Kunjungi Toko
+                                </button>
+                                {!isOwner && (
+                                    <button
+                                        onClick={() => onChatWithProduct(product)}
+                                        className={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all active:scale-95 ${isDarkMode ? 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
+                                    >
+                                        Chat Penjual
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Description */}
@@ -307,21 +295,6 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
                             >
                                 {isDescExpanded ? 'Sembunyikan' : 'Baca selengkapnya'}
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'gallery' && (
-                    <div className="grid grid-cols-3 gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className={`aspect-square rounded-xl overflow-hidden transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b]' : 'bg-gray-100'}`}>
-                            <img src={displayImage} className="w-full h-full object-cover" alt="Gallery 1" />
-                        </div>
-                        {/* Placeholder for more images */}
-                        <div className={`aspect-square rounded-xl overflow-hidden flex items-center justify-center text-gray-300 transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b]' : 'bg-gray-50'}`}>
-                            <ImageIcon size={24} />
-                        </div>
-                        <div className={`aspect-square rounded-xl overflow-hidden flex items-center justify-center text-gray-300 transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b]' : 'bg-gray-50'}`}>
-                            <ImageIcon size={24} />
                         </div>
                     </div>
                 )}
@@ -354,11 +327,22 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
           </div>
 
           {/* Action Buttons */}
-          <div className={`flex gap-4 pt-6 border-t font-sans transition-colors duration-300 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
-            <button onClick={handleAddToCart} disabled={isAdding} className="flex-[3] bg-sky-600 hover:bg-sky-700 text-white font-black py-5 rounded-[1.25rem] shadow-2xl shadow-sky-200 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-[0.1em] text-sm">
-              {isAdding ? <Loader2 className="animate-spin" size={20} /> : <><ShoppingCart size={20} /> Tambah Ke Keranjang</>}
+          <div className={`flex gap-4 p-10 md:px-14 py-6 border-t font-sans transition-colors duration-300 sticky bottom-0 z-10 ${isDarkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-100'} shadow-[0_-10px_40px_rgba(0,0,0,0.03)]`}>
+            <button 
+              onClick={() => handleAddToCart(false)} 
+              disabled={isAdding} 
+              className={`flex-1 py-5 rounded-[1.25rem] transition-all flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+              title="Tambah ke Keranjang"
+            >
+              {isAdding ? <Loader2 className="animate-spin" size={24} /> : <ShoppingCart size={24} />}
             </button>
-            <button onClick={handleBuyNow} className={`flex-1 py-5 rounded-[1.25rem] transition-all flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}><MessageCircle size={24} /></button>
+            <button 
+              onClick={handleBuyNow} 
+              disabled={isAdding}
+              className="flex-[3] bg-sky-600 hover:bg-sky-700 text-white font-black py-5 rounded-[1.25rem] shadow-2xl shadow-sky-200 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-[0.1em] text-sm"
+            >
+              {isAdding ? <Loader2 className="animate-spin" size={20} /> : 'Pesan Sekarang'}
+            </button>
           </div>
         </div>
       </div>

@@ -141,7 +141,7 @@ export const ChatWidget = ({ user, customIcon }) => {
   };
 
   return (
-    <div ref={widgetRef} className="fixed bottom-24 right-6 z-[100] flex flex-col items-end">
+    <div ref={widgetRef} className="fixed bottom-24 right-6 z-[1100] flex flex-col items-end">
       
       {/* Toast Notification */}
       {showToast && (

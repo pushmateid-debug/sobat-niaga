@@ -6,7 +6,7 @@ import { db } from '../config/firebase';
 import { ref, push, query, orderByChild, equalTo, onValue, get, update } from 'firebase/database';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChatWithProduct }) => {
+const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChatWithProduct, onChatClick }) => {
   const { id } = useParams();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
@@ -259,7 +259,7 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChat
         <div className={`max-w-5xl mx-auto px-4 relative z-20 rounded-t-3xl pt-5 md:mt-0 md:rounded-xl md:p-8 md:shadow-xl md:mb-10 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
             
             {/* Title & Add to Cart */}
-            <div className="flex justify-between items-start gap-3 mb-3">
+            <div className="flex justify-between items-start gap-3 mb-6">
                 <div className="flex-1">
                     <h1 className={`text-lg font-bold leading-snug font-sans ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
                     <div className="flex items-center gap-1 mt-1">
@@ -268,14 +268,6 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChat
                         <span className={`text-xs ${isDarkMode ? 'text-slate-500' : 'text-gray-400'}`}>({reviews.length} ulasan)</span>
                     </div>
                 </div>
-                <button 
-                    onClick={() => !isMyProduct && handleAddToCart(false)} 
-                    disabled={isAdding || isMyProduct}
-                    className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${isMyProduct ? (isDarkMode ? 'bg-slate-800 text-gray-600' : 'bg-gray-100 text-gray-400') : 'bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
-                    title={isMyProduct ? "Ini barang dagangan Anda" : "Tambah ke Keranjang"}
-                >
-                    {isAdding ? <span className="animate-spin text-xs">...</span> : (isMyProduct ? <X size={20} /> : <ShoppingCart size={20} />)}
-                </button>
             </div>
 
             {/* Tabs */}
@@ -307,8 +299,10 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChat
                                     <Store size={20} className={isDarkMode ? 'text-sky-400' : 'text-sky-600'} />
                                 </div>
                                 <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className={`font-bold text-xs ${isDarkMode ? 'text-slate-100' : 'text-gray-900'}`}>{storeName}</h3>
+                                    </div>
                                     <p className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>Operated by</p>
-                                    <h3 className={`font-bold text-xs ${isDarkMode ? 'text-slate-100' : 'text-gray-900'}`}>{storeName}</h3>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 mt-4">
@@ -376,18 +370,28 @@ const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChat
 
         {/* Sticky Bottom Bar */}
         <div className={`fixed bottom-0 left-0 right-0 border-t px-4 py-3 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-            <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-                <div>
+            <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
                     <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>Total Harga</p>
-                    <h2 className={`text-xl font-bold font-sans ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {displayPrice}</h2>
+                    <h2 className={`text-xl font-bold font-sans truncate ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {displayPrice}</h2>
                 </div>
-                <button 
-                    onClick={() => !isMyProduct && handleAddToCart(true)}
-                    disabled={isMyProduct}
-                    className={`flex-1 max-w-[180px] h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200')}`}
-                >
-                    {isMyProduct ? 'Ini Barang Anda' : 'Beli Sekarang'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => !isMyProduct && handleAddToCart(false)} 
+                        disabled={isAdding || isMyProduct}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${isMyProduct ? 'bg-gray-100 text-gray-400' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
+                        title="Tambah ke Keranjang"
+                    >
+                        {isAdding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={20} />}
+                    </button>
+                    <button 
+                        onClick={() => !isMyProduct && handleAddToCart(true)}
+                        disabled={isAdding || isMyProduct}
+                        className={`px-8 h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 whitespace-nowrap ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200')}`}
+                    >
+                        {isMyProduct ? 'Ini Barang Anda' : 'Pesan Sekarang'}
+                    </button>
+                </div>
             </div>
         </div>
 

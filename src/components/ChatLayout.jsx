@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings } from 'lucide-react';
+import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2 } from 'lucide-react';
 import { db } from '../config/firebase';
-import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get } from 'firebase/database';
+import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get, remove } from 'firebase/database';
+import Swal from 'sweetalert2';
 
 export const ChatLayout = ({ 
   isMobile, 
@@ -131,6 +132,46 @@ export const ChatLayout = ({
     return () => unsubscribe();
   }, [chatTab, chatSellerId, chatBuyerId, user?.uid, isSellerView]);
 
+  // --- FUNGSI HAPUS SEMUA CHAT (CLEAR HISTORY) ---
+  const handleClearAllChat = async () => {
+    const config = getChatConfig();
+    if (!config.messagesPath) return;
+
+    const result = await Swal.fire({
+      title: 'Hapus Semua Chat?',
+      text: "Bro, seriusan mau hapus semua riwayat chat di ruangan ini? Tindakan ini gak bisa dibatalkan!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Ya, Hapus!',
+      cancelButtonText: 'Batal'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await remove(ref(db, config.messagesPath));
+        
+        // Update metadata biar di inbox gak muncul potongan chat lama
+        await update(ref(db, config.metaPath), {
+          lastMessageText: 'Riwayat chat telah dibersihkan',
+          lastMessageTime: serverTimestamp()
+        });
+
+        setIsChatMenuOpen(false);
+        Swal.fire({
+          icon: 'success',
+          title: 'Berhasil!',
+          text: 'Semua chat berhasil dibersihkan, Bro!',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      } catch (error) {
+        console.error("Gagal menghapus chat:", error);
+      }
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -239,8 +280,34 @@ export const ChatLayout = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setIsChatMenuOpen(!isChatMenuOpen)}><MoreVertical size={20} /></button>
-          {!isMobile && <button onClick={onClose}><X size={20} /></button>}
+          <div className="relative">
+            <button 
+              onClick={() => setIsChatMenuOpen(!isChatMenuOpen)}
+              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+            >
+              <MoreVertical size={20} />
+            </button>
+
+            {/* Dropdown Menu Timbul */}
+            {isChatMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsChatMenuOpen(false)}></div>
+                <div className={`absolute right-0 mt-2 w-48 border rounded-xl shadow-xl z-50 animate-in fade-in zoom-in duration-200 ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100'}`}>
+                  <button 
+                    onClick={handleClearAllChat}
+                    className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-slate-800 rounded-xl transition-colors font-medium flex items-center gap-2"
+                  >
+                    <Trash2 size={16} /> Hapus Semua Chat
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          {!isMobile && (
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <X size={20} />
+            </button>
+          )}
         </div>
       </div>
 

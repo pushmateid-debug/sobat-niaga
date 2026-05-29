@@ -548,7 +548,6 @@ const Home = () => {
       setChatTab('seller');
       if (window.innerWidth >= 768) {
         setIsDesktopChatOpen(true);
-        setIsProductModalOpen(false); 
       } else {
         startTransition(() => setCurrentView('chat'));
       }
@@ -855,6 +854,7 @@ const Home = () => {
           onGoToCart={() => startTransition(() => setCurrentView('cart'))} 
           user={user} 
           onChatWithProduct={handleChatWithProduct}
+          onChatClick={handleChatClick}
           onVisitStore={handleVisitStore} 
         />
       );
@@ -1746,6 +1746,7 @@ const Home = () => {
         onClose={() => setIsProductModalOpen(false)} 
         user={user} 
         onChatWithProduct={handleChatWithProduct}
+        onChatClick={handleChatClick}
         onGoToCart={() => startTransition(() => { setIsProductModalOpen(false); setCurrentView('cart'); })}
         onVisitStore={handleVisitStore}
       />
@@ -1760,7 +1761,7 @@ const Home = () => {
 
       {/* Desktop Chat Popup */}
       {isDesktopChatOpen && (
-        <div ref={desktopChatRef} className="hidden md:flex fixed bottom-5 right-5 z-[100] w-[320px] h-[450px] bg-white dark:bg-slate-900 rounded-none shadow-2xl border border-gray-200 dark:border-slate-700 flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in">
+        <div ref={desktopChatRef} className="hidden md:flex fixed bottom-5 right-5 z-[1100] w-[320px] h-[450px] bg-white dark:bg-slate-900 rounded-none shadow-2xl border border-gray-200 dark:border-slate-700 flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in">
             <ChatLayout 
                 isMobile={false} 
                 onClose={() => setIsDesktopChatOpen(false)} 
@@ -1878,7 +1879,7 @@ const DraggableChatWidget = ({ onClick, icon }) => {
     <div
         ref={dragRef}
         style={{ left: position.x, top: position.y, touchAction: 'none' }}
-        className="hidden md:block fixed z-[999] cursor-move"
+        className="hidden md:block fixed z-[1100] cursor-move"
         onTouchStart={(e) => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
         onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
         onTouchEnd={handleEnd}
