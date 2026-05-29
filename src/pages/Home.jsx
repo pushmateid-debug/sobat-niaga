@@ -475,6 +475,7 @@ const Home = () => {
       const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
       update(ref(db, `seller_chats/${roomId}`), {
         buyerId: user.uid,
+        userName: user.displayName || '', // Inisialisasi info buyer di room
         sellerId: sellerId,
         storeName: storeName,
         storePhoto: storePhoto || '',

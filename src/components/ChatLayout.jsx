@@ -39,15 +39,28 @@ export const ChatLayout = ({
 
     if (chatTab === 'seller' && !isInsideRoom && user?.uid) {
       setLoading(true);
-      // Ambil riwayat langsung dari index partner milik user
-      const partnersRef = ref(db, `users/${user.uid}/chat_partners`);
-      const unsubscribe = onValue(partnersRef, (snapshot) => {
+      
+      // FIX: Query langsung ke seller_chats dengan filter UID kita (sebagai buyer atau seller)
+      // Ini menghindari error PERMISSION_DENIED karena tidak lagi mengakses path /users/ user lain.
+      const fieldToFilter = isSellerView ? 'sellerId' : 'buyerId';
+      const chatsRef = query(ref(db, 'seller_chats'), orderByChild(fieldToFilter), equalTo(user.uid));
+
+      const unsubscribe = onValue(chatsRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          const list = Object.keys(data).map(key => ({ 
-            id: key, 
-            ...data[key] 
-          }));
+          const list = Object.keys(data).map(key => {
+            const room = data[key];
+            return {
+              id: isSellerView ? room.buyerId : room.sellerId,
+              partnerName: isSellerView ? room.userName : room.storeName,
+              partnerPhoto: isSellerView ? room.userPhoto : room.storePhoto,
+              partnerEmail: isSellerView ? room.userEmail : room.storeEmail,
+              storeName: room.storeName,
+              lastMessage: room.lastMessageText || '',
+              timestamp: room.lastMessageTime || 0,
+              hasUnread: isSellerView ? room.hasUnreadSeller : room.hasUnreadUser
+            };
+          });
           setSellerChatPartners(list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
         } else {
           setSellerChatPartners([]);
@@ -149,13 +162,14 @@ export const ChatLayout = ({
         metaUpdate.hasUnreadAdmin = true;
       } else {
         metaUpdate.sellerId = config.sellerId;
+        metaUpdate.buyerId = config.buyerId; // Pastikan buyerId masuk metadata biar filter list jalan
         metaUpdate[isSellerView ? 'hasUnreadUser' : 'hasUnreadSeller'] = true;
-        metaUpdate.userEmail = user.email; // Simpan email untuk fallback penamaan
+        
         // Jika pembeli yang kirim, update info pembeli untuk seller
         if (!isSellerView) {
-          metaUpdate.userName = user.displayName;
+          metaUpdate.userName = user.displayName || '';
           metaUpdate.userPhoto = user.photoURL || '';
-          metaUpdate.userEmail = user.email;
+          metaUpdate.userEmail = user.email || '';
         }
       }
 
@@ -172,25 +186,24 @@ export const ChatLayout = ({
       };
       
       if (isSellerView) {
-        myUpdate.partnerName = metaUpdate.userName || 'Pembeli';
-        myUpdate.partnerPhoto = metaUpdate.userPhoto || '';
-        myUpdate.partnerEmail = metaUpdate.userEmail || '';
+        // Untuk seller, ambil info pembeli dari metadata room
+        const roomSnap = await get(ref(db, config.metaPath));
+        const roomData = roomSnap.val();
+        myUpdate.partnerName = roomData?.userName || 'Pembeli';
+        myUpdate.partnerPhoto = roomData?.userPhoto || '';
+        myUpdate.partnerEmail = roomData?.userEmail || '';
       } else {
         const roomSnap = await get(ref(db, config.metaPath));
-        myUpdate.partnerName = roomSnap.val()?.storeName || 'Toko';
-        myUpdate.partnerPhoto = roomSnap.val()?.storePhoto || '';
-        myUpdate.partnerEmail = roomSnap.val()?.storeEmail || '';
+        const roomData = roomSnap.val();
+        myUpdate.partnerName = roomData?.storeName || 'Toko';
+        myUpdate.partnerPhoto = roomData?.storePhoto || '';
+        myUpdate.partnerEmail = roomData?.storeEmail || '';
       }
       await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), myUpdate);
 
-      // 2. Update riwayat di sisi LAWAN (Inbox mereka)
-      await update(ref(db, `users/${partnerId}/chat_partners/${user.uid}`), {
-        partnerName: user.displayName || 'User',
-        partnerPhoto: user.photoURL || '',
-        partnerEmail: user.email || '',
-        lastMessage: inputText,
-        timestamp: now
-      });
+      // REMOVE: Kita hapus update ke sisi lawan karena ini yang bikin PERMISSION_DENIED.
+      // Karena kita sudah migrasi list chat ke query 'seller_chats', inbox lawan akan
+      // otomatis terupdate melalui metadata room tersebut.
 
       setInputText('');
     } catch (error) {
