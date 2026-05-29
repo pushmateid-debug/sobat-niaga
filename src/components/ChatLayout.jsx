@@ -150,10 +150,12 @@ export const ChatLayout = ({
       } else {
         metaUpdate.sellerId = config.sellerId;
         metaUpdate[isSellerView ? 'hasUnreadUser' : 'hasUnreadSeller'] = true;
+        metaUpdate.userEmail = user.email; // Simpan email untuk fallback penamaan
         // Jika pembeli yang kirim, update info pembeli untuk seller
         if (!isSellerView) {
           metaUpdate.userName = user.displayName;
           metaUpdate.userPhoto = user.photoURL || '';
+          metaUpdate.userEmail = user.email;
         }
       }
 
@@ -172,10 +174,12 @@ export const ChatLayout = ({
       if (isSellerView) {
         myUpdate.partnerName = metaUpdate.userName || 'Pembeli';
         myUpdate.partnerPhoto = metaUpdate.userPhoto || '';
+        myUpdate.partnerEmail = metaUpdate.userEmail || '';
       } else {
         const roomSnap = await get(ref(db, config.metaPath));
         myUpdate.partnerName = roomSnap.val()?.storeName || 'Toko';
         myUpdate.partnerPhoto = roomSnap.val()?.storePhoto || '';
+        myUpdate.partnerEmail = roomSnap.val()?.storeEmail || '';
       }
       await update(ref(db, `users/${user.uid}/chat_partners/${partnerId}`), myUpdate);
 
@@ -183,6 +187,7 @@ export const ChatLayout = ({
       await update(ref(db, `users/${partnerId}/chat_partners/${user.uid}`), {
         partnerName: user.displayName || 'User',
         partnerPhoto: user.photoURL || '',
+        partnerEmail: user.email || '',
         lastMessage: inputText,
         timestamp: now
       });
@@ -214,8 +219,8 @@ export const ChatLayout = ({
               {chatTab === 'admin' 
                 ? 'Customer Service' 
                 : (isSellerView 
-                    ? (chatBuyerId ? sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerName || 'Chat Pelanggan' : 'Kotak Masuk')
-                    : (chatSellerId ? sellerChatPartners.find(p => p.id === chatSellerId)?.partnerName || 'Chat Penjual' : 'Kotak Masuk'))}
+                ? (chatBuyerId ? (sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerName || sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerEmail || 'Pelanggan') : 'Kotak Masuk')
+                : (chatSellerId ? (sellerChatPartners.find(p => p.id === chatSellerId)?.partnerName || sellerChatPartners.find(p => p.id === chatSellerId)?.partnerEmail || 'Penjual') : 'Kotak Masuk'))}
             </span>
             <span className="text-[10px] opacity-80">Online</span>
           </div>
@@ -261,7 +266,7 @@ export const ChatLayout = ({
                     {partner.partnerPhoto || partner.storePhoto ? <img src={partner.partnerPhoto || partner.storePhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-600 font-bold uppercase">{(partner.partnerName || partner.storeName)?.charAt(0) || 'S'}</div>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm truncate">{partner.partnerName || partner.storeName || 'Penjual'}</h3>
+                    <h3 className="font-bold text-sm truncate">{partner.partnerName || partner.storeName || partner.partnerEmail || 'Pengguna SobatNiaga'}</h3>
                     <p className="text-xs truncate text-gray-500 mt-0.5">{partner.lastMessage || 'Klik untuk melihat pesan'}</p>
                   </div>
                   <ChevronRight size={16} className="text-gray-300" />

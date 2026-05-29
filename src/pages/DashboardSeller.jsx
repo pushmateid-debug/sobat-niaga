@@ -2101,7 +2101,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                             </div>
                             <div className="flex-1 min-w-0">
                                <div className="flex justify-between items-start">
-                                  <h4 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{room.userName}</h4>
+                                <h4 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{room.userName || room.userEmail || 'Pengguna SobatNiaga'}</h4>
                                   {room.hasUnreadSeller && <div className="w-2.5 h-2.5 bg-sky-500 rounded-full shadow-lg shadow-sky-300 animate-pulse"></div>}
                                </div>
                                <p className={`text-xs truncate mt-0.5 ${room.hasUnreadSeller ? 'font-black text-sky-600' : 'text-gray-400'}`}>{room.lastMessageText || 'Klik untuk membalas'}</p>

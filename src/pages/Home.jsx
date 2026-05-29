@@ -468,7 +468,7 @@ const Home = () => {
   };
 
   // --- LOGIKA PEMISAH CHAT RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
-  const handleChatClick = (sellerId, storeName = null, storePhoto = null) => {
+  const handleChatClick = (sellerId, storeName = null, storePhoto = null, storeEmail = null) => {
     setChatSellerId(sellerId);
     // Simpan info toko sementara untuk inisialisasi metadata chat
     if (storeName) {
@@ -477,13 +477,15 @@ const Home = () => {
         buyerId: user.uid,
         sellerId: sellerId,
         storeName: storeName,
-        storePhoto: storePhoto || ''
+        storePhoto: storePhoto || '',
+        storeEmail: storeEmail || ''
       });
       // Daftarkan di riwayat chat pembeli (Inbox Index) agar riwayat muncul di tab 'Chat Penjual'
       update(ref(db, `users/${user.uid}/chat_partners/${sellerId}`), {
         partnerId: sellerId,
         partnerName: storeName,
         partnerPhoto: storePhoto || '',
+        partnerEmail: storeEmail || '',
         lastMessage: 'Memulai chat...',
         timestamp: Date.now()
       });

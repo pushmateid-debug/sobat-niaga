@@ -61,7 +61,7 @@ const SellerInbox = ({ user, onBack, onChatClick }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <h3 className="font-bold text-sm truncate">{room.userName || 'Pelanggan'}</h3>
+                <h3 className="font-bold text-sm truncate">{room.userName || room.userEmail || 'Pengguna SobatNiaga'}</h3>
                   {room.hasUnreadSeller && <span className="w-2.5 h-2.5 bg-sky-500 rounded-full shadow-lg shadow-sky-200"></span>}
                 </div>
                 <p className={`text-xs truncate mt-0.5 ${room.hasUnreadSeller ? 'font-bold text-sky-600 dark:text-sky-400' : 'text-gray-500'}`}>{room.lastMessageText || 'Klik untuk membalas chat'}</p>
