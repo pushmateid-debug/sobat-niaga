@@ -169,14 +169,14 @@ const ProductDetailPage = () => {
 
   if (loading) return (
     <div className={`min-h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-[#0f172a] text-white' : 'bg-gray-50'}`}>
-      <Loader2 className="animate-spin text-sky-500 mb-4" size={64} />
-      <p className="font-bold animate-pulse">Memuat Produk Terbaik SobatNiaga...</p>
+      <Loader2 className="animate-spin text-sky-500 mb-4" size={48} /> {/* Ukuran Loader disesuaikan */}
+      <p className="text-lg font-medium animate-pulse">Memuat Produk Terbaik SobatNiaga...</p>
     </div>
   );
 
   if (!product) return (
     <div className={`min-h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-[#0f172a] text-white' : 'bg-gray-50'}`}>
-      <p className="text-xl font-bold">Aduh, Produk Gak Ada, Bro!</p>
+      <p className="text-lg font-medium text-red-400">Aduh Bro, Produk Gak Ditemukan!</p>
       <button onClick={() => navigate('/')} className="mt-4 px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Kembali ke Home</button>
     </div>
   );
