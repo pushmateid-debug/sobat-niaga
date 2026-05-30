@@ -139,7 +139,7 @@ const AppLayout = () => {
         <Route path="/terms" element={<div>Konten Halaman Syarat & Ketentuan</div>} />
         <Route path="/privacy" element={<div>Konten Halaman Kebijakan Privasi</div>} />
         <Route path="/help" element={<div>Konten Halaman Pusat Bantuan</div>} />
-        <Route path="/chat" element={<div>Konten Halaman Chat</div>} />
+        <Route path="/chat" element={<Home {...globalModalProps} initialView="chat" />} />
         <Route path="/account-menu" element={<div>Konten Halaman Menu Akun</div>} />
         {/* Tambahkan rute lain sesuai kebutuhan */}
       </Routes>
