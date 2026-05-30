@@ -16,7 +16,7 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import DashboardSeller from './pages/DashboardSeller';
 import Address from './pages/Address';
-import ProductDetail from './pages/ProductDetail';
+import ProductDetailPage from './pages/ProductDetailPage';
 import Payment from './pages/Payment';
 import TransactionHistory from './pages/TransactionHistory';
 import AdminDashboard from './components/AdminDashboard'; // AdminDashboard ada di components
@@ -121,7 +121,7 @@ const AppLayout = () => {
         <Route path="/profile" element={<Profile {...globalModalProps} />} />
         <Route path="/dashboard-seller" element={<DashboardSeller {...globalModalProps} />} />
         <Route path="/address" element={<Address {...globalModalProps} />} />
-        <Route path="/product/:id" element={<ProductDetail {...globalModalProps} onBack={() => window.history.length > 1 ? window.history.back() : navigate('/')} />} /> {/* Route viral: /product/:id */}
+        <Route path="/product/:id" element={<ProductDetailPage {...globalModalProps} />} /> {/* Route viral: /product/:id */}
         <Route path="/payment" element={<Payment {...globalModalProps} />} />
         <Route path="/history" element={<TransactionHistory {...globalModalProps} />} />
         <Route path="/admin-dashboard" element={<AdminDashboard {...globalModalProps} />} />
