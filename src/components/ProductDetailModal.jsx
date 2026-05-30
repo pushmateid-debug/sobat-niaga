@@ -102,6 +102,29 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
     }
   };
 
+  // Fungsi Salin Link Produk untuk Viralitas (Deep Linking)
+  const handleCopyShareLink = () => {
+    const shareUrl = `${window.location.origin}/product/${product.id}`;
+
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Link Produk Disalin!',
+          text: 'Siap di-share ke WhatsApp, Bro! 🚀',
+          toast: true,
+          position: 'top',
+          showConfirmButton: false,
+          timer: 2500,
+          timerProgressBar: true,
+        });
+      })
+      .catch((err) => {
+        console.error("Gagal menyalin link:", err);
+        Swal.fire('Gagal', 'Waduh, fitur copy diblokir browser kamu.', 'error');
+      });
+  };
+
   const handleChatInternal = () => {
     Swal.fire('Info', 'Fitur chat langsung sedang disiapkan. Silakan kunjungi toko untuk diskusi lebih lanjut!', 'info');
   };
@@ -202,7 +225,19 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
         <div className={`w-full md:w-1/2 flex flex-col transition-colors duration-300 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           <div className="flex-1 overflow-y-auto p-10 md:p-14 md:pb-6 scrollbar-hide">
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block font-sans ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{category} Official</span>
-            <h1 className={`text-4xl font-black leading-tight mb-4 font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
+            
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <h1 className={`text-4xl font-black leading-tight font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
+              <button 
+                onClick={handleCopyShareLink}
+                className={`flex-shrink-0 p-3 rounded-2xl border transition-all active:scale-95 ${
+                  isDarkMode ? 'bg-slate-800 border-slate-700 text-sky-400 hover:bg-slate-700' : 'bg-sky-50 border-sky-100 text-sky-600 hover:bg-sky-100'
+                }`}
+                title="Salin Link Produk"
+              >
+                <Share2 size={20} />
+              </button>
+            </div>
             
             <div className="flex items-center gap-3 mb-8">
               <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20">

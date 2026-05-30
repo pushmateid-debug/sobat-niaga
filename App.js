@@ -121,7 +121,7 @@ const AppLayout = () => {
         <Route path="/profile" element={<Profile {...globalModalProps} />} />
         <Route path="/dashboard-seller" element={<DashboardSeller {...globalModalProps} />} />
         <Route path="/address" element={<Address {...globalModalProps} />} />
-        <Route path="/product-detail/:id" element={<ProductDetail {...globalModalProps} />} /> {/* Contoh dengan ID produk */}
+        <Route path="/product/:id" element={<ProductDetail {...globalModalProps} onBack={() => window.history.length > 1 ? window.history.back() : navigate('/')} />} /> {/* Route viral: /product/:id */}
         <Route path="/payment" element={<Payment {...globalModalProps} />} />
         <Route path="/history" element={<TransactionHistory {...globalModalProps} />} />
         <Route path="/admin-dashboard" element={<AdminDashboard {...globalModalProps} />} />

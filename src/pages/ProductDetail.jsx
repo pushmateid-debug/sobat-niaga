@@ -1,407 +1,278 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShoppingCart, Share2, Star, CheckCircle, MapPin, Tag, Store, User, PlayCircle, X, MessageCircle, Image as ImageIcon, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag } from 'lucide-react';
+import { db, auth } from '../config/firebase';
+import { ref, get, push } from 'firebase/database';
+import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
-import { db } from '../config/firebase';
-import { ref, push, query, orderByChild, equalTo, onValue, get, update } from 'firebase/database';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onGoToCart, user, onVisitStore, onChatWithProduct, onChatClick }) => {
+const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitStore, onChatWithProduct }) => {
   const { id } = useParams();
-  const { theme } = useTheme() || { theme: 'light' };
+  const navigate = useNavigate();
+  const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
 
-  const [quantity, setQuantity] = useState(1);
+  const [product, setProduct] = useState(initialProduct || null);
+  const [loading, setLoading] = useState(!initialProduct);
+  const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [reviews, setReviews] = useState([]);
   const [activeImage, setActiveImage] = useState(null);
-  const [selectedVideo, setSelectedVideo] = useState(null);
-  const [activeTab, setActiveTab] = useState('about'); // New Tab State
-  const [isDescExpanded, setIsDescExpanded] = useState(false); // New Desc State
-  const [realtimeProduct, setRealtimeProduct] = useState(product); // State untuk data real-time
-  const [isLoading, setIsLoading] = useState(!product);
 
-  // Fallback data handling
-  const {
-    name = 'Nama Produk',
-    price = 0,
-    description = 'Tidak ada deskripsi produk.',
-    mediaUrl,
-    image,
-    storeName = 'Toko',
-    stock = 0,
-    rating = 4.8,
-    sold = 0,
-    voucherCode,
-    voucherAmount
-  } = realtimeProduct || product || {}; // Gunakan data real-time jika ada
-
-  const displayImage = mediaUrl || image || 'https://via.placeholder.com/300';
-
+  // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
-    if (displayImage) {
-      setActiveImage(displayImage);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Fetch Data Produk Berdasarkan ID dari URL
+  useEffect(() => {
+    if (initialProduct) {
+        setProduct(initialProduct);
+        setActiveImage(initialProduct.mediaUrl || initialProduct.image);
+        setLoading(false);
+        return;
     }
-  }, [displayImage]);
 
-  const displayPrice = parseInt(price).toLocaleString('id-ID');
-
-  // Layer Proteksi: Cek apakah barang ini milik user yang login
-  const isMyProduct = user?.uid && (realtimeProduct?.sellerId || product?.sellerId) === user.uid;
-
-  // Reset realtimeProduct saat product prop berubah (Pindah halaman produk)
-  useEffect(() => {
-    setRealtimeProduct(product);
-  }, [product]);
-
-  // --- LOGIC FETCH DATA BY ID (Mencegah Layar Putih di Laptop) ---
-  useEffect(() => {
-    const targetId = product?.id || id;
-    if (targetId) {
-        const productRef = ref(db, `products/${targetId}`);
+    const fetchProduct = async () => {
+      if (!id) return;
+      setLoading(true);
+      try {
+        const productRef = ref(db, `products/${id}`);
+        const snapshot = await get(productRef);
         
-        // Fetch awal jika prop product kosong
-        if (!product) {
-          get(productRef).then((snapshot) => {
-            if (snapshot.exists()) {
-              setRealtimeProduct({ ...snapshot.val(), id: targetId });
-            }
-            setIsLoading(false);
-          });
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const productData = { id, ...data };
+          setProduct(productData);
+          setActiveImage(productData.mediaUrl || productData.image);
+        } else {
+          Swal.fire('Gagal', 'Produk tidak ditemukan, Bro!', 'error');
+          navigate('/');
         }
+      } catch (error) {
+        console.error("Gagal load produk via URL:", error);
+        Swal.fire('Error', 'Gagal memuat produk. Cek koneksi lo, Bro!', 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-        // Listener Real-time
-        const unsubscribe = onValue(productRef, (snapshot) => {
-            if (snapshot.exists()) {
-                setRealtimeProduct(prev => ({ 
-                  ...(prev || product || {}), 
-                  ...snapshot.val(), 
-                  id: targetId 
-                }));
-            }
+    fetchProduct();
+  }, [id, initialProduct, navigate]);
+
+  // 3. Fungsi Salin Link Produk (Share)
+  const handleCopyShareLink = () => {
+    const shareUrl = `${window.location.origin}/product/${id}`;
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Link Produk Disalin!',
+          text: 'Siap di-share ke WhatsApp, Bro! 🚀',
+          toast: true,
+          position: 'top',
+          showConfirmButton: false,
+          timer: 2500,
+          timerProgressBar: true,
         });
-        return () => unsubscribe();
-    }
-  }, [product, id]);
-
-  // Fetch Reviews
-  useEffect(() => {
-    if (product?.id) {
-        const reviewsRef = query(ref(db, 'reviews'), orderByChild('productId'), equalTo(product.id));
-        onValue(reviewsRef, (snapshot) => {
-            const data = snapshot.val();
-            const loadedReviews = data ? Object.values(data) : [];
-            setReviews(loadedReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-        });
-    }
-  }, [product]);
-
-  const handleQuantityChange = (val) => {
-    if (val >= 1) {
-      setQuantity(val);
-    }
-  };
-
-  // Helper Masking Nama
-  const maskName = (name) => {
-    if (!name) return 'Pembeli';
-    if (name.length <= 2) return name.substring(0, 1) + '*';
-    return name.charAt(0) + '***' + name.charAt(name.length - 1);
+      })
+      .catch(err => console.error("Gagal copy:", err));
   };
 
   const handleAddToCart = async (redirect = false) => {
     if (!user) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Login Dulu',
-        text: 'Silakan login untuk belanja',
-        confirmButtonColor: '#0284c7'
-      });
+      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk belanja, Bro!', confirmButtonColor: '#0ea5e9' });
       return;
     }
 
     setIsAdding(true);
     try {
       const cartRef = ref(db, `users/${user.uid}/cart`);
-      
-      // LOGIKA ANTI-DUPLICATE
-      const cartSnap = await get(cartRef);
-      if (cartSnap.exists()) {
-        const currentCart = cartSnap.val();
-        // Cari apakah produk dengan ID yang sama sudah ada
-        const existingItemKey = Object.keys(currentCart).find(key => {
-          const item = currentCart[key];
-          // Cek ID Produk & Varian (Jika ada sistem varian di masa depan, tambahkan di sini)
-          return item.productId === product.id;
-        });
-
-        if (existingItemKey) {
-          Swal.fire({
-            title: 'Sudah di Keranjang',
-            text: 'Produk ini sudah ada di keranjangmu. Mau lihat keranjang sekarang?',
-            icon: 'info',
-            showCancelButton: true,
-            confirmButtonText: 'Lihat Keranjang',
-            cancelButtonText: 'Oke',
-            buttonsStyling: false,
-            customClass: {
-              confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
-              cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
-            }
-          }).then((result) => {
-            if (result.isConfirmed && onGoToCart) {
-              onGoToCart();
-            }
-          });
-          setIsAdding(false);
-          return; // Batalkan proses tambah baru
-        }
-      }
-
       await push(cartRef, {
         productId: product.id,
-        name,
-        category: product.category || 'General', // Save category for Jasa logic
-        estimation: product.estimation || '', // Simpan estimasi untuk deadline tracking
-        price: parseInt(price),
-        image: displayImage,
-        quantity,
-        storeName,
+        name: product.name,
+        price: parseInt(product.price),
+        image: product.mediaUrl || product.image,
+        quantity: 1,
+        storeName: product.storeName,
         sellerId: product.sellerId,
-        voucherCode: voucherCode || '', // Simpan info voucher ke cart
-        voucherAmount: voucherAmount || 0,
         selected: true,
         createdAt: new Date().toISOString()
       });
 
-      if (redirect && onGoToCart) {
-        onGoToCart();
+      if (redirect) {
+        navigate('/cart');
       } else {
-        Swal.fire({
-          icon: 'success',
-          title: 'Berhasil!',
-          text: 'Produk masuk keranjang 🛒',
-          timer: 1500,
-          showConfirmButton: false,
-          toast: true,
-          position: 'top'
-        });
+        Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Masuk keranjang 🛒', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
       }
     } catch (error) {
-      console.error("Error adding to cart:", error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal',
-        text: 'Terjadi kesalahan saat menyimpan.',
-      });
+      Swal.fire('Error', 'Gagal masuk keranjang.', 'error');
     } finally {
       setIsAdding(false);
     }
   };
 
-  // Loading state biar gak layar putih pas refresh
-  if (isLoading && !realtimeProduct && !product) {
+  if (loading) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
-        <Loader2 className={`animate-spin mb-2 ${isDarkMode ? 'text-sky-400' : 'text-sky-500'}`} size={40} />
-        <p className={`text-sm font-bold ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>Memuat Detail Produk...</p>
+      <div className={`min-h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50'}`}>
+        <Loader2 className="animate-spin text-sky-500 mb-4" size={48} />
+        <p className="font-bold animate-pulse">Loading Produk Ganteng...</p>
       </div>
     );
   }
 
-  return (
-    <div className={`min-h-screen pb-24 font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-gray-900'}`}>
-        <div className="max-w-5xl mx-auto md:pt-8 md:px-4">
-        {/* Foto Utama - Kunci Kotak Sempurna 1:1 */}
-        <div className={`relative w-full aspect-square overflow-hidden md:rounded-3xl shadow-lg group ${isDarkMode ? 'bg-slate-900' : 'bg-gray-100'}`}>
-            <img src={activeImage || displayImage} alt={name} className="w-full h-full object-cover" />
+  if (!product) return null;
 
-            {/* Navigation Buttons */}
-            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10">
-                <button onClick={onBack} className="p-2 rounded-full bg-black/20 backdrop-blur-md text-white hover:bg-black/30 transition-all">
-                    <ArrowLeft size={24} />
+  return (
+    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
+      {/* Header Sticky Mobile */}
+      <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
+        <div className="flex items-center justify-between px-4 py-3">
+          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-sm font-bold truncate max-w-[200px]">{product.name}</h1>
+          <button onClick={handleCopyShareLink} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-sky-600">
+            <Share2 size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row">
+        
+        {/* Sisi Kiri: Foto Produk */}
+        <div className="w-full md:w-1/2 p-4 md:p-10">
+          <div className={`relative aspect-square w-full rounded-3xl overflow-hidden shadow-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
+            <img 
+              src={activeImage || product.mediaUrl || product.image} 
+              className="w-full h-full object-cover" 
+              alt={product.name} 
+            />
+          </div>
+          {/* Thumbnail Gallery (Jika ada) */}
+          {(product.gallery && product.gallery.length > 0) && (
+            <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+              {[product.mediaUrl || product.image, ...product.gallery].map((img, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => setActiveImage(img)}
+                  className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95' : 'border-transparent opacity-60'}`}
+                >
+                  <img src={img} className="w-full h-full object-cover" alt="" />
                 </button>
-                <button onClick={() => { 
-                    navigator.clipboard.writeText(window.location.href);
-                    Swal.fire({ icon: 'success', title: 'Link Disalin!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 });
-                }} className="p-2 rounded-full bg-black/20 backdrop-blur-md text-white hover:bg-black/30 transition-all">
-                    <Share2 size={24} />
-                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sisi Kanan: Detail & Info */}
+        <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
+          <div className="flex flex-col h-full">
+            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-2 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+              {product.category} Official
+            </span>
+            
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <h1 className="text-3xl md:text-5xl font-black leading-tight tracking-tighter">
+                {product.name}
+              </h1>
+              <button 
+                onClick={handleCopyShareLink}
+                className="hidden md:flex p-3 rounded-2xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700"
+              >
+                <Share2 size={24} />
+              </button>
             </div>
 
-             {/* Video Indicator */}
-             {realtimeProduct?.mediaType === 'video' && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-                    <PlayCircle size={64} className="text-white/80" />
+            <div className="flex items-center gap-4 mb-8">
+              <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20">
+                <Star size={18} className="fill-yellow-400 text-yellow-400" />
+                <span className="text-base font-black text-yellow-700">{product.rating || '4.8'}</span>
+              </div>
+              <span className="text-sm font-bold text-gray-400">{product.sold || 0} Terjual</span>
+            </div>
+
+            <div className="mb-8">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
+              <h2 className={`text-4xl md:text-5xl font-black tracking-tighter ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+                Rp {parseInt(product.price).toLocaleString('id-ID')}
+              </h2>
+            </div>
+
+            {/* Info Toko */}
+            <div className={`flex items-center justify-between p-4 rounded-2xl border mb-8 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center text-sky-600">
+                  <Store size={24} />
                 </div>
-            )}
-        </div>
-        
-        {/* Barisan Thumbnail Gallery di Bawah Foto Utama */}
-        <div className="px-4 py-4">
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {/* FIX: Filter gambar unik agar tidak ada duplikasi antara mediaUrl dan gallery */}
-            {[...new Set([displayImage, ...(realtimeProduct?.gallery || [])])].filter(Boolean).map((imgUrl, index) => (
-              <button
-                key={index}
-                onClick={() => setActiveImage(imgUrl)}
-                className={`w-16 h-16 md:w-20 md:h-20 flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
-                  activeImage === imgUrl ? 'border-sky-500 scale-95 shadow-md' : 'border-transparent opacity-60'
-                }`}
+                <div>
+                  <h3 className="font-bold text-sm">{product.storeName || 'Sobat Store'}</h3>
+                  <p className="text-[10px] uppercase font-black text-gray-400">Verificated Seller</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => navigate(`/store-profile/${product.sellerId}`)}
+                className="px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-bold shadow-sm"
               >
-                <img src={imgUrl} className="w-full h-full object-cover" alt={`thumbnail-${index}`} />
+                Kunjungi Toko
               </button>
-            ))}
+            </div>
+
+            {/* Deskripsi */}
+            <div className="mb-10">
+              <h4 className="text-sm font-black uppercase tracking-widest mb-3 border-b pb-2 dark:border-slate-800">Deskripsi Produk</h4>
+              <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {product.description || 'Tidak ada deskripsi untuk produk ini.'}
+              </p>
+            </div>
+
+            {/* Footer Action - Desktop */}
+            <div className="hidden md:flex gap-4 mt-auto">
+              <button 
+                onClick={() => handleAddToCart(false)}
+                disabled={isAdding}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+              >
+                {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}
+              </button>
+              <button 
+                onClick={() => handleAddToCart(true)}
+                disabled={isAdding}
+                className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none transition-all"
+              >
+                Pesan Sekarang
+              </button>
+            </div>
           </div>
         </div>
-        </div>
+      </div>
 
-        <div className={`max-w-5xl mx-auto px-4 relative z-20 rounded-t-3xl pt-5 md:mt-0 md:rounded-xl md:p-8 md:shadow-xl md:mb-10 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            
-            {/* Title & Add to Cart */}
-            <div className="flex justify-between items-start gap-3 mb-6">
-                <div className="flex-1">
-                    <h1 className={`text-lg font-bold leading-snug font-sans ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
-                    <div className="flex items-center gap-1 mt-1">
-                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                        <span className={`text-xs font-bold ${isDarkMode ? 'text-slate-300' : 'text-gray-700'}`}>{rating}</span>
-                        <span className={`text-xs ${isDarkMode ? 'text-slate-500' : 'text-gray-400'}`}>({reviews.length} ulasan)</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className={`flex border-b mb-4 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
-                {['about', 'review'].map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`flex-1 pb-2 text-xs font-bold capitalize transition-all relative ${
-                            activeTab === tab ? 'text-sky-600' : (isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-gray-400 hover:text-gray-600')
-                        }`}
-                    >
-                        {tab}
-                        {activeTab === tab && (
-                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-0.5 bg-sky-600 rounded-t-full"></div>
-                        )}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tab Content */}
-            <div className="min-h-[200px]">
-                {activeTab === 'about' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Operated By */}
-                        <div className={`p-4 rounded-xl border transition-colors ${isDarkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className={`w-10 h-10 rounded-full border overflow-hidden flex items-center justify-center ${isDarkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-gray-200'}`}>
-                                    <Store size={20} className={isDarkMode ? 'text-sky-400' : 'text-sky-600'} />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h3 className={`font-bold text-xs ${isDarkMode ? 'text-slate-100' : 'text-gray-900'}`}>{storeName}</h3>
-                                    </div>
-                                    <p className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>Operated by</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 mt-4">
-                                <button
-                                    onClick={() => onVisitStore(product.sellerId)}
-                                    className={`flex-1 py-2.5 border rounded-xl text-xs font-bold transition-all text-center shadow-sm ${isDarkMode ? 'bg-slate-600 border-slate-500 text-slate-200 hover:bg-slate-500' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                                >
-                                    Kunjungi Toko
-                                </button>
-                                <button
-                                    onClick={() => onChatWithProduct(realtimeProduct || product)}
-                                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all text-center flex items-center justify-center gap-2 ${isDarkMode ? 'bg-sky-600 text-white hover:bg-sky-700 shadow-none' : 'bg-sky-50 text-sky-600 border border-sky-200 hover:bg-sky-100 shadow-sm'}`}
-                                >
-                                    <MessageCircle size={16} /> Chat Penjual
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Description */}
-                        <div>
-                            <h3 className={`font-bold text-sm mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Deskripsi Produk</h3>
-                            <div className={`text-xs leading-relaxed relative ${isDarkMode ? 'text-slate-300' : 'text-gray-700'} ${!isDescExpanded ? 'max-h-[3.6em] overflow-hidden' : ''}`}>
-                                {description}
-                                {!isDescExpanded && (
-                                    <div className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${isDarkMode ? 'from-slate-800' : 'from-white'} to-transparent`}></div>
-                                )}
-                            </div>
-                            <button 
-                                onClick={() => setIsDescExpanded(!isDescExpanded)}
-                                className="mt-1 text-xs font-bold text-sky-600 hover:text-sky-700 transition-colors"
-                            >
-                                {isDescExpanded ? 'Sembunyikan' : 'Baca selengkapnya'}
-                            </button>
-                        </div>
-
-                    </div>
-                )}
-
-                {activeTab === 'review' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {reviews.length === 0 ? (
-                            <p className={`text-center py-10 italic text-sm ${isDarkMode ? 'text-slate-500' : 'text-gray-500'}`}>Belum ada ulasan.</p>
-                        ) : (
-                            reviews.map((review, idx) => (
-                                <div key={idx} className={`flex gap-4 border-b pb-4 last:border-0 ${isDarkMode ? 'border-slate-800' : 'border-gray-50'}`}>
-                                    <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-200'}`}>
-                                        {review.buyerPhoto ? <img src={review.buyerPhoto} alt="Buyer" className="w-full h-full object-cover" /> : <User size={20} className={`m-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`} />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className={`text-sm font-bold ${isDarkMode ? 'text-slate-200' : 'text-gray-800'}`}>{maskName(review.buyerName)}</p>
-                                        <div className="flex items-center gap-1 mt-0.5 mb-1">
-                                            {[...Array(5)].map((_, i) => (
-                                                <Star key={i} size={10} className={`${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                                            ))}
-                                        </div>
-                                        <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-gray-600'}`}>{review.comment}</p>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-
-        {/* Sticky Bottom Bar */}
-        <div className={`fixed bottom-0 left-0 right-0 border-t px-4 py-3 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-            <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                    <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>Total Harga</p>
-                    <h2 className={`text-xl font-bold font-sans truncate ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {displayPrice}</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => !isMyProduct && handleAddToCart(false)} 
-                        disabled={isAdding || isMyProduct}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${isMyProduct ? 'bg-gray-100 text-gray-400' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
-                        title="Tambah ke Keranjang"
-                    >
-                        {isAdding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={20} />}
-                    </button>
-                    <button 
-                        onClick={() => !isMyProduct && handleAddToCart(true)}
-                        disabled={isAdding || isMyProduct}
-                        className={`px-8 h-10 text-white text-sm font-bold rounded-full transition-all active:scale-95 whitespace-nowrap ${isMyProduct ? 'bg-gray-400 cursor-not-allowed' : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200')}`}
-                    >
-                        {isMyProduct ? 'Ini Barang Anda' : 'Pesan Sekarang'}
-                    </button>
-                </div>
-            </div>
-        </div>
-
-      {/* Modal Video Preview */}
-      {selectedVideo && (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4" onClick={() => setSelectedVideo(null)}>
-            <button className="absolute top-4 right-4 text-white p-2 hover:bg-white/20 rounded-full"><X size={32} /></button>
-            <video src={selectedVideo} className="max-w-full max-h-[80vh] rounded-xl shadow-2xl" controls autoPlay />
-        </div>
-      )}
+      {/* Mobile Floating Action Bar */}
+      <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+        <button 
+          onClick={() => navigate('/chat')} // Atau sesuaikan dengan fungsi chat penjual lo, Bro
+          className="p-4 bg-gray-100 dark:bg-slate-800 rounded-2xl text-gray-600 dark:text-gray-400"
+        >
+          <MessageCircle size={24} />
+        </button>
+        <button 
+          onClick={() => handleAddToCart(false)}
+          disabled={isAdding}
+          className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
+        >
+          {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
+        </button>
+        <button 
+          onClick={() => handleAddToCart(true)}
+          disabled={isAdding}
+          className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg"
+        >
+          Pesan Sekarang
+        </button>
+      </div>
     </div>
   );
 };
