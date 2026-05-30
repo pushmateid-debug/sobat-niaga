@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag } from 'lucide-react';
-import { db, auth } from '../config/firebase';
-import { ref, get, push } from 'firebase/database';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check } from 'lucide-react';
+import { db, dbFirestore, auth } from '../config/firebase';
+import { ref, get, push, update, serverTimestamp } from 'firebase/database';
+import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitStore, onChatWithProduct }) => {
+const ProductDetail = ({ product: initialProduct, onBack }) => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { theme } = useTheme();
+  const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
 
   const [product, setProduct] = useState(initialProduct || null);
@@ -18,6 +19,11 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(null);
+  const [activeTab, setActiveTab] = useState('about');
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [reviews, setReviews] = useState([]);
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -63,9 +69,32 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
     fetchProduct();
   }, [id, initialProduct, navigate]);
 
-  // 3. Fungsi Salin Link Produk (Share)
+  // 3. Fetch Follow Status (Firestore)
+  useEffect(() => {
+    const sid = product?.sellerId;
+    if (!sid || !user?.uid) return;
+
+    const userFirestoreRef = doc(dbFirestore, 'users', sid);
+    const unsubFollow = onSnapshot(userFirestoreRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const isUserFollowing = user.uid && 
+                               Array.isArray(data.followersList) && 
+                               data.followersList.includes(user.uid);
+        setIsFollowing(Boolean(isUserFollowing));
+      } else {
+        setIsFollowing(false);
+      }
+    });
+
+    return () => unsubFollow();
+  }, [product?.sellerId, user?.uid]);
+
+  // 4. Fungsi Salin Link Produk (Share)
   const handleCopyShareLink = () => {
-    const shareUrl = `${window.location.origin}/product/${id}`;
+    // Menggunakan window.location.href agar akurat mengambil URL yang sedang dibuka
+    const shareUrl = window.location.href;
+    
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
         Swal.fire({
@@ -80,6 +109,33 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
         });
       })
       .catch(err => console.error("Gagal copy:", err));
+  };
+
+  // 5. Fungsi Follow Seller
+  const handleFollow = async () => {
+    if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
+    if (String(product.sellerId) === String(user.uid)) return;
+    if (followLoading) return;
+
+    setFollowLoading(true);
+    const batch = writeBatch(dbFirestore);
+    const targetStoreRef = doc(dbFirestore, 'users', product.sellerId);
+    const currentUserRef = doc(dbFirestore, 'users', user.uid);
+
+    try {
+      if (isFollowing) {
+        batch.update(targetStoreRef, { followersList: arrayRemove(user.uid), followersCount: increment(-1) });
+        batch.update(currentUserRef, { followingList: arrayRemove(product.sellerId), followingCount: increment(-1) });
+      } else {
+        batch.update(targetStoreRef, { followersList: arrayUnion(user.uid), followersCount: increment(1) });
+        batch.update(currentUserRef, { followingList: arrayUnion(product.sellerId), followingCount: increment(1) });
+      }
+      await batch.commit();
+    } catch (error) {
+      Swal.fire('Gagal', 'Terjadi kesalahan saat memproses permintaan.', 'error');
+    } finally {
+      setFollowLoading(false);
+    }
   };
 
   const handleAddToCart = async (redirect = false) => {
@@ -115,10 +171,53 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
     }
   };
 
+  // 6. Fungsi Chat Langsung Bawa Produk
+  const handleChatWithProduct = async () => {
+    if (!user) {
+      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
+      return;
+    }
+
+    const sellerId = product.sellerId;
+    const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
+    
+    try {
+      const messagesRef = ref(db, `seller_chats/${roomId}/messages`);
+      await push(messagesRef, {
+        senderId: user.uid,
+        senderName: user.displayName || 'Buyer',
+        text: `Halo, saya tertarik dengan produk ini.`,
+        timestamp: serverTimestamp(),
+        sender: 'buyer',
+        status: 'sent',
+        attachedProduct: {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          image: product.mediaUrl || product.image || 'https://via.placeholder.com/150'
+        }
+      });
+
+      await update(ref(db, `seller_chats/${roomId}`), {
+        buyerId: user.uid,
+        userName: user.displayName || '',
+        userPhoto: user.photoURL || '',
+        userEmail: user.email || '',
+        sellerId: sellerId,
+        storeName: product.storeName || 'Toko',
+        lastMessageText: `Halo, saya tertarik dengan produk ini.`,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadSeller: true
+      });
+
+      navigate('/chat');
+    } catch (err) { console.error("Gagal attach produk:", err); }
+  };
+
   if (loading) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50'}`}>
-        <Loader2 className="animate-spin text-sky-500 mb-4" size={48} />
+        <Loader2 className="animate-spin text-sky-500 mb-4" size={64} />
         <p className="font-bold animate-pulse">Loading Produk Ganteng...</p>
       </div>
     );
@@ -127,11 +226,11 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
   if (!product) return null;
 
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
+    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
       {/* Header Sticky Mobile */}
-      <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
+      <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-3">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
+          <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
             <ArrowLeft size={24} />
           </button>
           <h1 className="text-sm font-bold truncate max-w-[200px]">{product.name}</h1>
@@ -141,14 +240,13 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row">
-        
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)]">
         {/* Sisi Kiri: Foto Produk */}
-        <div className="w-full md:w-1/2 p-4 md:p-10">
-          <div className={`relative aspect-square w-full rounded-3xl overflow-hidden shadow-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
+        <div className={`w-full md:w-1/2 p-4 md:p-10 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'}`}>
+          <div className={`relative aspect-square w-full max-w-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'}`}>
             <img 
               src={activeImage || product.mediaUrl || product.image} 
-              className="w-full h-full object-cover" 
+              className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" 
               alt={product.name} 
             />
           </div>
@@ -159,7 +257,7 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
                 <button 
                   key={idx} 
                   onClick={() => setActiveImage(img)}
-                  className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95' : 'border-transparent opacity-60'}`}
+                  className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
                 >
                   <img src={img} className="w-full h-full object-cover" alt="" />
                 </button>
@@ -171,17 +269,17 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
         {/* Sisi Kanan: Detail & Info */}
         <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
           <div className="flex flex-col h-full">
-            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-2 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
               {product.category} Official
             </span>
             
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-3xl md:text-5xl font-black leading-tight tracking-tighter">
+              <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">
                 {product.name}
               </h1>
               <button 
                 onClick={handleCopyShareLink}
-                className="hidden md:flex p-3 rounded-2xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700"
+                className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"
               >
                 <Share2 size={24} />
               </button>
@@ -250,10 +348,10 @@ const ProductDetail = ({ product: initialProduct, onBack, onGoToCart, onVisitSto
         </div>
       </div>
 
-      {/* Mobile Floating Action Bar */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+      {/* Mobile Floating Action Bar - Shopee Style */}
+      <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 backdrop-blur-lg ${isDarkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-gray-100'}`}>
         <button 
-          onClick={() => navigate('/chat')} // Atau sesuaikan dengan fungsi chat penjual lo, Bro
+          onClick={handleChatWithProduct}
           className="p-4 bg-gray-100 dark:bg-slate-800 rounded-2xl text-gray-600 dark:text-gray-400"
         >
           <MessageCircle size={24} />
