@@ -259,7 +259,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   // Handle Apply Voucher
   const handleApplyVoucher = () => {
     // Cek apakah ada produk di keranjang yang punya kode voucher ini
-    const validItem = cartItems.find(item => item.voucherCode === promoCode && item.selected);
+    const validItem = cartItems?.find(item => item.voucherCode === promoCode && item.selected);
     
     if (validItem) {
       setAppliedVoucher({
@@ -288,11 +288,11 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   };
 
   // Calculate Total
-  const isNiagaFoodInCart = cartItems.some(item => item.category === 'Niaga Food');
+  const isNiagaFoodInCart = cartItems?.some(item => item?.category === 'Niaga Food') || false;
   const deliveryFee = isNiagaFoodInCart ? 3000 : 0; // Ongkir flat 3rb jika ada Niaga Food
 
-  const totalItems = cartItems.filter(item => item.selected).reduce((acc, item) => acc + item.quantity, 0);
-  let subtotal = cartItems.filter(item => item.selected).reduce((acc, item) => acc + (parseInt(item.price || 0) * item.quantity), 0);
+  const totalItems = cartItems?.filter(item => item?.selected)?.reduce((acc, item) => acc + (Number(item?.quantity) || 0), 0) || 0;
+  let subtotal = cartItems?.filter(item => item?.selected)?.reduce((acc, item) => acc + (Number(item?.price || 0) * Number(item?.quantity || 0)), 0) || 0;
   let totalPrice = totalItems > 0 ? subtotal + deliveryFee : 0;
   
   // Kurangi total dengan voucher jika ada
@@ -305,7 +305,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   }
 
   const handleFinalCheckout = async () => {
-    const selectedItems = cartItems.filter(item => item.selected);
+    const selectedItems = cartItems?.filter(item => item?.selected) || [];
     if (selectedItems.length === 0) {
       Swal.fire({
         icon: 'warning',
@@ -397,7 +397,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   }
 
   // Empty State
-  if (cartItems.length === 0) {
+  if (!cartItems || cartItems.length === 0) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
         <div className={`p-8 rounded-2xl shadow-sm text-center max-w-md w-full border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
@@ -441,7 +441,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                         <span>{totalItems} barang terpilih</span>
                     </div>
                     <div className="text-sm font-bold">
-                        Total: Rp {totalPrice.toLocaleString('id-ID')}
+                        Total: Rp {(totalPrice || 0).toLocaleString('id-ID')}
                     </div>
                 </div>
 
@@ -467,7 +467,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                 </div>
 
                 {/* Items List */}
-                {cartItems.map((item) => (
+                {cartItems?.map((item) => (
                     <div key={item.id} className={`p-4 rounded-xl shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                         {/* Store Name */}
                         <div className={`flex items-center gap-2 mb-3 pb-3 border-b ${isDarkMode ? 'border-slate-700' : 'border-gray-50'}`}>
@@ -539,7 +539,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                     <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
                         <div className="hidden md:block">
                             <p className="text-xs text-gray-400">Total Harga</p>
-                            <p className="text-lg font-bold text-sky-600">Rp {totalPrice.toLocaleString('id-ID')}</p>
+                            <p className="text-lg font-bold text-sky-600">Rp {(totalPrice || 0).toLocaleString('id-ID')}</p>
                         </div>
                         <button 
                             onClick={() => setCheckoutStep(2)}
@@ -556,7 +556,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
             <div className="flex flex-col lg:flex-row gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex-1 space-y-4">
                     <h3 className={`font-bold px-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Produk yang dibeli:</h3>
-                    {cartItems.filter(i => i.selected).map(item => (
+                    {cartItems?.filter(i => i?.selected)?.map(item => (
                         <div key={item.id} className={`flex items-center gap-4 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                             <img src={item.image} className="w-12 h-12 rounded-lg object-cover" alt="" />
                             <div className="flex-1 min-w-0">
