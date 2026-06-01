@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check, User, Edit } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase'; // Import dbFirestore
 import { ref, onValue, query, orderByChild, equalTo, get } from 'firebase/database';
@@ -6,6 +7,10 @@ import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 
 import Swal from 'sweetalert2';
 
 const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatClick, onViewMyProfile }) => {
+  const params = useParams();
+  const navigate = useNavigate();
+  const effectiveSellerId = sellerId || params?.sellerId; // Ambil dari props atau URL
+
   const [sellerData, setSellerData] = useState(null);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,7 +36,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
     };
 
     // 1. Ambil Info Seller (Sekali ambil saja)
-    get(ref(db, `users/${sellerId}`)).then(userSnap => {
+    get(ref(db, `users/${effectiveSellerId}`)).then(userSnap => {
       if (isMounted) {
         if (userSnap.exists()) {
           setSellerData(userSnap.val());
@@ -45,7 +50,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
     }).catch(err => console.error("Gagal ambil info seller:", err));
 
     // 2. Realtime listener untuk Produk (Realtime DB)
-    const productsRef = query(ref(db, 'products'), orderByChild('sellerId'), equalTo(sellerId));
+    const productsRef = query(ref(db, 'products'), orderByChild('sellerId'), equalTo(effectiveSellerId));
     const unsubProducts = onValue(productsRef, (snapshot) => {
       const data = snapshot.val();
       const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
@@ -77,7 +82,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
     });
 
     // 3. Realtime listener untuk Status Follow (Firestore)
-    const userFirestoreRef = doc(dbFirestore, 'users', sellerId);
+    const userFirestoreRef = doc(dbFirestore, 'users', effectiveSellerId);
     const unsubFollow = onSnapshot(userFirestoreRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -113,7 +118,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   // Handle Chat WhatsApp
   const handleChat = () => {
     if (onChatClick) {
-      onChatClick(sellerId, displayStoreName, displayPhoto, sellerData?.email);
+      onChatClick(effectiveSellerId, displayStoreName, displayPhoto, sellerData?.email);
       return;
     }
 
@@ -129,12 +134,12 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
   const handleFollow = async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti toko ini.', 'warning');
-    if (String(sellerId) === String(currentUserId)) return Swal.fire('Tidak Bisa', 'Anda tidak bisa mengikuti toko Anda sendiri.', 'warning');
+    if (String(effectiveSellerId) === String(currentUserId)) return Swal.fire('Tidak Bisa', 'Anda tidak bisa mengikuti toko Anda sendiri.', 'warning');
     if (followLoading) return;
 
     setFollowLoading(true);
     const batch = writeBatch(dbFirestore);
-    const targetStoreRef = doc(dbFirestore, 'users', sellerId); // Seller's user document
+    const targetStoreRef = doc(dbFirestore, 'users', effectiveSellerId); // Seller's user document
     const currentUserRef = doc(dbFirestore, 'users', currentUserId); // Current user's document
 
     try {
@@ -145,7 +150,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                 followersCount: increment(-1)
             });
             batch.update(currentUserRef, {
-                followingList: arrayRemove(sellerId),
+                followingList: arrayRemove(effectiveSellerId),
                 followingCount: increment(-1)
             });
         } else {
@@ -155,7 +160,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                 followersCount: increment(1)
             });
             batch.update(currentUserRef, {
-                followingList: arrayUnion(sellerId),
+                followingList: arrayUnion(effectiveSellerId),
                 followingCount: increment(1)
             });
         }
@@ -171,7 +176,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
   // Handle Share Store
   const handleShare = () => {
-    const storeLink = `https://sobatniaga.com/store/${sellerId}`; // Simulasi Link
+    const storeLink = window.location.href;
     navigator.clipboard.writeText(storeLink);
     Swal.fire({
       icon: 'success',
@@ -182,6 +187,12 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       toast: true,
       position: 'top'
     });
+  };
+
+  // Safe Back Logic
+  const handleInternalBack = () => {
+    if (onBack) onBack();
+    else navigate(-1);
   };
 
   // Filter Produk (Tab & Search)
@@ -222,8 +233,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-700 p-4 text-center">
         <Flag size={48} className="text-gray-400 mb-4" />
         <h2 className="text-xl font-bold">Toko Tidak Ditemukan</h2>
-        <p className="mt-2">Profil toko yang Anda cari tidak ada atau telah dihapus.</p>
-        <button onClick={onBack} className="mt-6 px-6 py-2 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700">
+        <p className="mt-2">Profil toko yang lo cari gak ada atau udah dihapus, Bro!</p>
+        <button onClick={handleInternalBack} className="mt-6 px-6 py-2 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700">
           Kembali
         </button>
       </div>
@@ -245,7 +256,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       {/* 1. Sticky Header (Navigasi) */}
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all">
         <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between h-full">
-          <button onClick={onBack} className="p-1 rounded-full hover:bg-sky-50 transition-colors text-sky-600">
+          <button onClick={handleInternalBack} className="p-1 rounded-full hover:bg-sky-50 transition-colors text-sky-600">
             <ChevronLeft size={32} />
           </button>
           
@@ -315,7 +326,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
             {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 shrink-0">
-                {String(currentUserId) === String(sellerId) ? (
+                {String(currentUserId) === String(effectiveSellerId) ? (
                     // Jika ini toko milik user sendiri
                     <>
                         <button
@@ -429,7 +440,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                     {filteredProducts.map((product, index) => (
                         <div 
                             key={product.id}
-                            onClick={() => onProductClick(product)}
+                            onClick={() => onProductClick ? onProductClick(product) : navigate('/')}
                             className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group hover:-translate-y-1"
                         >
                             <div className="relative aspect-square bg-gray-50 overflow-hidden">

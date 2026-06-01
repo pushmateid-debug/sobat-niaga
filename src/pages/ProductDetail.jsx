@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
-import { ref, get, push, update, serverTimestamp } from 'firebase/database';
+import { ref, get, push } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product: initialProduct, onBack }) => {
-  const { id } = useParams();
+const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
 
-  const [product, setProduct] = useState(initialProduct || null);
-  const [loading, setLoading] = useState(!initialProduct);
+  const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(null);
@@ -24,7 +22,6 @@ const ProductDetail = ({ product: initialProduct, onBack }) => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
-  const [reviews, setReviews] = useState([]);
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -34,41 +31,12 @@ const ProductDetail = ({ product: initialProduct, onBack }) => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch Data Produk Berdasarkan ID dari URL
+  // 2. Inisialisasi Gambar Utama
   useEffect(() => {
-    if (initialProduct) {
-        setProduct(initialProduct);
-        setActiveImage(initialProduct.mediaUrl || initialProduct.image);
-        setLoading(false);
-        return;
+    if (product) {
+      setActiveImage(product.mediaUrl || product.image);
     }
-
-    const fetchProduct = async () => {
-      if (!id) return;
-      setLoading(true);
-      try {
-        const productRef = ref(db, `products/${id}`);
-        const snapshot = await get(productRef);
-        
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const productData = { id, ...data };
-          setProduct(productData);
-          setActiveImage(productData.mediaUrl || productData.image);
-        } else {
-          Swal.fire('Gagal', 'Produk tidak ditemukan, Bro!', 'error');
-          navigate('/');
-        }
-      } catch (error) {
-        console.error("Gagal load produk via URL:", error);
-        Swal.fire('Error', 'Gagal memuat produk. Cek koneksi lo, Bro!', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProduct();
-  }, [id, initialProduct, navigate]);
+  }, [product]);
 
   // 2.5 Fetch Data Seller untuk mendapatkan Foto Profil Gmail
   useEffect(() => {
@@ -185,50 +153,13 @@ const ProductDetail = ({ product: initialProduct, onBack }) => {
   };
 
   // 6. Fungsi Chat Langsung Bawa Produk
-  const handleChatWithProduct = async () => {
+  const handleInternalChat = () => {
     if (!user || !product) {
       Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
       return;
     }
-
-    const sellerId = product?.sellerId;
-    const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
-    
-    // Siapkan data produk untuk context chat (Attached Product)
-    const attachedProduct = {
-      id: product?.id,
-      title: product?.name || product?.title || "Produk",
-      price: product?.price,
-      image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150'
-    };
-
-    try {
-      const messagesRef = ref(db, `seller_chats/${roomId}/messages`);
-      await push(messagesRef, {
-        senderId: user.uid,
-        senderName: user.displayName || 'Buyer',
-        text: `Halo, saya tertarik dengan produk ini.`,
-        timestamp: serverTimestamp(),
-        sender: 'buyer',
-        status: 'sent',
-        attachedProduct: attachedProduct
-      });
-
-      await update(ref(db, `seller_chats/${roomId}`), {
-        buyerId: user.uid,
-        userName: user.displayName || '',
-        userPhoto: user.photoURL || '',
-        userEmail: user.email || '',
-        sellerId: sellerId,
-        storeName: product?.storeName || 'Toko',
-        lastMessageText: `Halo, saya tertarik dengan produk ini.`,
-        lastMessageTime: serverTimestamp(),
-        hasUnreadSeller: true
-      });
-
-      // Kirim state produk ke halaman chat
-      navigate('/chat', { state: { attachedProduct } });
-    } catch (err) { console.error("Gagal attach produk:", err); }
+    // Panggil fungsi stabil dari props (Home.jsx)
+    onChatWithProduct(product);
   };
 
   // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
@@ -318,32 +249,41 @@ const ProductDetail = ({ product: initialProduct, onBack }) => {
               </h2>
             </div>
 
-            {/* Info Toko */}
-            <div className={`flex items-center justify-between p-4 rounded-2xl border mb-8 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-              {/* SISI KIRI: Profil Lingkaran dan Nama Toko */}
+            {/* JANGAN LUPA GANTI YANG DI BAGIAN DESKTOP VIEW JUGA, BRO! */}
+            <div className={`flex items-center justify-between p-4 rounded-2xl border mb-6 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+              
+              {/* SISI KIRI: Foto Profil Lingkaran Gmail & Nama Toko */}
               <div className="flex items-center gap-3">
-                <img 
-                  src={sellerProfile?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"} 
-                  alt="Store Profile" 
-                  className="w-12 h-12 rounded-full object-cover border border-slate-600 shadow-sm"
-                />
+                {sellerProfile?.photoURL ? (
+                  // Jika data foto Gmail sudah sukses diambil dari Firebase, langsung tampilkan
+                  <img 
+                    src={sellerProfile.photoURL} 
+                    alt="Store Profile" 
+                    className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm animate-fade-in"
+                  />
+                ) : (
+                  // JIKA DATA BELUM SELESAI DIMUAT: Hapus icon orang lama, ganti pake bulatan abu-abu berkedip (Skeleton Loading)
+                  <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
+                )}
                 <div className="min-w-0">
-                  <h4 className={`font-bold text-base truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product?.storeName || "Nama Toko"}</h4>
-                  <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider">Verified Seller</p>
+                  <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {product?.storeName || "Nama Toko"}
+                  </h4>
+                  <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
                 </div>
               </div>
 
-              {/* SISI KANAN: Tombol Aksi Vertikal (Pendek & Tanpa Icon) */}
-              <div className="flex flex-col gap-1.5 min-w-[110px]">
+              {/* SISI KANAN: Tombol Aksi Vertikal Pendek Tanpa Icon */}
+              <div className="flex flex-col gap-1.5 min-w-[125px]">
                 <button 
-                  onClick={handleChatWithProduct}
+                  onClick={handleInternalChat}
                   className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
                 >
                   Chat Penjual
                 </button>
                 
                 <button 
-                  onClick={() => navigate(`/store-profile/${product?.sellerId}`)}
+                  onClick={() => navigate('/store-profile/' + product?.sellerId)}
                   className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm"
                 >
                   Kunjungi Toko

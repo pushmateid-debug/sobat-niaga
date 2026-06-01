@@ -16,7 +16,6 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import DashboardSeller from './pages/DashboardSeller';
 import Address from './pages/Address';
-import ProductDetailPage from './pages/ProductDetailPage';
 import Payment from './pages/Payment';
 import TransactionHistory from './pages/TransactionHistory';
 import AdminDashboard from './components/AdminDashboard'; // AdminDashboard ada di components
@@ -121,11 +120,10 @@ const AppLayout = () => {
         <Route path="/profile" element={<Profile {...globalModalProps} />} />
         <Route path="/dashboard-seller" element={<DashboardSeller {...globalModalProps} />} />
         <Route path="/address" element={<Address {...globalModalProps} />} />
-        <Route path="/product/:id" element={<ProductDetailPage {...globalModalProps} />} /> {/* Route viral: /product/:id */}
         <Route path="/payment" element={<Payment {...globalModalProps} />} />
         <Route path="/history" element={<TransactionHistory {...globalModalProps} />} />
         <Route path="/admin-dashboard" element={<AdminDashboard {...globalModalProps} />} />
-        <Route path="/store-profile/:id" element={<StoreProfile {...globalModalProps} />} /> {/* Contoh dengan ID toko */}
+        <Route path="/store-profile/:sellerId" element={<StoreProfile {...globalModalProps} />} />
         <Route path="/digital-center" element={<DigitalCenter {...globalModalProps} />} />
         <Route path="/niagago" element={<NiagaGo {...globalModalProps} />} />
         <Route path="/search-results" element={<SearchResults {...globalModalProps} />} />

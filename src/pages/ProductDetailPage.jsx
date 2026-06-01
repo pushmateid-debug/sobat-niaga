@@ -262,23 +262,26 @@ const ProductDetailPage = () => {
             <div className="flex-1">
                 {activeTab === 'about' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {/* Store Profile Row: Horizontal & Ramping (Dani Style) */}
-                    <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                      {/* SISI KIRI: Profil Lingkaran dan Nama Toko */}
+                    {/* JANGAN LUPA GANTI YANG DI BAGIAN DESKTOP VIEW JUGA, BRO! */}
+                    <div className={`flex items-center justify-between p-4 rounded-2xl border mb-6 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                      
+                      {/* SISI KIRI: Foto Profil Lingkaran Gmail & Nama Toko */}
                       <div className="flex items-center gap-3">
                         <img 
                           src={sellerProfile?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"} 
                           alt="Store Profile" 
-                          className="w-12 h-12 rounded-full object-cover border border-slate-600 shadow-sm"
+                          className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm"
                         />
                         <div className="min-w-0">
-                          <h4 className={`font-bold text-base truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product.storeName || "Nama Toko"}</h4>
-                          <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider">Verified Seller</p>
+                          <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {product?.storeName || "Nama Toko"}
+                          </h4>
+                          <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
                         </div>
                       </div>
 
-                      {/* SISI KANAN: Tombol Aksi Vertikal (Pendek & Tanpa Icon) */}
-                      <div className="flex flex-col gap-1.5 min-w-[110px]">
+                      {/* SISI KANAN: Tombol Aksi Vertikal Pendek Tanpa Icon */}
+                      <div className="flex flex-col gap-1.5 min-w-[125px]">
                         <button 
                           onClick={handleChatWithProduct}
                           className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
@@ -287,7 +290,7 @@ const ProductDetailPage = () => {
                         </button>
                         
                         <button 
-                          onClick={() => navigate(`/store-profile/${product.sellerId}`)}
+                          onClick={() => navigate(`/store-profile/${product?.sellerId}`)}
                           className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm"
                         >
                           Kunjungi Toko
