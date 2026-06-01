@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check, Heart } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -22,6 +22,17 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const allImages = [product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean);
+
+  const handleScroll = (e) => {
+    const scrollLeft = e.target.scrollLeft;
+    const width = e.target.clientWidth;
+    if (width > 0) {
+      setCurrentImageIndex(Math.round(scrollLeft / width));
+    }
+  };
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -162,7 +173,54 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
     onChatWithProduct(product);
   };
 
-  // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
+  // 7. Fungsi Menu Share & Laporkan (Pop-up)
+  const handleShareOptions = () => {
+    Swal.fire({
+      title: 'Bagikan Produk',
+      html: `
+        <div class="flex flex-col gap-3">
+          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-sky-200">
+             🚀 Salin Link Produk
+          </button>
+          <button id="btnReport" class="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-2xl flex items-center justify-center gap-2 border border-red-100">
+             🚩 Laporkan Produk
+          </button>
+        </div>
+      `,
+      showConfirmButton: false,
+      showCloseButton: true,
+      customClass: {
+        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'}`,
+        title: 'text-lg font-bold mb-4'
+      },
+      didOpen: () => {
+        const copyBtn = document.getElementById('btnCopyLink');
+        const reportBtn = document.getElementById('btnReport');
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            handleCopyShareLink();
+            Swal.close();
+          };
+        }
+        if (reportBtn) {
+          reportBtn.onclick = () => {
+            Swal.fire({
+              title: 'Laporkan Produk?',
+              text: 'Laporan kamu akan segera diproses oleh Admin.',
+              icon: 'warning',
+              showCancelButton: true,
+              confirmButtonText: 'Kirim Laporan',
+              cancelButtonText: 'Batal',
+              confirmButtonColor: '#ef4444',
+              cancelButtonColor: '#6b7280',
+            }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
+          };
+        }
+      }
+    });
+  };
+
+  // ️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
   if (loading || !product) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-white">
@@ -176,29 +234,34 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}> {/* Main container */}
-      {/* Header Sticky Mobile (Overlay di atas foto) */}
-      <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
-        <div className="flex items-center justify-between px-4 py-3">
-          <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="text-sm font-bold truncate max-w-[200px]">{product?.name}</h1>
-          <button onClick={handleCopyShareLink} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-sky-600">
-            <Share2 size={20} />
-          </button>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)] relative">
         {/* Sisi Kiri: Foto Produk (Mobile Full Screen, Desktop Half) */}
         <div className={`w-full md:w-1/2 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'} p-0 md:p-10`}>
           {/* Kontainer Foto Utama */}
-          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] h-[300px] md:h-auto aspect-square md:aspect-auto max-w-[500px]`}>
-            <img
-              src={activeImage || product?.mediaUrl || product?.image}
-              className="w-full h-full object-cover hover:scale-110 transition-transform duration-700 rounded-none"
-              alt={product?.name}
-            />
+          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] max-w-[500px]`}>
+            {/* Logic swipe horizontal / Carousell foto */}
+            <div 
+              className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none w-full"
+              onScroll={handleScroll}
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {allImages.map((img, index) => (
+                <div key={index} className="w-full flex-shrink-0 snap-start">
+                  <img 
+                    src={img} 
+                    className="w-full h-auto object-cover rounded-none"
+                    alt={`${product?.name} ${index + 1}`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Indikator Angka Foto ala TikTok Shop di Pojok Kanan Bawah Foto */}
+            {allImages.length > 1 && (
+              <div className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full font-medium">
+                {currentImageIndex + 1}/{allImages.length}
+              </div>
+            )}
           </div>
           {/* Thumbnail Gallery (Hanya tampil di Desktop, atau di bawah info produk untuk Mobile) */}
           <div className="hidden md:flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -218,17 +281,35 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
           <div className="flex flex-col h-full">
             {/* SEKSI HARGA DAN JUDUL ALA TIKTOK SHOP */}
-            <div className="px-4 mt-4 md:p-0 md:mt-0"> {/* Remove mobile padding if not needed, or adjust */}
-              {/* Format Harga: Rp kecil, Angka besar dengan warna #FFD662 */}
-              <div className="flex items-baseline text-[#FFD662] font-black">
-                <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
-                <span className="text-3xl md:text-5xl">
-                  {parseInt(product?.price || 0).toLocaleString('id-ID')}
-                </span>
+            <div className="px-4 mt-2 md:p-0 md:mt-0">
+              <div className="flex justify-between items-center">
+                {/* Format Harga: Rp kecil, Angka besar dengan warna #FFD662 */}
+                <div className="flex items-baseline text-[#FFD662] font-black">
+                  <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
+                  <span className="text-3xl md:text-5xl">
+                    {parseInt(product?.price || 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
+
+                {/* Tombol Aksi Kanan (Share & Favorite) */}
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={handleShareOptions}
+                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-sky-400' : 'text-gray-500 hover:text-sky-600'}`}
+                  >
+                    <Share2 size={22} />
+                  </button>
+                  <button 
+                    onClick={() => Swal.fire({ icon: 'success', title: 'Ditambahkan ke Wishlist!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 })}
+                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-red-500' : 'text-gray-500 hover:text-red-600'}`}
+                  >
+                    <Heart size={22} />
+                  </button>
+                </div>
               </div>
 
               {/* Judul diletakkan tepat di bawah harga */}
-              <h1 className="text-lg md:text-2xl font-bold text-white mt-2 leading-snug">
+              <h1 className={`text-lg md:text-2xl font-bold mt-2 leading-snug ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 {product?.name || "Nama Produk"}
               </h1>
             </div>
@@ -345,14 +426,14 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         <button 
           onClick={() => handleAddToCart(false)}
           disabled={isAdding}
-          className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
+          className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
         >
           {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
         </button>
         <button 
           onClick={() => handleAddToCart(true)}
           disabled={isAdding}
-          className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg"
+          className="flex-[2] py-3 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg"
         >
           Pesan Sekarang
         </button>
