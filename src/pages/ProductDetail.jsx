@@ -175,8 +175,8 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
   }
 
   return (
-    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
-      {/* Header Sticky Mobile */}
+    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}> {/* Main container */}
+      {/* Header Sticky Mobile (Overlay di atas foto) */}
       <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-3">
           <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
@@ -189,72 +189,92 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)]">
-        {/* Sisi Kiri: Foto Produk */}
-        <div className={`w-full md:w-1/2 p-4 md:p-10 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'}`}>
-          <div className={`relative aspect-square w-full max-w-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'}`}>
-            <img 
-              src={activeImage || product?.mediaUrl || product?.image} 
-              className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" 
-              alt={product?.name} 
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)] relative">
+        {/* Sisi Kiri: Foto Produk (Mobile Full Screen, Desktop Half) */}
+        <div className={`w-full md:w-1/2 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'} p-0 md:p-10`}>
+          {/* Kontainer Foto Utama */}
+          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] h-[300px] md:h-auto aspect-square md:aspect-auto max-w-[500px]`}>
+            <img
+              src={activeImage || product?.mediaUrl || product?.image}
+              className="w-full h-full object-cover hover:scale-110 transition-transform duration-700 rounded-none"
+              alt={product?.name}
             />
           </div>
-          {/* Thumbnail Gallery (Jika ada) */}
-          {(product?.gallery && product?.gallery?.length > 0) && (
-            <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-              {[product?.mediaUrl || product?.image, ...product?.gallery].map((img, idx) => (
-                <button 
-                  key={idx} 
-                  onClick={() => setActiveImage(img)}
-                  className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                >
-                  <img src={img} className="w-full h-full object-cover" alt="" />
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Thumbnail Gallery (Hanya tampil di Desktop, atau di bawah info produk untuk Mobile) */}
+          <div className="hidden md:flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+            {[product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean).map((img, idx) => (
+              <button
+                key={idx}
+                onClick={() => setActiveImage(img)}
+                className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+              >
+                <img src={img} className="w-full h-full object-cover" alt="" />
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Sisi Kanan: Detail & Info */}
+        {/* Sisi Kanan: Detail & Info (Mobile di bawah foto, Desktop di samping) */}
         <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
           <div className="flex flex-col h-full">
-            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+            {/* SEKSI HARGA DAN JUDUL ALA TIKTOK SHOP */}
+            <div className="px-4 mt-4 md:p-0 md:mt-0"> {/* Remove mobile padding if not needed, or adjust */}
+              {/* Format Harga: Rp kecil, Angka besar dengan warna #FFD662 */}
+              <div className="flex items-baseline text-[#FFD662] font-black">
+                <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
+                <span className="text-3xl md:text-5xl">
+                  {parseInt(product?.price || 0).toLocaleString('id-ID')}
+                </span>
+              </div>
+
+              {/* Judul diletakkan tepat di bawah harga */}
+              <h1 className="text-lg md:text-2xl font-bold text-white mt-2 leading-snug">
+                {product?.name || "Nama Produk"}
+              </h1>
+            </div>
+
+            {/* Kontainer Komponen Rating Mini */}
+            <div className="flex items-center gap-1 mt-1.5 px-4 text-gray-400 text-xs md:text-sm">
+              <span className="text-[#FFD662]">★</span>
+              <span className="font-semibold text-white">{product?.rating || '4.8'}</span>
+              <span className="text-gray-500">|</span>
+              <span>{product?.sold || 0} Terjual</span>
+            </div>
+
+            {/* Kategori Official (Pindah ke bawah rating atau sesuaikan) */}
+            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mt-4 px-4 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
               {product?.category} Official
             </span>
-            
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className={`text-xl md:text-3xl font-extrabold leading-tight tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                {product?.name}
-              </h1>
-              <button 
-                onClick={handleCopyShareLink}
-                className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"
-              >
-                <Share2 size={24} />
-              </button>
-            </div>
 
-            <div className="flex items-center gap-4 mb-8">
-              <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20">
-                <Star size={18} className="fill-yellow-400 text-yellow-400" />
-                <span className="text-base font-black text-yellow-700">{product?.rating || '4.8'}</span>
+            {/* Share Button (Desktop Only) */}
+            <button
+              onClick={handleCopyShareLink}
+              className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90 mt-4 ml-4"
+            >
+              <Share2 size={24} />
+            </button>
+
+            {/* Thumbnail Gallery (Mobile: di bawah info produk) */}
+            {(product?.gallery && product?.gallery?.length > 0) && (
+              <div className="flex md:hidden gap-3 mt-4 px-4 overflow-x-auto pb-2 scrollbar-hide">
+                {[product?.mediaUrl || product?.image, ...product?.gallery].filter(Boolean).map((img, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveImage(img)}
+                    className={`w-16 h-16 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  >
+                    <img src={img} className="w-full h-full object-cover" alt="" />
+                  </button>
+                ))}
               </div>
-              <span className="text-sm font-bold text-gray-400">{product?.sold || 0} Terjual</span>
-            </div>
-
-            <div className="mb-8">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className={`text-2xl md:text-4xl font-black mt-2 ${isDarkMode ? 'text-cyan-400' : 'text-sky-600'}`}>
-                Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}
-              </h2>
-            </div>
+            )}
 
             {/* JANGAN LUPA GANTI YANG DI BAGIAN DESKTOP VIEW JUGA, BRO! */}
             <div className={`flex items-center justify-between p-4 rounded-2xl border mb-6 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
               
               {/* SISI KIRI: Foto Profil Lingkaran Gmail & Nama Toko */}
               <div className="flex items-center gap-3">
-                {sellerProfile?.photoURL ? (
+                {sellerProfile?.photoURL ? ( // Proteksi Skeleton
                   // Jika data foto Gmail sudah sukses diambil dari Firebase, langsung tampilkan
                   <img 
                     src={sellerProfile.photoURL} 
@@ -294,7 +314,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
             {/* Deskripsi */}
             <div className="mb-10">
               <h4 className="text-sm font-black uppercase tracking-widest mb-3 border-b pb-2 dark:border-slate-800">Deskripsi Produk</h4>
-              <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <p className={`text-sm leading-relaxed px-4 md:p-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
               </p>
             </div>
