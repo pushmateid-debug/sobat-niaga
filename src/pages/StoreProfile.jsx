@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check, User, Edit } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 import { db, dbFirestore } from '../config/firebase'; // Import dbFirestore
 import { ref, onValue, query, orderByChild, equalTo, get } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore'; // Import Firestore functions
@@ -9,6 +10,8 @@ import Swal from 'sweetalert2';
 const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatClick, onViewMyProfile }) => {
   const params = useParams();
   const navigate = useNavigate();
+  const { theme } = useTheme() || { theme: 'light' };
+  const isDarkMode = theme === 'dark';
   const effectiveSellerId = sellerId || params?.sellerId; // Ambil dari props atau URL
 
   const [sellerData, setSellerData] = useState(null);
@@ -23,7 +26,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
   // Fetch Data Seller & Produk & Follow Status
   useEffect(() => {
-    if (!sellerId) return;
+    // FIX: Cek effectiveSellerId, jangan sellerId saja biar link langsung gak stuck loading
+    if (!effectiveSellerId) return;
 
     let isMounted = true; // Flag to prevent state updates on unmounted component
     let productsLoaded = false;
@@ -118,7 +122,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   // Handle Chat WhatsApp
   const handleChat = () => {
     if (onChatClick) {
-      onChatClick(effectiveSellerId, displayStoreName, displayPhoto, sellerData?.email);
+      onChatClick(effectiveSellerId, displayStoreName, displayPhoto, sellerData?.email || '');
       return;
     }
 
@@ -242,7 +246,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   }
 
   // Helper Variables for Display (Fallback Logic)
-  const displayStoreName = sellerData?.sellerInfo?.storeName || (products.length > 0 ? products[0].storeName : 'Nama Toko');
+  const displayStoreName = sellerData?.sellerInfo?.storeName || (products?.length > 0 ? products[0]?.storeName : 'Nama Toko');
   const displayAddress = sellerData?.sellerInfo?.storeAddress || 'Lokasi tidak tersedia';
   // Fallback ke placeholder jika photoURL kosong/null/undefined
   const displayPhoto = sellerData?.photoURL && sellerData.photoURL !== '' 
@@ -251,10 +255,10 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   const isTrusted = sellerData?.sellerInfo?.isTrustedSeller || false;
 
   return (
-    <div className="min-h-screen bg-white pb-24 font-sans">
+    <div className={`min-h-screen pb-24 font-sans transition-colors ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
       
       {/* 1. Sticky Header (Navigasi) */}
-      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all">
+      <div className={`sticky top-0 z-50 backdrop-blur-md shadow-sm border-b transition-all ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between h-full">
           <button onClick={handleInternalBack} className="p-1 rounded-full hover:bg-sky-50 transition-colors text-sky-600">
             <ChevronLeft size={32} />
@@ -266,7 +270,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
               <input 
                 type="text" 
                 placeholder="Cari produk di toko ini..." 
-                className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                className={`w-full pl-10 pr-4 py-2 rounded-full text-sm outline-none focus:ring-2 focus:ring-sky-500 transition-all ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-gray-100'}`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -282,20 +286,23 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       <div className="max-w-5xl mx-auto">
         
         {/* 2. Header Toko (Modern Flexbox Style) */}
-        <div className="bg-gradient-to-b from-sky-50 to-white border-b border-gray-100">
+        <div className={`border-b transition-colors ${isDarkMode ? 'bg-gradient-to-b from-slate-800 to-slate-900 border-slate-800' : 'bg-gradient-to-b from-sky-50 to-white border-gray-100'}`}>
           <div className="max-w-5xl mx-auto p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
             
             {/* Sisi Kiri: Profil Image & Info Utama */}
             <div className="flex items-center gap-4 md:gap-8">
               <div className="relative shrink-0">
-                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full p-1 bg-white shadow-md">
-                      <img 
-                          src={displayPhoto} 
-                          alt="Store Profile" 
-                          className="w-full h-full object-cover rounded-full"
-                          onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150'; }} 
-                      />
-                  </div>
+                  {sellerData?.photoURL ? (
+                    // JIKA FOTO GMAIL ADA: Tampilkan dengan border mewah dan animasi fade-in
+                    <img 
+                        src={sellerData.photoURL} 
+                        alt={displayStoreName || "Store Profile"} 
+                        className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-slate-600 shadow-md animate-fade-in"
+                    />
+                  ) : (
+                    // JIKA SEDANG LOADING/KOSONG: Ganti icon orang lama dengan Skeleton Pulse bunder abu-abu
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-slate-700 animate-pulse border-2 border-slate-600" />
+                  )}
                   {isTrusted && (
                       <div className="absolute bottom-1 right-1 bg-white rounded-full p-0.5 shadow">
                           <CheckCircle size={20} className="text-blue-500 fill-blue-100" />
@@ -305,7 +312,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
               <div className="text-left min-w-0">
                 <div className="flex items-center gap-2">
-                    <h2 className="text-base md:text-2xl font-black text-gray-900 leading-tight truncate">{displayStoreName}</h2>
+                    <h2 className={`text-base md:text-2xl font-black leading-tight truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{displayStoreName}</h2>
                     <div className="flex items-center gap-1 bg-yellow-400/10 px-1.5 py-0.5 rounded-lg border border-yellow-400/20">
                         <Star size={12} className="fill-yellow-400 text-yellow-400" />
                         <span className="text-[10px] md:text-xs font-black text-yellow-700">{avgRating}</span>

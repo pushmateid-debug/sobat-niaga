@@ -74,7 +74,7 @@ const SummaryComponent = ({
           </div>
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               <span>Total Harga ({totalItems} barang)</span>
-              <span className={`font-price font-bold ${isDarkMode ? 'text-gray-100' : ''}`}>Rp {totalPrice.toLocaleString('id-ID')}</span>
+              <span className={`font-price font-bold ${isDarkMode ? 'text-gray-100' : ''}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</span>
           </div>
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               <span className="flex items-center gap-1"><NotebookPen size={14}/> Catatan</span>
@@ -91,19 +91,19 @@ const SummaryComponent = ({
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               <span>Ongkos Kirim</span>
               <span className={`font-price font-bold ${isDarkMode ? 'text-gray-100' : ''}`}>
-                Rp {isNiagaFoodInCart ? (3000).toLocaleString('id-ID') : 0}
+                Rp {(isNiagaFoodInCart ? 3000 : 0).toLocaleString('id-ID')}
               </span>
           </div>
           <div className={`flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               <span>Total Diskon Barang</span>
-              <span className={`${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>-Rp {appliedVoucher ? appliedVoucher.amount.toLocaleString('id-ID') : 0}</span>
+              <span className={`${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>-Rp {(appliedVoucher?.amount || 0).toLocaleString('id-ID')}</span>
           </div>
       </div>
 
       <div className={`border-t pt-4 mb-6 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
           <div className="flex justify-between items-center">
               <span className={`font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Total Belanja</span>
-              <span className={`font-price font-bold text-lg tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {totalPrice.toLocaleString('id-ID')}</span>
+              <span className={`font-price font-bold text-lg tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</span>
           </div>
       </div>
 
@@ -292,7 +292,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
   const deliveryFee = isNiagaFoodInCart ? 3000 : 0; // Ongkir flat 3rb jika ada Niaga Food
 
   const totalItems = cartItems.filter(item => item.selected).reduce((acc, item) => acc + item.quantity, 0);
-  let subtotal = cartItems.filter(item => item.selected).reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  let subtotal = cartItems.filter(item => item.selected).reduce((acc, item) => acc + (parseInt(item.price || 0) * item.quantity), 0);
   let totalPrice = totalItems > 0 ? subtotal + deliveryFee : 0;
   
   // Kurangi total dengan voucher jika ada
@@ -497,9 +497,9 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                                 <h3 className={`text-sm font-medium line-clamp-2 mb-1 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{item.name}</h3>
                                 {item.variant && <p className={`text-xs mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Varian: {item.variant}</p>}
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className={`font-price font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {item.price.toLocaleString('id-ID')}</span>
+                                    <span className={`font-price font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {parseInt(item.price || 0).toLocaleString('id-ID')}</span>
                                     {item.originalPrice && (
-                                        <span className={`font-price text-xs line-through ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Rp {item.originalPrice.toLocaleString('id-ID')}</span>
+                                        <span className={`font-price text-xs line-through ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Rp {parseInt(item.originalPrice || 0).toLocaleString('id-ID')}</span>
                                     )}
                                 </div>
                             </div>
