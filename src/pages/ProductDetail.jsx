@@ -179,7 +179,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
       {/* Header Sticky Mobile */}
       <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-3">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
+          <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
             <ArrowLeft size={24} />
           </button>
           <h1 className="text-sm font-bold truncate max-w-[200px]">{product?.name}</h1>
@@ -283,7 +283,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
                 </button>
                 
                 <button 
-                  onClick={() => navigate('/store-profile/' + product?.sellerId)}
+                  onClick={() => onVisitStore(product?.sellerId)}
                   className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm"
                 >
                   Kunjungi Toko

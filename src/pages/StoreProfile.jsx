@@ -293,7 +293,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                           src={displayPhoto} 
                           alt="Store Profile" 
                           className="w-full h-full object-cover rounded-full"
-                          onError={(e) => { e.target.src = 'https://via.placeholder.com/150'; }} 
+                          onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150'; }} 
                       />
                   </div>
                   {isTrusted && (
@@ -445,7 +445,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                         >
                             <div className="relative aspect-square bg-gray-50 overflow-hidden">
                                 <img 
-                                    src={product.mediaUrl || 'https://via.placeholder.com/300'}
+                                    src={product.mediaUrl || 'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=300'}
                                     alt={product.name} 
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                                     loading="lazy"
