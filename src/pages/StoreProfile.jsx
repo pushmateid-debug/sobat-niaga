@@ -13,6 +13,9 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
   const effectiveSellerId = sellerId || params?.sellerId; // Ambil dari props atau URL
+  
+  // 🛡️ PROTEKSI OWNER: Cek apakah user yang login adalah pemilik toko ini
+  const isOwner = currentUserId && effectiveSellerId && String(currentUserId) === String(effectiveSellerId);
 
   const [sellerData, setSellerData] = useState(null);
   const [products, setProducts] = useState([]);
@@ -122,11 +125,11 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   // Handle Chat WhatsApp
   const handleChat = () => {
     if (onChatClick) {
-      onChatClick(effectiveSellerId, displayStoreName, displayPhoto, sellerData?.email || '');
+      onChatClick(effectiveSellerId, displayStoreName, displayPhoto, sellerData?.email ?? '');
       return;
     }
 
-    const phone = sellerData?.phoneNumber;
+    const phone = sellerData?.phoneNumber; // Tambah proteksi agar tidak crash
     if (phone) {
       const formattedPhone = phone.replace(/^0/, '62');
       const message = `Halo ${sellerData?.sellerInfo?.storeName || 'Penjual'}, saya ingin tanya produk di SobatNiaga.`;
@@ -138,7 +141,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
   const handleFollow = async () => {
     if (!currentUserId) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti toko ini.', 'warning');
-    if (String(effectiveSellerId) === String(currentUserId)) return Swal.fire('Tidak Bisa', 'Anda tidak bisa mengikuti toko Anda sendiri.', 'warning');
+    if (isOwner) return Swal.fire('Tidak Bisa', 'Anda tidak bisa mengikuti toko Anda sendiri.', 'warning');
     if (followLoading) return;
 
     setFollowLoading(true);
@@ -252,7 +255,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   const displayPhoto = sellerData?.photoURL && sellerData.photoURL !== '' 
     ? sellerData.photoURL
     : '/placeholder.png'; // Ganti ke path lokal
-  const isTrusted = sellerData?.sellerInfo?.isTrustedSeller || false;
+  const isTrusted = sellerData?.sellerInfo?.isTrustedSeller ?? false;
 
   return (
     <div className={`min-h-screen pb-24 font-sans transition-colors ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-gray-900'}`}>
@@ -333,11 +336,11 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
             {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 shrink-0">
-                {String(currentUserId) === String(effectiveSellerId) ? (
+                {isOwner ? (
                     // Jika ini toko milik user sendiri
                     <>
                         <button
-                            onClick={onViewMyProfile} // Arahkan ke halaman profil user
+                            onClick={() => onViewMyProfile ? onViewMyProfile() : navigate('/profile')} // Safety navigation
                             className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700"
                         >
                             <Edit size={14}/> Edit Profil
