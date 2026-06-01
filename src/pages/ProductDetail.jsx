@@ -223,7 +223,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
             </span>
             
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">
+              <h1 className={`text-xl md:text-3xl font-extrabold leading-tight tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 {product?.name}
               </h1>
               <button 
@@ -244,7 +244,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
 
             <div className="mb-8">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className={`text-4xl md:text-5xl font-black tracking-tighter ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+              <h2 className={`text-2xl md:text-4xl font-black mt-2 ${isDarkMode ? 'text-cyan-400' : 'text-sky-600'}`}>
                 Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}
               </h2>
             </div>

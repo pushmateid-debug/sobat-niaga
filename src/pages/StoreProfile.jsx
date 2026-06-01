@@ -358,17 +358,17 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                         <button
                             onClick={handleFollow}
                             disabled={followLoading}
-                            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-95 ${
+                            className={`w-full py-2.5 font-bold rounded-xl text-center flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm ${
                                 isFollowing
-                                    ? 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-                                    : 'bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700' // Hijau Solid
+                                    ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' // Setelah di-klik: Abu-abu gelap elegan
+                                    : 'bg-green-600 text-white hover:bg-green-500'   // Sebelum di-klik: Hijau solid
                             }`}
                         >
                             {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
                         </button>
                         <button
                             onClick={handleChat}
-                            className="px-3 md:px-6 py-2 rounded-lg font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 md:gap-2 transition-all bg-white border border-sky-600 text-sky-600 hover:bg-sky-50 active:scale-95" // Outline Biru
+                            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
                         >
                             <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
                         </button>
@@ -404,27 +404,31 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
         {/* 4. Katalog Produk */}
         <div className="px-4">
             {/* Tabs */}
-            <div className="flex border-b border-gray-100 mb-2 sticky top-[52px] bg-white z-40 pt-1">
+            <div className={`flex justify-around items-center border-b mb-2 sticky top-[52px] z-40 py-2 transition-all ${
+                isDarkMode 
+                    ? 'bg-[#1e293b] border-slate-700 text-gray-300' 
+                    : 'bg-white border-gray-200 text-gray-600'
+            }`}>
                 <button 
                     onClick={() => setActiveTab('all')}
-                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'all' ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'all' ? 'text-blue-500' : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600')}`}
                 >
                     Semua Produk
-                    {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-600 rounded-t-full"></div>}
+                    {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full"></div>}
                 </button>
-                        <button
-                            onClick={() => setActiveTab('best_seller')} 
-                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'best_seller' ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'}`}
+                <button
+                    onClick={() => setActiveTab('best_seller')} 
+                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'best_seller' ? 'text-blue-500' : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600')}`}
                 >
                     Terlaris
-                    {activeTab === 'best_seller' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-600 rounded-t-full"></div>}
+                    {activeTab === 'best_seller' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full"></div>}
                 </button>
                 <button 
                     onClick={() => setActiveTab('category')}
-                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'category' ? 'text-sky-600' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`flex-1 pb-2 text-xs font-bold transition-all relative ${activeTab === 'category' ? 'text-blue-500' : (isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600')}`}
                 >
                     Kategori
-                    {activeTab === 'category' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-600 rounded-t-full"></div>}
+                    {activeTab === 'category' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full"></div>}
                 </button>
             </div>
 
@@ -451,7 +455,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                         <div 
                             key={product.id}
                             onClick={() => onProductClick ? onProductClick(product) : navigate('/')}
-                            className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group hover:-translate-y-1"
+                            className={`rounded-2xl p-3 border transition-all cursor-pointer group hover:-translate-y-1 ${isDarkMode ? 'bg-[#1e293b] border-slate-700 shadow-none' : 'bg-white border-gray-100 shadow-sm'}`}
                         >
                             <div className="relative aspect-square bg-gray-50 overflow-hidden">
                                 <img 
@@ -467,9 +471,9 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                                 )}
                             </div>
                             <div className="p-3">
-                                <h3 className="font-bold text-gray-900 text-xs md:text-sm line-clamp-2 mb-1 leading-snug min-h-[2.5em]">{product.name}</h3>
+                                <h3 className={`text-xs md:text-sm font-bold line-clamp-2 mb-1 leading-snug min-h-[2.5em] ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product.name}</h3>
                                 <div className="flex items-end justify-between mt-2">
-                                    <p className="font-sans text-sm font-bold text-sky-600">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                                    <p className={`font-sans text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
                                     <div className="text-[10px] text-gray-400 flex items-center gap-0.5">
                                         <Star size={10} className="text-yellow-400 fill-yellow-400" /> 4.8
                                     </div>
