@@ -473,7 +473,10 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                             <div className="p-3">
                                 <h3 className={`text-xs md:text-sm font-bold line-clamp-2 mb-1 leading-snug min-h-[2.5em] ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product.name}</h3>
                                 <div className="flex items-end justify-between mt-2">
-                                    <p className={`font-sans text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                                    <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                                        <span className="text-xs font-medium mr-0.5">Rp</span>
+                                        <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
+                                    </div>
                                     <div className="text-[10px] text-gray-400 flex items-center gap-0.5">
                                         <Star size={10} className="text-yellow-400 fill-yellow-400" /> 4.8
                                     </div>

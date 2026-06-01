@@ -63,7 +63,10 @@ const Jasa = ({ onBack, products = [], onProductClick }) => {
                         <div className="flex items-center justify-between mt-2">
                             <div>
                                 <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Mulai dari</p>
-                                <p className={`font-price font-bold text-lg ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {parseInt(item.price).toLocaleString('id-ID')}</p>
+                                <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                                    <span className="text-xs font-medium mr-0.5">Rp</span>
+                                    <span>{parseInt(item.price).toLocaleString('id-ID')}</span>
+                                </div>
                             </div>
                             <button className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${isDarkMode ? 'bg-sky-900/50 text-sky-300 hover:bg-sky-800' : 'bg-sky-100 text-sky-600 hover:bg-sky-200'}`}>
                                 Pesan

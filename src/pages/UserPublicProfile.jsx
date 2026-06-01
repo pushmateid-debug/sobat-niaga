@@ -473,7 +473,10 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
                 </div>
                 <div className="p-3">
                   <h4 className={`text-xs font-bold line-clamp-1 mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{p.name}</h4>
-                  <p className="text-sky-600 font-black text-sm">Rp {parseInt(p.price).toLocaleString('id-ID')}</p>
+                  <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                    <span className="text-xs font-medium mr-0.5">Rp</span>
+                    <span>{parseInt(p.price).toLocaleString('id-ID')}</span>
+                  </div>
                 </div>
               </div>
             ))

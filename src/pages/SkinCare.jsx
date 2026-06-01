@@ -124,7 +124,10 @@ const SkinCare = ({ onBack, products, onProductClick }) => {
                     
                     <div className="flex items-end justify-between mb-2">
                       <div>
-                        <p className={`font-price text-sm font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(parseInt(product.price) || 0).toLocaleString('id-ID')}</p>
+                        <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                          <span className="text-xs font-medium mr-0.5">Rp</span>
+                          <span>{(parseInt(product.price) || 0).toLocaleString('id-ID')}</span>
+                        </div>
                       </div>
                     </div>
 

@@ -135,7 +135,10 @@ const Fashion = ({ onBack, products, onProductClick }) => {
                     <h3 className={`text-sm font-bold line-clamp-1 mb-1 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{product.name}</h3>
                     
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`font-price text-sm font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(parseInt(product.price) || 0).toLocaleString('id-ID')}</span>
+                      <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                        <span className="text-xs font-medium mr-0.5">Rp</span>
+                        <span>{(parseInt(product.price) || 0).toLocaleString('id-ID')}</span>
+                      </div>
                     </div>
 
                     {/* Rating */}

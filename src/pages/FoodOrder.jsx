@@ -101,7 +101,10 @@ const FoodOrder = ({ onBack, products, onProductClick }) => {
                           </div>
                           <div className="flex items-center justify-between">
                               <div>
-                                  <p className={`font-price text-sm font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {parseInt(item.price).toLocaleString('id-ID')}</p>
+                                  <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                                      <span className="text-xs font-medium mr-0.5">Rp</span>
+                                      <span>{parseInt(item.price).toLocaleString('id-ID')}</span>
+                                  </div>
                               </div>
                               <button className={`p-1.5 rounded-lg transition-colors shadow-sm ${isDarkMode ? 'bg-indigo-900/50 text-indigo-300 hover:bg-indigo-600 hover:text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'}`}>
                                   <Plus size={16} />

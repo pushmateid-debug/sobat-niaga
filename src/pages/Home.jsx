@@ -1318,7 +1318,10 @@ const Home = () => {
                                 </div>
                                 <div className="space-y-1.5">
                                     <p className={`text-xs md:text-sm font-bold line-clamp-2 leading-snug ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
-                                    <p className="text-xs md:text-sm font-bold text-[#FFD662]">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                                    <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                                        <span className="text-xs font-medium mr-0.5">Rp</span>
+                                        <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
+                                    </div>
                                     
                                     {/* Progress Bar */}
                                     <div className="w-full bg-gray-200 rounded-full h-1.5 md:h-2 overflow-hidden relative">
@@ -1457,7 +1460,10 @@ const Home = () => {
                 </div>
                 <div className="text-center w-full">
                   <p className={`text-sm font-bold line-clamp-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
-                  <p className="text-[#FFD662] font-bold text-sm mt-1">Rp {parseInt(product.price).toLocaleString('id-ID')}</p>
+                  <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                    <span className="text-xs font-medium mr-0.5">Rp</span>
+                    <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
+                  </div>
                 </div>
               </div>
             ))}
