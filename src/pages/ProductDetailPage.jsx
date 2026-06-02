@@ -106,6 +106,34 @@ const ProductDetailPage = () => {
       .catch(err => console.error("Gagal copy:", err));
   };
 
+  const handleShareWhatsApp = () => {
+    const shareUrl = window.location.href;
+    const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nKlik link di bawah:\n${shareUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const handleShareOptions = () => {
+    Swal.fire({
+      title: 'Bagikan Produk',
+      html: `
+        <div class="flex flex-col gap-3">
+          <button id="btnShareWA" class="w-full py-3.5 bg-green-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2">
+             🟢 Bagikan ke WhatsApp
+          </button>
+          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2">
+             🚀 Salin Link Produk
+          </button>
+        </div>
+      `,
+      showConfirmButton: false,
+      showCloseButton: true,
+      didOpen: () => {
+        document.getElementById('btnShareWA').onclick = () => { handleShareWhatsApp(); Swal.close(); };
+        document.getElementById('btnCopyLink').onclick = () => { handleCopyShareLink(); Swal.close(); };
+      }
+    });
+  };
+
   const handleFollow = async () => {
     if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
     if (String(product.sellerId) === String(user.uid)) return;
@@ -215,7 +243,7 @@ const ProductDetailPage = () => {
         <div className="flex items-center justify-between px-4 py-3">
           <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full"><ArrowLeft size={24} /></button>
           <h1 className="text-sm font-bold truncate max-w-[200px]">{product?.name}</h1>
-          <button onClick={handleCopyShareLink} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-sky-600"><Share2 size={20} /></button>
+          <button onClick={handleShareOptions} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-sky-600"><Share2 size={20} /></button>
         </div>
       </div>
 
@@ -238,7 +266,7 @@ const ProductDetailPage = () => {
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{product?.category} Official</span>
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">{product?.name}</h1>
-              <button onClick={handleCopyShareLink} className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Share2 size={24} /></button>
+              <button onClick={handleShareOptions} className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Share2 size={24} /></button>
             </div>
             <div className="flex items-center gap-4 mb-8">
               <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20"><Star size={18} className="fill-yellow-400 text-yellow-400" /><span className="text-base font-black text-yellow-700">{product.rating || '4.8'}</span></div>
@@ -246,7 +274,7 @@ const ProductDetailPage = () => {
             </div>
             <div className="mb-10">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className={`text-5xl md:text-6xl font-black tracking-tighter ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
+              <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-[#FFD662]">Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
             </div>
 
             {/* Tabs */}

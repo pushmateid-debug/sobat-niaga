@@ -103,6 +103,17 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
       .catch(err => console.error("Gagal copy:", err));
   };
 
+  // Fungsi Bagikan ke WhatsApp
+  const handleShareWhatsApp = () => {
+    const shareUrl = window.location.href;
+    const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nLihat detailnya di sini, Bro:\n${shareUrl}`;
+    
+    // Encode URL agar aman dikirim lewat chat
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    
+    window.open(waUrl, '_blank');
+  };
+
   // 5. Fungsi Follow Seller
   const handleFollow = async () => {
     if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
@@ -179,6 +190,9 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
       title: 'Bagikan Produk',
       html: `
         <div class="flex flex-col gap-3">
+          <button id="btnShareWA" class="w-full py-3.5 bg-green-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-green-200">
+             🟢 Bagikan ke WhatsApp
+          </button>
           <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-sky-200">
              🚀 Salin Link Produk
           </button>
@@ -194,8 +208,16 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         title: 'text-lg font-bold mb-4'
       },
       didOpen: () => {
+        const waBtn = document.getElementById('btnShareWA');
         const copyBtn = document.getElementById('btnCopyLink');
         const reportBtn = document.getElementById('btnReport');
+        
+        if (waBtn) {
+          waBtn.onclick = () => {
+            handleShareWhatsApp();
+            Swal.close();
+          };
+        }
         if (copyBtn) {
           copyBtn.onclick = () => {
             handleCopyShareLink();
