@@ -84,8 +84,8 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
 
   // 4. Fungsi Salin Link Produk (Share)
   const handleCopyShareLink = () => {
-    // Menggunakan window.location.href agar akurat mengambil URL yang sedang dibuka
-    const shareUrl = window.location.href;
+    // DIPAKSA: Menggunakan format /product/[id] agar pembeli langsung diarahkan ke produk ini
+    const shareUrl = `${window.location.origin}/product/${product?.id}`;
     
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
@@ -105,7 +105,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
 
   // Fungsi Bagikan ke WhatsApp
   const handleShareWhatsApp = () => {
-    const shareUrl = window.location.href;
+    const shareUrl = `${window.location.origin}/product/${product?.id}`;
     const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nLihat detailnya di sini, Bro:\n${shareUrl}`;
     
     // Encode URL agar aman dikirim lewat chat

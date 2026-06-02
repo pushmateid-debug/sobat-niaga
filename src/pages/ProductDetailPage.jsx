@@ -95,7 +95,7 @@ const ProductDetailPage = () => {
   }, [product?.sellerId, user?.uid]);
 
   const handleCopyShareLink = () => {
-    const shareUrl = window.location.href;
+    const shareUrl = `${window.location.origin}/product/${product?.id}`;
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
         Swal.fire({
@@ -107,7 +107,7 @@ const ProductDetailPage = () => {
   };
 
   const handleShareWhatsApp = () => {
-    const shareUrl = window.location.href;
+    const shareUrl = `${window.location.origin}/product/${product?.id}`;
     const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nKlik link di bawah:\n${shareUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
   };
