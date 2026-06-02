@@ -19,6 +19,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [sellerProfile, setSellerProfile] = useState(null);
 
   // Tentukan displayImage di atas agar bisa digunakan sebagai dependency hook
   const displayImage = product?.mediaUrl || product?.image || 'https://via.placeholder.com/400';
@@ -53,6 +54,20 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
 
     return () => unsubFollow();
   }, [product?.sellerId, user?.uid, isOpen]);
+
+  // Fetch Seller Profile untuk mendapatkan Foto Profil Gmail (Sinkron dengan Mobile)
+  useEffect(() => {
+    if (product?.sellerId && isOpen) {
+      const sellerRef = ref(db, `users/${product.sellerId}`);
+      get(sellerRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          setSellerProfile(snapshot.val());
+        }
+      });
+    } else if (!isOpen) {
+      setSellerProfile(null); // Reset saat modal ditutup
+    }
+  }, [product?.sellerId, isOpen]);
 
   // !!! PENTING: Early return HANYA boleh ada setelah SEMUA hooks didefinisikan !!!
   if (!isOpen || !product) return null;
@@ -123,6 +138,75 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
         console.error("Gagal menyalin link:", err);
         Swal.fire('Gagal', 'Waduh, fitur copy diblokir browser kamu.', 'error');
       });
+  };
+
+  // Fungsi Bagikan ke WhatsApp
+  const handleShareWhatsApp = () => {
+    const shareUrl = `${window.location.origin}/product/${product.id}`;
+    const message = `Halo! Cek produk keren ini di SobatNiaga: ${name} 🚀\n\nLihat detailnya di sini, Bro:\n${shareUrl}`;
+    
+    // Encode URL agar aman dikirim lewat chat
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    
+    window.open(waUrl, '_blank');
+  };
+
+  // Fungsi Menu Share & Laporkan (Pop-up) - Disamakan dengan Mobile
+  const handleShareOptions = () => {
+    Swal.fire({
+      title: 'Bagikan Produk',
+      html: `
+        <div class="flex flex-col gap-3">
+          <button id="btnShareWA" class="w-full py-3.5 bg-[#25D366] text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-green-200">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.353-.883-.788-1.48-1.76-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.396.015 12.03c0 2.12.553 4.189 1.606 6.06L0 24l4.073-1.068a11.826 11.825 0 005.975 1.587h.005c6.637 0 12.032-5.396 12.035-12.031a11.764 11.764 0 00-3.614-8.508z"/></svg> Bagikan ke WhatsApp
+          </button>
+          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-sky-200">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Salin Link Produk
+          </button>
+          <button id="btnReport" class="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-2xl flex items-center justify-center gap-3 border border-red-100">
+             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg> Laporkan Produk
+          </button>
+        </div>
+      `,
+      showConfirmButton: false,
+      showCloseButton: true,
+      customClass: {
+        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'}`,
+        title: 'text-lg font-bold mb-4'
+      },
+      didOpen: () => {
+        const waBtn = document.getElementById('btnShareWA');
+        const copyBtn = document.getElementById('btnCopyLink');
+        const reportBtn = document.getElementById('btnReport');
+        
+        if (waBtn) {
+          waBtn.onclick = () => {
+            handleShareWhatsApp();
+            Swal.close();
+          };
+        }
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            handleCopyShareLink();
+            Swal.close();
+          };
+        }
+        if (reportBtn) {
+          reportBtn.onclick = () => {
+            Swal.fire({
+              title: 'Laporkan Produk?',
+              text: 'Laporan kamu akan segera diproses oleh Admin.',
+              icon: 'warning',
+              showCancelButton: true,
+              confirmButtonText: 'Kirim Laporan',
+              cancelButtonText: 'Batal',
+              confirmButtonColor: '#ef4444',
+              cancelButtonColor: '#6b7280',
+            }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
+          };
+        }
+      }
+    });
   };
 
   const handleChatInternal = () => {
@@ -229,7 +313,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className={`text-4xl font-black leading-tight font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
               <button 
-                onClick={handleCopyShareLink}
+                onClick={handleShareOptions}
                 className={`flex-shrink-0 p-3 rounded-2xl border transition-all active:scale-95 ${
                   isDarkMode ? 'bg-slate-800 border-slate-700 text-sky-400 hover:bg-slate-700' : 'bg-sky-50 border-sky-100 text-sky-600 hover:bg-sky-100'
                 }`}
@@ -248,7 +332,10 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             </div>
 
             <div className="mb-10">
-              <span className={`text-4xl font-black tracking-tighter font-sans ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {displayPrice}</span>
+              <div className="flex items-baseline text-[#FFD662] font-black">
+                <span className="text-lg font-medium mr-1">Rp</span>
+                <span className="text-5xl tracking-tighter">{displayPrice}</span>
+              </div>
               {voucherCode && (
                 <div className={`flex items-center gap-2 mt-2 px-3 py-1.5 rounded-xl border font-sans ${
                   isDarkMode ? 'bg-green-900/20 text-green-400 border-green-800' : 'bg-green-50 text-green-700 border-green-100'
@@ -285,14 +372,20 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 font-sans">
                         {/* Operated By */}
                         <div className={`flex items-center justify-between p-5 md:p-6 rounded-xl border transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b] border-slate-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                            {/* Sisi Kiri: Nama Toko di Tengah secara Vertikal */}
+                            {/* SISI KIRI: Foto Profil Gmail & Nama Toko (TikTok Shop Style) */}
                             <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-xl border overflow-hidden flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
-                                    <Store size={20} className="text-gray-400" />
-                                </div>
+                                {sellerProfile?.photoURL ? (
+                                    <img 
+                                        src={sellerProfile.photoURL} 
+                                        alt="Store Profile" 
+                                        className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm animate-fade-in"
+                                    />
+                                ) : (
+                                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
+                                )}
                                 <div className="text-left">
                                     <h3 className={`font-black text-sm tracking-tight transition-colors duration-300 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
-                                    <p className={`text-[10px] font-bold uppercase tracking-tighter ${isDarkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Operated by</p>
+                                    <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
                                 </div>
                             </div>
 

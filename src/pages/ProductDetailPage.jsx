@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, ShoppingCart, MessageCircle, Loader2, Share2, Store, ArrowLeft, Check, UserPlus } from 'lucide-react';
+import { Star, ShoppingCart, MessageCircle, Loader2, Share2, Store, ArrowLeft, Check, UserPlus, Home, Bell, User } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push, update, serverTimestamp } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -117,19 +117,37 @@ const ProductDetailPage = () => {
       title: 'Bagikan Produk',
       html: `
         <div class="flex flex-col gap-3">
-          <button id="btnShareWA" class="w-full py-3.5 bg-green-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2">
-             🟢 Bagikan ke WhatsApp
+          <button id="btnShareWA" class="w-full py-3.5 bg-[#25D366] text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-green-200">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.353-.883-.788-1.48-1.76-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.396.015 12.03c0 2.12.553 4.189 1.606 6.06L0 24l4.073-1.068a11.826 11.825 0 005.975 1.587h.005c6.637 0 12.032-5.396 12.035-12.031a11.764 11.764 0 00-3.614-8.508z"/></svg> Bagikan ke WhatsApp
           </button>
-          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2">
-             🚀 Salin Link Produk
+          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-sky-200">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Salin Link Produk
+          </button>
+          <button id="btnReport" class="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-2xl flex items-center justify-center gap-3 border border-red-100">
+             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg> Laporkan Produk
           </button>
         </div>
       `,
       showConfirmButton: false,
       showCloseButton: true,
+      customClass: {
+        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'}`,
+        title: 'text-lg font-bold mb-4'
+      },
       didOpen: () => {
         document.getElementById('btnShareWA').onclick = () => { handleShareWhatsApp(); Swal.close(); };
         document.getElementById('btnCopyLink').onclick = () => { handleCopyShareLink(); Swal.close(); };
+        document.getElementById('btnReport').onclick = () => {
+            Swal.fire({
+              title: 'Laporkan Produk?',
+              text: 'Laporan kamu akan segera diproses oleh Admin.',
+              icon: 'warning',
+              showCancelButton: true,
+              confirmButtonText: 'Kirim Laporan',
+              cancelButtonText: 'Batal',
+              confirmButtonColor: '#ef4444',
+            }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
+          };
       }
     });
   };
@@ -221,31 +239,46 @@ const ProductDetailPage = () => {
   // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
   if (loading || !product) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-white">
-        <div className="flex flex-col items-center gap-4 text-center px-6">
-          {loading ? (
-            <>
-              <Loader2 className="animate-spin text-sky-500" size={40} />
-              <p className="text-sm font-medium animate-pulse">Memuat data produk...</p>
-            </>
-          ) : (
-            <p className="text-sm font-medium text-red-400">Produk tidak ditemukan atau terhapus.</p>
-          )}
-        </div>
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+        {loading ? (
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <ShoppingBag size={24} className="text-sky-500" />
+              </div>
+            </div>
+            <p className="text-sm font-bold animate-pulse text-sky-500">Membuka Produk SobatNiaga...</p>
+          </div>
+        ) : (
+          <div className="text-center px-6">
+            <p className="text-lg font-bold text-red-500 mb-4">Yah, Produk Gak Ditemukan, Bro! 😢</p>
+            <button onClick={() => navigate('/')} className="px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Balik ke Home</button>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-[#0f172a] text-white' : 'bg-white text-gray-900'}`}>
-      {/* Header Sticky Mobile */}
-      <div className={`sticky top-0 z-50 border-b md:hidden backdrop-blur-md ${isDarkMode ? 'bg-[#0f172a]/80 border-slate-800' : 'bg-white/80 border-gray-100'}`}>
-        <div className="flex items-center justify-between px-4 py-3">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full"><ArrowLeft size={24} /></button>
-          <h1 className="text-sm font-bold truncate max-w-[200px]">{product?.name}</h1>
-          <button onClick={handleShareOptions} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-sky-600"><Share2 size={20} /></button>
+    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-[#F8FAFC] text-gray-900'}`}>
+      {/* Navbar Desktop & Mobile Style - Biar Gak Berasa Terisolasi */}
+      <nav className={`sticky top-0 z-[100] backdrop-blur-md border-b transition-all ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-gray-200'}`}>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate('/')} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className="text-lg md:text-xl font-black text-sky-600 tracking-tighter cursor-pointer" onClick={() => navigate('/')}>
+              SobatNiaga
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+             <button onClick={handleShareOptions} className="p-2 text-sky-600"><Share2 size={22}/></button>
+             {!user && <button onClick={() => navigate('/')} className="text-xs font-bold bg-sky-600 text-white px-4 py-2 rounded-lg">Login</button>}
+          </div>
         </div>
-      </div>
+      </nav>
 
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)]">
         {/* Sisi Kiri: Foto Produk */}
