@@ -230,8 +230,16 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 size={40} className="animate-spin text-sky-600" />
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <Store size={24} className="text-sky-500" />
+              </div>
+            </div>
+            <p className="text-sm font-bold animate-pulse text-sky-500">Membuka Profil Toko...</p>
+          </div>
       </div>
     );
   }
@@ -239,11 +247,13 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
   // Handle case where sellerData is null after loading (e.g., seller doesn't exist)
   if (!sellerData) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-700 p-4 text-center">
-        <Flag size={48} className="text-gray-400 mb-4" />
-        <h2 className="text-xl font-bold">Toko Tidak Ditemukan</h2>
-        <p className="mt-2">Profil toko yang lo cari gak ada atau udah dihapus, Bro!</p>
-        <button onClick={handleInternalBack} className="mt-6 px-6 py-2 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700">
+      <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
+        <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
+          <Flag size={40} className="text-red-500" />
+        </div>
+        <h2 className="text-xl font-black">Yah, Tokonya Gak Ada, Bro! 😢</h2>
+        <p className="mt-2 text-sm opacity-60">Mungkin toko ini udah tutup atau link-nya salah.</p>
+        <button onClick={handleInternalBack} className="mt-8 px-8 py-3 bg-sky-600 text-white rounded-2xl font-bold shadow-lg shadow-sky-200 transition-all active:scale-95">
           Kembali
         </button>
       </div>
