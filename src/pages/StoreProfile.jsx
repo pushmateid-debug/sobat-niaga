@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check, User, Edit } from 'lucide-react';
+import { ChevronLeft, Star, MapPin, Search, ShoppingBag, CheckCircle, Copy, Ticket, Award, MessageCircle, Loader2, Share2, Clock, Menu, Flag, HelpCircle, Grid, UserPlus, Check, User, Edit, Store } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { db, dbFirestore } from '../config/firebase'; // Import dbFirestore
 import { ref, onValue, query, orderByChild, equalTo, get } from 'firebase/database';
