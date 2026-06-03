@@ -76,7 +76,7 @@ const Home = () => {
   const [capsuleStyle, setCapsuleStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const tabsRef = useRef([]);
   const [selectedUserProfileId, setSelectedUserProfileId] = useState(null); // State baru
-  const { theme } = useTheme(); // Ambil state theme
+  const { theme } = useTheme() || { theme: 'light' }; // 🛡️ Safety check biar gak crash pas toggle theme
   const isDarkMode = theme === 'dark';
   const [flashDeal, setFlashDeal] = useState(null);
   const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 });
@@ -781,9 +781,19 @@ const Home = () => {
   // Loading Screen: Tahan tampilan sampai Firebase selesai ngecek
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <Loader2 size={48} className="text-indigo-600 animate-spin mb-4" />
-        <p className="text-gray-500 font-medium animate-pulse">Memuat SobatNiaga...</p>
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+               <ShoppingBag size={24} className="text-sky-500" />
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black tracking-tighter text-sky-600">SobatNiaga</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50 animate-pulse">Memuat Sistem...</p>
+          </div>
+        </div>
       </div>
     );
   }

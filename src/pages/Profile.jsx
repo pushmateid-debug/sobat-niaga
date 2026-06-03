@@ -17,7 +17,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
   const [saldo, setSaldo] = useState(0); // State untuk saldo
   const [niagaSaldo, setNiagaSaldo] = useState(0);
   const [sellerBalance, setSellerBalance] = useState(0);
-  const { theme, toggleTheme } = useTheme(); // Pakai Theme Context
+  const { theme, toggleTheme } = useTheme() || { theme: 'light', toggleTheme: () => {} }; // 🛡️ Safety check context
   const isDarkMode = theme === 'dark'; // Helper variable biar kodingan lebih bersih
 
   // Load data tambahan dari Realtime Database (Real-time Sync)
