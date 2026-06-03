@@ -204,53 +204,68 @@ const ProductDetailPage = () => {
     setIsAdding(true);
     try {
       const cartRef = ref(db, `users/${user.uid}/cart`);
+
+      // 🛡️ CEK PRODUK DUPLIKAT DI KERANJANG
+      const cartSnap = await get(cartRef);
+      if (cartSnap.exists()) {
+        const currentCart = cartSnap.val();
+        const existingItemKey = Object.keys(currentCart).find(key => currentCart[key].productId === product?.id);
+        if (existingItemKey) {
+          Swal.fire({
+            title: 'Sudah di Keranjang',
+            text: 'Produk ini sudah ada di keranjangmu, Bro!',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Ke Keranjang',
+            cancelButtonText: 'Nanti Saja',
+            buttonsStyling: false,
+            customClass: {
+              popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+              confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 mx-2 active:scale-95',
+              cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+            }
+          }).then((res) => { if (res.isConfirmed) navigate('/'); });
+          setIsAdding(false);
+          return;
+        }
+      }
+
       await push(cartRef, {
-        productId: product.id, name: product.name, price: parseInt(product.price),
-        image: product.mediaUrl || product.image, quantity: 1, storeName: product.storeName,
-        sellerId: product.sellerId, selected: true, createdAt: new Date().toISOString()
+        productId: product?.id || id, 
+        name: product?.name || 'Produk SobatNiaga', 
+        price: parseInt(product?.price) || 0,
+        image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150', 
+        quantity: 1, 
+        storeName: product?.storeName || 'Toko',
+        sellerId: product?.sellerId || '', 
+        selected: true, 
+        createdAt: new Date().toISOString()
       });
 
-      if (redirect) navigate('/cart');
+      if (redirect) navigate('/'); // Arahkan ke home agar SPA controller-nya aktif
       else Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Masuk keranjang 🛒', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
     } catch (error) {
+      console.error("Direct Link Cart Error:", error);
       Swal.fire('Error', 'Gagal masuk keranjang.', 'error');
     } finally {
       setIsAdding(false);
     }
   };
 
-  const handleChatWithProduct = async () => {
+  const handleChatWithProduct = () => {
     if (!user || !product) {
       Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
       return;
     }
-    const sellerId = product?.sellerId;
-    const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
     
     // Siapkan data produk untuk context chat (Attached Product)
     const attachedProduct = {
       id: product?.id,
-      title: product?.name || product?.title || "Produk",
+      name: product?.name || "Produk",
       price: product?.price,
       image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150'
     };
-
-    try {
-      const messagesRef = ref(db, `seller_chats/${roomId}/messages`);
-      await push(messagesRef, {
-        senderId: user.uid, senderName: user.displayName || 'Buyer',
-        text: `Halo, saya tertarik dengan produk ini.`, timestamp: serverTimestamp(),
-        sender: 'buyer', status: 'sent',
-        attachedProduct: attachedProduct
-      });
-      await update(ref(db, `seller_chats/${roomId}`), {
-        buyerId: user.uid, userName: user.displayName || '', userPhoto: user.photoURL || '',
-        userEmail: user.email || '', sellerId: sellerId, storeName: product?.storeName || 'Toko',
-        lastMessageText: `Halo, saya tertarik dengan produk ini.`, lastMessageTime: serverTimestamp(), hasUnreadSeller: true
-      });
-      // Kirim state produk ke halaman chat
-      navigate('/chat', { state: { attachedProduct } });
-    } catch (err) { console.error("Gagal attach produk:", err); }
+    navigate('/chat', { state: { attachedProduct, sellerId: product?.sellerId } });
   };
 
   // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
@@ -316,7 +331,7 @@ const ProductDetailPage = () => {
           <div className="flex flex-col h-full">
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{product?.category} Official</span>
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">{product?.name}</h1>
+              <h1 className={`text-lg md:text-2xl font-bold leading-snug ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product?.name}</h1>
               <div className="hidden md:flex items-center gap-3">
                 <button onClick={handleToggleFavorite} className={`p-4 rounded-3xl border transition-all active:scale-125 ${isFavorite ? 'bg-red-50 border-red-100 text-red-500' : 'border-gray-100 text-gray-400 hover:bg-red-50'}`}><Heart size={24} className={isFavorite ? 'fill-red-500' : ''} /></button>
                 <button onClick={handleShareOptions} className="p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
@@ -328,7 +343,7 @@ const ProductDetailPage = () => {
             </div>
             <div className="mb-10">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className={`text-5xl md:text-6xl font-black tracking-tighter ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
+              <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
             </div>
 
             {/* Tabs */}

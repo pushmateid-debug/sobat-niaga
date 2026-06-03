@@ -123,7 +123,16 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
   const handleConfirmPayment = async () => {
     if (!proofFile) {
-      Swal.fire('Bukti Transfer Kosong', 'Mohon upload screenshot bukti transfer dulu ya.', 'warning');
+      Swal.fire({
+        title: 'Bukti Transfer Kosong',
+        text: 'Mohon upload screenshot bukti transfer dulu ya.',
+        icon: 'warning',
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 active:scale-95'
+        }
+      });
       return;
     }
 
@@ -161,7 +170,16 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
       onPaymentSuccess();
     } catch (error) {
       console.error("Payment error:", error);
-      Swal.fire('Gagal', 'Terjadi kesalahan saat upload bukti.', 'error');
+      Swal.fire({
+        title: 'Gagal',
+        text: 'Terjadi kesalahan saat upload bukti.',
+        icon: 'error',
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 active:scale-95'
+        }
+      });
     } finally {
       setIsUploading(false);
     }

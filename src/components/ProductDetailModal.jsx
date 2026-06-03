@@ -249,9 +249,18 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
           Swal.fire({ 
             title: 'Sudah di Keranjang', 
             text: 'Produk ini sudah ada di keranjangmu.', 
-            icon: 'info', showCancelButton: true, confirmButtonText: 'Lihat Keranjang' }).then((res) => {
-            if (res.isConfirmed) onGoToCart();
-            else Swal.close(); // Tutup modal SweetAlert jika dibatalkan
+            icon: 'info', 
+            showCancelButton: true, 
+            confirmButtonText: 'Lihat Keranjang',
+            cancelButtonText: 'Nanti Saja',
+            buttonsStyling: false,
+            customClass: {
+              popup: `rounded-[2.5rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+              confirmButton: 'px-10 py-3.5 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 mx-2 active:scale-95',
+              cancelButton: `px-10 py-3.5 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+            }
+          }).then((res) => {
+            if (res.isConfirmed && onGoToCart) onGoToCart();
           });
           setIsAdding(false);
           return;
@@ -325,7 +334,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block font-sans ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{category} Official</span>
             
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className={`text-4xl font-black leading-tight font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
+              <h1 className={`text-2xl font-bold leading-snug ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
               <div className="flex items-center gap-2 shrink-0">
                 <button 
                   onClick={handleToggleFavorite}

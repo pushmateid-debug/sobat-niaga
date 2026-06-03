@@ -8,7 +8,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => {
+const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoToCart }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
@@ -165,24 +165,51 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
     setIsAdding(true);
     try {
       const cartRef = ref(db, `users/${user.uid}/cart`);
+      
+      // 🛡️ CEK PRODUK DUPLIKAT DI KERANJANG
+      const cartSnap = await get(cartRef);
+      if (cartSnap.exists()) {
+        const currentCart = cartSnap.val();
+        const existingItemKey = Object.keys(currentCart).find(key => currentCart[key].productId === product?.id);
+        if (existingItemKey) {
+          Swal.fire({
+            title: 'Sudah di Keranjang',
+            text: 'Produk ini sudah ada di keranjangmu, Bro!',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Lihat Keranjang',
+            cancelButtonText: 'Nanti Saja',
+            buttonsStyling: false,
+            customClass: {
+              popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+              confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 mx-2 active:scale-95',
+              cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+            }
+          }).then((res) => { if (res.isConfirmed && onGoToCart) onGoToCart(); });
+          setIsAdding(false);
+          return;
+        }
+      }
+
       await push(cartRef, {
-        productId: product.id,
-        name: product.name,
-        price: parseInt(product.price),
-        image: product.mediaUrl || product.image,
+        productId: product?.id || '',
+        name: product?.name || 'Produk SobatNiaga',
+        price: parseInt(product?.price) || 0,
+        image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150',
         quantity: 1,
-        storeName: product.storeName,
-        sellerId: product.sellerId,
+        storeName: product?.storeName || 'Toko',
+        sellerId: product?.sellerId || '',
         selected: true,
         createdAt: new Date().toISOString()
       });
 
       if (redirect) {
-        navigate('/cart');
+        if (onGoToCart) onGoToCart();
       } else {
         Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Masuk keranjang 🛒', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
       }
     } catch (error) {
+      console.error("Cart Error Detail:", error);
       Swal.fire('Error', 'Gagal masuk keranjang.', 'error');
     } finally {
       setIsAdding(false);
@@ -248,12 +275,8 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
               showCancelButton: true,
               confirmButtonText: 'Kirim Laporan',
               cancelButtonText: 'Batal',
-              buttonsStyling: false,
-              customClass: {
-                popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
-                confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all !opacity-100 mx-2 active:scale-95',
-                cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
-              }
+              confirmButtonColor: '#ef4444',
+              cancelButtonColor: '#6b7280',
             }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
           };
         }
@@ -353,10 +376,10 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
                     <Forward size={26} />
                   </button>
                   <button 
-                    onClick={handleToggleFavorite}
-                    className={`transition-all active:scale-125 ${isFavorite ? 'text-red-500' : (isDarkMode ? 'text-gray-300 hover:text-red-400' : 'text-gray-500 hover:text-red-500')}`}
+                    onClick={() => Swal.fire({ icon: 'success', title: 'Ditambahkan ke Wishlist!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 })}
+                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-red-500' : 'text-gray-500 hover:text-red-600'}`}
                   >
-                    <Heart size={26} className={isFavorite ? 'fill-red-500' : ''} />
+                    <Heart size={22} />
                   </button>
                 </div>
               </div>
@@ -458,11 +481,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
               <button 
                 onClick={() => handleAddToCart(false)}
                 disabled={isAdding}
-                className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-                  isDarkMode 
-                    ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' 
-                    : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'
-                }`}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
               >
                 {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}
               </button>
@@ -483,11 +502,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         <button 
           onClick={() => handleAddToCart(false)}
           disabled={isAdding}
-          className={`flex-1 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-            isDarkMode 
-              ? 'bg-slate-800 text-gray-400' 
-              : 'bg-sky-50 text-sky-600 border border-sky-100'
-          }`}
+          className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
         >
           {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
         </button>

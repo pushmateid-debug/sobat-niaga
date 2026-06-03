@@ -87,6 +87,7 @@ const Home = () => {
   const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop (Floating)
   const [chatSellerId, setChatSellerId] = useState(null); // ID Seller untuk chat aktif
   const [activeChatBuyerId, setActiveChatBuyerId] = useState(null); // ID Buyer untuk chat aktif (Sisi Seller)
+  const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
 
@@ -503,55 +504,31 @@ const Home = () => {
   };
 
   // --- LOGIKA CHAT BAWA PRODUK (ATTACH PRODUCT TO CHAT) ---
-  const handleChatWithProduct = async (productData) => {
+  const handleChatWithProduct = (productData) => {
     if (!user) {
       Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
       return;
     }
 
     const sellerId = productData.sellerId;
-    const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
     
-    try {
-      // 1. Kirim pesan otomatis dengan lampiran produk ke room chat
-      const messagesRef = ref(db, `seller_chats/${roomId}/messages`);
-      await push(messagesRef, {
-        senderId: user.uid,
-        senderName: user.displayName || 'Buyer',
-        text: `Halo, saya tertarik dengan produk ini.`,
-        timestamp: serverTimestamp(),
-        sender: 'buyer',
-        status: 'sent',
-        attachedProduct: {
-          id: productData.id,
-          name: productData.name,
-          price: productData.price,
-          image: productData.mediaUrl || productData.image || 'https://via.placeholder.com/150'
-        }
-      });
+    // Siapkan data produk untuk context chat (Sebagai Draft)
+    const attachedProduct = {
+      id: productData.id,
+      name: productData.name,
+      price: productData.price,
+      image: productData.mediaUrl || productData.image || 'https://via.placeholder.com/150'
+    };
 
-      // 2. Inisialisasi/Update metadata room agar muncul di inbox
-      await update(ref(db, `seller_chats/${roomId}`), {
-        buyerId: user.uid,
-        userName: user.displayName || '',
-        userPhoto: user.photoURL || '',
-        userEmail: user.email || '',
-        sellerId: sellerId,
-        storeName: productData.storeName || 'Toko',
-        lastMessageText: `Halo, saya tertarik dengan produk ini.`,
-        lastMessageTime: serverTimestamp(),
-        hasUnreadSeller: true
-      });
-
-      // 3. Navigasi & Buka Chat
-      setChatSellerId(sellerId);
-      setChatTab('seller');
-      if (window.innerWidth >= 768) {
-        setIsDesktopChatOpen(true);
-      } else {
-        startTransition(() => setCurrentView('chat'));
-      }
-    } catch (err) { console.error("Gagal attach produk:", err); }
+    setPendingProduct(attachedProduct);
+    setChatSellerId(sellerId);
+    setChatTab('seller');
+    
+    if (window.innerWidth >= 768) {
+      setIsDesktopChatOpen(true);
+    } else {
+      startTransition(() => setCurrentView('chat'));
+    }
   };
 
   const scrollToSection = (name) => {
@@ -940,6 +917,8 @@ const Home = () => {
                       setIsChatMenuOpen(false);
                     });
                   }}
+              pendingProduct={pendingProduct}
+              setPendingProduct={setPendingProduct}
               />
           </div>
         );
@@ -1797,6 +1776,8 @@ const Home = () => {
                     setIsChatMenuOpen(false);
                   });
                 }}
+              pendingProduct={pendingProduct}
+              setPendingProduct={setPendingProduct}
             />
         </div>
       )}

@@ -19,7 +19,9 @@ export const ChatLayout = ({
   setIsChatMenuOpen, 
   isChatMenuOpen,
   playCustomNotificationSound,
-  onViewProfile
+  onViewProfile,
+  pendingProduct,
+  setPendingProduct
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -188,11 +190,16 @@ export const ChatLayout = ({
       text: inputText,
       timestamp: serverTimestamp(),
       sender: chatTab === 'admin' ? 'user' : (isSellerView ? 'seller' : 'buyer'), 
-      status: 'sent'
+      status: 'sent',
+      attachedProduct: pendingProduct || location.state?.attachedProduct || null
     };
 
     try {
       await push(ref(db, config.messagesPath), messageData);
+
+      // Bersihkan lampiran setelah berhasil dikirim
+      if (setPendingProduct) setPendingProduct(null);
+      if (location.state?.attachedProduct) navigate(location.pathname, { replace: true, state: { ...location.state, attachedProduct: null } });
 
       const metaUpdate = {
         lastMessageText: inputText,
@@ -402,25 +409,32 @@ export const ChatLayout = ({
         <form onSubmit={handleSendMessage} className={`p-3 border-t flex flex-col gap-2 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
           
           {/* RENDER LAMPIRAN PRODUK OTOMATIS (Dani Style) */}
-          {location.state?.attachedProduct && (
+          {(pendingProduct || location.state?.attachedProduct) && (
             <div className="mx-1 mb-2 p-2.5 bg-black/60 border border-slate-700 rounded-2xl flex items-center gap-3 backdrop-blur-md shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
               <img 
-                src={location.state.attachedProduct.image} 
+                src={(pendingProduct || location.state.attachedProduct).image} 
                 alt="Attached" 
                 className="w-12 h-12 rounded-xl object-cover bg-slate-800 border border-slate-700"
               />
               <div className="flex-1 min-w-0">
                 <h5 className="text-[11px] font-bold text-white truncate uppercase tracking-tight">
-                  {location.state.attachedProduct.title}
+                  {(pendingProduct || location.state.attachedProduct).name || (pendingProduct || location.state.attachedProduct).title}
                 </h5>
                 <p className="text-xs text-sky-400 font-black mt-0.5">
-                  Rp {Number(location.state.attachedProduct.price).toLocaleString('id-ID')}
+                  Rp {Number((pendingProduct || location.state.attachedProduct).price).toLocaleString('id-ID')}
                 </p>
                 <p className="text-[9px] text-slate-400 mt-0.5 italic">
                   Sedang menanyakan produk ini...
                 </p>
               </div>
-              <button type="button" onClick={() => navigate(location.pathname, { replace: true, state: {} })} className="p-1.5 hover:bg-white/10 rounded-full text-slate-400 transition-colors">
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (setPendingProduct) setPendingProduct(null);
+                  if (location.state?.attachedProduct) navigate(location.pathname, { replace: true, state: { ...location.state, attachedProduct: null } });
+                }} 
+                className="p-1.5 hover:bg-white/10 rounded-full text-slate-400 transition-colors"
+              >
                 <X size={16} />
               </button>
             </div>

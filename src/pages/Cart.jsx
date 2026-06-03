@@ -281,7 +281,11 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
         icon: 'error',
         title: 'Gagal',
         text: 'Kode voucher tidak valid atau produk belum dicentang.',
-        confirmButtonColor: '#0284c7'
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 active:scale-95'
+        }
       });
       setAppliedVoucher(null);
     }
@@ -311,7 +315,11 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
         icon: 'warning',
         title: 'Keranjang Kosong',
         text: 'Pilih minimal satu barang untuk dibeli.',
-        confirmButtonColor: '#0284c7'
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 active:scale-95'
+        }
       });
       return;
     }
@@ -320,7 +328,11 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
         icon: 'warning',
         title: 'Alamat Kosong',
         text: 'Mohon isi alamat pengiriman untuk pesanan Niaga Food.',
-        confirmButtonColor: '#0284c7'
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 active:scale-95'
+        }
       });
       return;
     }
@@ -332,7 +344,11 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
         icon: 'error',
         title: 'Gagal Checkout',
         text: 'Waduh, lo nggak bisa beli barang dagangan lo sendiri, Bro! Fokus jualan aja yuk.',
-        confirmButtonColor: '#ef4444'
+        buttonsStyling: false,
+        customClass: {
+          popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+          confirmButton: 'px-10 py-3 rounded-xl text-sm font-black text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all !opacity-100 active:scale-95'
+        }
       });
       return;
     }
