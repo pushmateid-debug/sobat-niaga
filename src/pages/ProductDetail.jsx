@@ -22,6 +22,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const allImages = [product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean);
@@ -103,6 +104,18 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
         });
       })
       .catch(err => console.error("Gagal copy:", err));
+  };
+
+  // Fungsi Toggle Favorite
+  const handleToggleFavorite = () => {
+    const nextState = !isFavorite;
+    setIsFavorite(nextState);
+    
+    Swal.fire({
+      icon: 'success',
+      title: nextState ? 'Masuk Favorit! ❤️' : 'Dihapus dari Favorit',
+      toast: true, position: 'top', showConfirmButton: false, timer: 1500
+    });
   };
 
   // Fungsi Bagikan ke WhatsApp
@@ -336,10 +349,10 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
                     <Forward size={26} />
                   </button>
                   <button 
-                    onClick={() => Swal.fire({ icon: 'success', title: 'Ditambahkan ke Wishlist!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 })}
-                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-red-500' : 'text-gray-500 hover:text-red-600'}`}
+                    onClick={handleToggleFavorite}
+                    className={`transition-all active:scale-125 ${isFavorite ? 'text-red-500' : (isDarkMode ? 'text-gray-300 hover:text-red-400' : 'text-gray-500 hover:text-red-500')}`}
                   >
-                    <Heart size={22} />
+                    <Heart size={26} className={isFavorite ? 'fill-red-500' : ''} />
                   </button>
                 </div>
               </div>

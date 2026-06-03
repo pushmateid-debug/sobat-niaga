@@ -233,6 +233,7 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
   const [followLoading, setFollowLoading] = useState(false);
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const { theme } = useTheme();
 
   // Sinkronkan refs untuk menghindari stale closure di Intersection Observer
@@ -247,40 +248,32 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
   // Ini solusi ampuh buat ngilangin bug 'Ghost Muted'
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = isGlobalMuted;
+      // 🛡️ ANTI-TABRAKAN SUARA: Video hanya boleh un-mute jika Global un-mute DAN video sedang terlihat di layar
+      const targetMuteStatus = isGlobalMuted || !isVisible;
+      videoRef.current.muted = targetMuteStatus;
+      
+      if (!targetMuteStatus && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
     }
-  }, [isGlobalMuted]);
+  }, [isGlobalMuted, isVisible]);
 
   // Menangani pemutaran video menggunakan Intersection Observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(async (entry) => {
-          if (entry.isIntersecting && videoRef.current) {
-            // 1. Sinkronkan dengan Shared Audio Context
-            videoRef.current.muted = isGlobalMutedRef.current;
-            
+          setIsVisible(entry.isIntersecting);
+          if (entry.isIntersecting && videoRef.current) {            
             try {
               if (video.videoUrl && videoRef.current.readyState >= 2) {
                 await videoRef.current.play();
-                setIsPlaying(true);
-
-                // 2. Force Audio Logic: Trik 'Mancing' Volume
-                // Gunakan ref untuk mendapatkan status interaksi terbaru tanpa re-bind observer
-                if (hasInteractedRef.current && !isGlobalMutedRef.current) {
-                  videoRef.current.muted = false;
-                  videoRef.current.volume = 0.1;
-                  setTimeout(() => {
-                    if (videoRef.current) videoRef.current.volume = 1.0;
-                  }, 150);
-                }
               }
             } catch (err) {
               // Autoplay error umum terjadi jika koneksi lambat, abaikan lognya
             }
           } else if (videoRef.current) {
             videoRef.current.pause();
-            setIsPlaying(false);
           }
         });
       },
@@ -295,7 +288,6 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
-        setIsPlaying(false);
       } else { 
         // Safety check: Jangan paksa putar kalau source bermasalah
         if (!video?.videoUrl) {
@@ -306,7 +298,6 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
           // Paksa sinkron properti sebelum play
           videoRef.current.muted = isGlobalMuted;
           await videoRef.current.play(); 
-          setIsPlaying(true);
           
           // Jika user klik Play, ini adalah Interaksi!
           if (isGlobalMuted) {
@@ -434,6 +425,9 @@ const VideoItem = memo(({ video, onProfileClick, onStoreClick, onProductClick, i
         muted={isGlobalMuted} // Panggil variabel isGlobalMuted yang benar
         playsInline // WAJIB untuk iOS Safari
         autoPlay // Tambahkan autoPlay eksplisit biar browser yakin ini video background
+        // ⚡ SYNC SOURCE OF TRUTH: Sinkronkan ikon Play dengan status asli video
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onError={handleVideoError}
         onEnded={() => { if(videoRef.current) videoRef.current.play(); }} // Smooth Loop Fallback
       />
@@ -559,8 +553,8 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
   const [liveStreams, setLiveStreams] = useState([]);
   const [loading, setLoading] = useState(!initialVideos);
   const [followingList, setFollowingList] = useState([]);
-  const [isGlobalMuted, setIsGlobalMuted] = useState(true);
-  const [hasInteracted, setHasInteracted] = useState(!!initialVideos); // Anggap interaksi klik thumbnail sebagai gerbang audio
+  const [isGlobalMuted, setIsGlobalMuted] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(true); // Klik icon video dari home sudah termasuk interaksi user
 
   // Algoritma Campuran: Merge Video & Live untuk Tab "Untuk Anda"
   const forYouFeed = useMemo(() => {
@@ -666,7 +660,7 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .video-container { scroll-snap-type: y mandatory; height: 100vh; width: 100vw; }
-        .video-slide { scroll-snap-align: start; height: 100vh; width: 100vw; }
+        .video-slide { scroll-snap-align: start; scroll-snap-stop: always; height: 100vh; width: 100vw; }
       `}</style>
 
       {/* User Interaction Bridge Overlay */}

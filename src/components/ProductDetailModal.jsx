@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Forward, Tag, Store, User, PlayCircle, Image as ImageIcon, UserPlus, Check } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Forward, Tag, Store, User, PlayCircle, Image as ImageIcon, UserPlus, Check, Heart } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { ref, push, get, query, orderByChild, equalTo, onValue } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -20,6 +20,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   // Tentukan displayImage di atas agar bisa digunakan sebagai dependency hook
   const displayImage = product?.mediaUrl || product?.image || 'https://via.placeholder.com/400';
@@ -117,6 +118,17 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
     } finally {
       setFollowLoading(false);
     }
+  };
+
+  const handleToggleFavorite = () => {
+    const nextState = !isFavorite;
+    setIsFavorite(nextState);
+    
+    Swal.fire({
+      icon: 'success',
+      title: nextState ? 'Masuk Favorit! ❤️' : 'Dihapus dari Favorit',
+      toast: true, position: 'top', showConfirmButton: false, timer: 1500
+    });
   };
 
   // Fungsi Salin Link Produk untuk Viralitas (Deep Linking)
@@ -314,15 +326,24 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className={`text-4xl font-black leading-tight font-sans tracking-tighter ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h1>
-              <button 
-                onClick={handleShareOptions}
-                className={`flex-shrink-0 p-3 rounded-2xl border transition-all active:scale-95 ${
-                  isDarkMode ? 'bg-slate-800 border-slate-700 text-sky-400 hover:bg-slate-700' : 'bg-sky-50 border-sky-100 text-sky-600 hover:bg-sky-100'
-                }`}
-                title="Bagikan Produk"
-              >
-                <Forward size={24} />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button 
+                  onClick={handleToggleFavorite}
+                  className={`p-3 rounded-2xl border transition-all active:scale-125 ${
+                    isFavorite ? 'bg-red-50 border-red-100 text-red-500' : (isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-400 hover:bg-slate-700' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100')
+                  }`}
+                >
+                  <Heart size={24} className={isFavorite ? 'fill-red-500' : ''} />
+                </button>
+                <button 
+                  onClick={handleShareOptions}
+                  className={`p-3 rounded-2xl border transition-all active:scale-95 ${
+                    isDarkMode ? 'bg-slate-800 border-slate-700 text-sky-400 hover:bg-slate-700' : 'bg-sky-50 border-sky-100 text-sky-600 hover:bg-sky-100'
+                  }`}
+                >
+                  <Forward size={24} />
+                </button>
+              </div>
             </div>
             
             <div className="flex items-center gap-3 mb-8">

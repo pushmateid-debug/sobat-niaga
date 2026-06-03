@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-broimport { Star, ShoppingCart, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User } from 'lucide-react';
+import { Star, ShoppingCart, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User, Heart } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push, update, serverTimestamp } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -24,6 +24,7 @@ const ProductDetailPage = () => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -104,6 +105,17 @@ const ProductDetailPage = () => {
         });
       })
       .catch(err => console.error("Gagal copy:", err));
+  };
+
+  const handleToggleFavorite = () => {
+    const nextState = !isFavorite;
+    setIsFavorite(nextState);
+    
+    Swal.fire({
+      icon: 'success',
+      title: nextState ? 'Masuk Favorit! ❤️' : 'Dihapus dari Favorit',
+      toast: true, position: 'top', showConfirmButton: false, timer: 1500
+    });
   };
 
   const handleShareWhatsApp = () => {
@@ -274,6 +286,7 @@ const ProductDetailPage = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2">
+             <button onClick={handleToggleFavorite} className={`p-2 transition-all active:scale-125 ${isFavorite ? 'text-red-500' : 'text-gray-400'}`}><Heart size={24} className={isFavorite ? 'fill-red-500' : ''}/></button>
              <button onClick={handleShareOptions} className="p-2 text-sky-600"><Forward size={24}/></button>
              {!user && <button onClick={() => navigate('/')} className="text-xs font-bold bg-sky-600 text-white px-4 py-2 rounded-lg">Login</button>}
           </div>
@@ -299,7 +312,10 @@ const ProductDetailPage = () => {
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{product?.category} Official</span>
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">{product?.name}</h1>
-              <button onClick={handleShareOptions} className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
+              <div className="hidden md:flex items-center gap-3">
+                <button onClick={handleToggleFavorite} className={`p-4 rounded-3xl border transition-all active:scale-125 ${isFavorite ? 'bg-red-50 border-red-100 text-red-500' : 'border-gray-100 text-gray-400 hover:bg-red-50'}`}><Heart size={24} className={isFavorite ? 'fill-red-500' : ''} /></button>
+                <button onClick={handleShareOptions} className="p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
+              </div>
             </div>
             <div className="flex items-center gap-4 mb-8">
               <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20"><Star size={18} className="fill-yellow-400 text-yellow-400" /><span className="text-base font-black text-yellow-700">{product.rating || '4.8'}</span></div>
