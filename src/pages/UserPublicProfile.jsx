@@ -82,6 +82,8 @@ const UserPublicProfile = ({ userId, currentUserId, onBack, onVideoClick, onChat
         setStats({ followersCount: 0, followingCount: 0 });
         setIsFollowing(false);
       }
+    }, (err) => {
+      console.error("Firestore Stats Listener Error:", err);
     });
 
     // 4. Fetch User's Products (Realtime DB)

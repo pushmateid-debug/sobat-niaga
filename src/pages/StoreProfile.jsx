@@ -98,6 +98,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
         } else {
             setIsFollowing(false);
         }
+    }, (err) => {
+      console.error("Follow Listener Error:", err);
     });
 
     // Cleanup: Matikan semua listener pas pindah halaman
@@ -334,8 +336,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
               </div>
             </div>
 
-            {/* Sisi Kanan: Action Buttons (Horizontal Flex) */}
-            <div className="flex flex-col md:flex-row gap-2 md:gap-3 shrink-0">
+            {/* Sisi Kanan: Tombol Aksi Vertikal Ramping */}
+            <div className="flex flex-col gap-2 shrink-0 w-32 md:w-44">
                 {isOwner ? (
                     // Jika ini toko milik user sendiri
                     <>
@@ -358,19 +360,19 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                         <button
                             onClick={handleFollow}
                             disabled={followLoading}
-                            className={`w-full py-2.5 font-bold rounded-xl text-center flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm ${
+                            className={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm transition-all active:scale-95 border ${
                                 isFollowing
-                                    ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' // Setelah di-klik: Abu-abu gelap elegan
-                                    : 'bg-green-600 text-white hover:bg-green-500'   // Sebelum di-klik: Hijau solid
+                                    ? (isDarkMode ? 'bg-slate-700 text-gray-300 border-slate-600 hover:bg-slate-600' : 'bg-slate-100 text-gray-500 border-gray-300 hover:bg-gray-200')
+                                    : 'bg-green-600 text-white border-green-500 hover:bg-green-700'
                             }`}
                         >
-                            {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? <><Check size={14}/> Diikuti</> : <><UserPlus size={14}/> Ikuti</>)}
+                            {followLoading ? <Loader2 size={12} className="animate-spin mx-auto" /> : (isFollowing ? 'Diikuti' : 'Ikuti')}
                         </button>
                         <button
                             onClick={handleChat}
-                            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                            className={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all active:scale-95 ${isDarkMode ? 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
                         >
-                            <MessageCircle size={16} /> <span className="hidden sm:inline">Chat Penjual</span><span className="sm:hidden">Chat</span>
+                            Chat Penjual
                         </button>
                     </>
                 )}

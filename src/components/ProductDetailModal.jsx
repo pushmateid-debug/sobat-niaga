@@ -50,6 +50,8 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
       } else {
         setIsFollowing(false);
       }
+    }, (err) => {
+      console.error("Modal Follow Error:", err);
     });
 
     return () => unsubFollow();
@@ -372,37 +374,50 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 font-sans">
                         {/* Operated By */}
                         <div className={`flex items-center justify-between p-5 md:p-6 rounded-xl border transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b] border-slate-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                            {/* SISI KIRI: Foto Profil Gmail & Nama Toko (TikTok Shop Style) */}
-                            <div className="flex items-center gap-4">
+                            {/* SISI KIRI: Foto Profil Gmail & Nama Toko (Bisa diklik untuk kunjungi toko) */}
+                            <div 
+                                className="flex items-center gap-4 cursor-pointer group/store"
+                                onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
+                            >
                                 {sellerProfile?.photoURL ? (
                                     <img 
                                         src={sellerProfile.photoURL} 
                                         alt="Store Profile" 
-                                        className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm animate-fade-in"
+                                        className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm animate-fade-in group-hover/store:scale-105 transition-transform"
                                     />
                                 ) : (
                                     <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
                                 )}
                                 <div className="text-left">
-                                    <h3 className={`font-black text-sm tracking-tight transition-colors duration-300 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{storeName}</h3>
+                                    <h3 className={`font-black text-sm tracking-tight transition-colors duration-300 ${isDarkMode ? 'text-gray-200' : 'text-gray-900'} group-hover/store:text-sky-500`}>{storeName}</h3>
                                     <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
                                 </div>
                             </div>
 
                             {/* Sisi Kanan: Tombol Kotak Atas-Bawah */}
                             <div className="flex flex-col gap-2 w-32 md:w-44">
-                                <button
-                                    onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
-                                    className={`w-full py-2 border rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm transition-all active:scale-95 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-200 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                                >
-                                    Kunjungi Toko
-                                </button>
                                 {!isOwner && (
+                                    <>
+                                        <button
+                                            onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
+                                            className={`w-full py-2 border rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm transition-all active:scale-95 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-200 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                        >
+                                            Kunjungi Toko
+                                        </button>
+                                        <button
+                                            onClick={() => onChatWithProduct(product)}
+                                            className={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all active:scale-95 ${isDarkMode ? 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
+                                        >
+                                            Chat Penjual
+                                        </button>
+                                    </>
+                                )}
+                                {isOwner && (
                                     <button
-                                        onClick={() => onChatWithProduct(product)}
-                                        className={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all active:scale-95 ${isDarkMode ? 'bg-sky-600 text-white shadow-lg shadow-sky-200/50 hover:bg-sky-700' : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'}`}
+                                        onClick={() => { onClose(); onVisitStore && onVisitStore(sellerId); }}
+                                        className={`w-full py-2 border rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm transition-all active:scale-95 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-200 hover:bg-slate-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                                     >
-                                        Chat Penjual
+                                        Kunjungi Toko
                                     </button>
                                 )}
                             </div>

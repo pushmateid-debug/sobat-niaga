@@ -77,6 +77,8 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
       } else {
         setIsFollowing(false);
       }
+    }, (err) => {
+      console.error("Follow Detail Error:", err);
     });
 
     return () => unsubFollow();
@@ -242,14 +244,26 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
     });
   };
 
-  // ️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
+  // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash)
   if (loading || !product) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-white">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="animate-spin text-sky-500" size={40} />
-          <p className="text-sm font-medium animate-pulse">Memuat data produk...</p>
-        </div>
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+        {loading ? (
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <ShoppingBag size={24} className="text-sky-500" />
+              </div>
+            </div>
+            <p className="text-sm font-bold animate-pulse text-sky-500">Memuat data produk...</p>
+          </div>
+        ) : (
+          <div className="text-center px-6">
+            <p className="text-lg font-bold text-red-500 mb-4">Yah, Produk Gak Ditemukan, Bro! 😢</p>
+            <button onClick={onBack} className="px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Kembali</button>
+          </div>
+        )}
       </div>
     );
   }
