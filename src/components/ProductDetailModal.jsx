@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, PlayCircle, Image as ImageIcon, UserPlus, Check } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Forward, Tag, Store, User, PlayCircle, Image as ImageIcon, UserPlus, Check } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
 import { ref, push, get, query, orderByChild, equalTo, onValue } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -319,9 +319,9 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
                 className={`flex-shrink-0 p-3 rounded-2xl border transition-all active:scale-95 ${
                   isDarkMode ? 'bg-slate-800 border-slate-700 text-sky-400 hover:bg-slate-700' : 'bg-sky-50 border-sky-100 text-sky-600 hover:bg-sky-100'
                 }`}
-                title="Salin Link Produk"
+                title="Bagikan Produk"
               >
-                <Share2 size={20} />
+                <Forward size={24} />
               </button>
             </div>
             
@@ -334,7 +334,7 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             </div>
 
             <div className="mb-10">
-              <div className="flex items-baseline text-[#FFD662] font-black">
+              <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
                 <span className="text-lg font-medium mr-1">Rp</span>
                 <span className="text-5xl tracking-tighter">{displayPrice}</span>
               </div>

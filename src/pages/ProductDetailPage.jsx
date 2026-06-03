@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, ShoppingCart, MessageCircle, Loader2, Share2, Store, ArrowLeft, Check, UserPlus, Home, Bell, User } from 'lucide-react';
+broimport { Star, ShoppingCart, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push, update, serverTimestamp } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -274,7 +274,7 @@ const ProductDetailPage = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-             <button onClick={handleShareOptions} className="p-2 text-sky-600"><Share2 size={22}/></button>
+             <button onClick={handleShareOptions} className="p-2 text-sky-600"><Forward size={24}/></button>
              {!user && <button onClick={() => navigate('/')} className="text-xs font-bold bg-sky-600 text-white px-4 py-2 rounded-lg">Login</button>}
           </div>
         </div>
@@ -299,7 +299,7 @@ const ProductDetailPage = () => {
             <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{product?.category} Official</span>
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-3xl md:text-6xl font-black leading-tight tracking-tighter">{product?.name}</h1>
-              <button onClick={handleShareOptions} className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Share2 size={24} /></button>
+              <button onClick={handleShareOptions} className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
             </div>
             <div className="flex items-center gap-4 mb-8">
               <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20"><Star size={18} className="fill-yellow-400 text-yellow-400" /><span className="text-base font-black text-yellow-700">{product.rating || '4.8'}</span></div>
@@ -307,7 +307,7 @@ const ProductDetailPage = () => {
             </div>
             <div className="mb-10">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-[#FFD662]">Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
+              <h2 className={`text-5xl md:text-6xl font-black tracking-tighter ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
             </div>
 
             {/* Tabs */}

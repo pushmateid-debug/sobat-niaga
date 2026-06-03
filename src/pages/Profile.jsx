@@ -19,7 +19,6 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
   const [sellerBalance, setSellerBalance] = useState(0);
   const { theme, toggleTheme } = useTheme() || { theme: 'light', toggleTheme: () => {} }; // 🛡️ Safety check context
   const isDarkMode = theme === 'dark'; // Helper variable biar kodingan lebih bersih
-
   // Load data tambahan dari Realtime Database (Real-time Sync)
   useEffect(() => {
     if (user?.uid) {

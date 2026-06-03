@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Share2, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check, Heart } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Forward, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check, Heart } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -320,7 +320,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
             <div className="px-4 mt-2 md:p-0 md:mt-0">
               <div className="flex justify-between items-center">
                 {/* Format Harga: Rp kecil, Angka besar dengan warna #FFD662 */}
-                <div className="flex items-baseline text-[#FFD662] font-black">
+                <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
                   <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
                   <span className="text-3xl md:text-5xl">
                     {parseInt(product?.price || 0).toLocaleString('id-ID')}
@@ -333,7 +333,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
                     onClick={handleShareOptions}
                     className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-sky-400' : 'text-gray-500 hover:text-sky-600'}`}
                   >
-                    <Share2 size={22} />
+                    <Forward size={26} />
                   </button>
                   <button 
                     onClick={() => Swal.fire({ icon: 'success', title: 'Ditambahkan ke Wishlist!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 })}
@@ -365,10 +365,10 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore }) => 
 
             {/* Share Button (Desktop Only) */}
             <button
-              onClick={handleCopyShareLink}
+              onClick={handleShareOptions}
               className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90 mt-4 ml-4"
             >
-              <Share2 size={24} />
+              <Forward size={24} />
             </button>
 
             {/* Thumbnail Gallery (Mobile: di bawah info produk) */}
