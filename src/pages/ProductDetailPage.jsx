@@ -157,7 +157,12 @@ const ProductDetailPage = () => {
               showCancelButton: true,
               confirmButtonText: 'Kirim Laporan',
               cancelButtonText: 'Batal',
-              confirmButtonColor: '#ef4444',
+              buttonsStyling: false,
+              customClass: {
+                popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+                confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all !opacity-100 mx-2 active:scale-95',
+                cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+              }
             }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
           };
       }
@@ -391,7 +396,17 @@ const ProductDetailPage = () => {
 
             {/* Footer Action - Desktop */}
             <div className="hidden md:flex gap-4 mt-10">
-              <button onClick={() => handleAddToCart(false)} disabled={isAdding} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">{isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}</button>
+              <button 
+                onClick={() => handleAddToCart(false)} 
+                disabled={isAdding} 
+                className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+                  isDarkMode 
+                    ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' 
+                    : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'
+                }`}
+              >
+                {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}
+              </button>
               <button onClick={() => handleAddToCart(true)} disabled={isAdding} className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none transition-all">Pesan Sekarang</button>
             </div>
           </div>
@@ -400,7 +415,17 @@ const ProductDetailPage = () => {
 
       {/* Mobile Floating Action Bar */}
       <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 backdrop-blur-lg ${isDarkMode ? 'bg-[#0f172a]/90 border-slate-800' : 'bg-white/90 border-gray-100'}`}>
-        <button onClick={() => handleAddToCart(false)} disabled={isAdding} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2">{isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}</button>
+        <button 
+          onClick={() => handleAddToCart(false)} 
+          disabled={isAdding} 
+          className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+            isDarkMode 
+              ? 'bg-slate-800 text-gray-400' 
+              : 'bg-sky-50 text-sky-600 border border-sky-100'
+          }`}
+        >
+          {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
+        </button>
         <button onClick={() => handleAddToCart(true)} disabled={isAdding} className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg">Pesan Sekarang</button>
       </div>
     </div>

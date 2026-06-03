@@ -103,7 +103,7 @@ const SummaryComponent = ({
       <div className={`border-t pt-4 mb-6 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
           <div className="flex justify-between items-center">
               <span className={`font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Total Belanja</span>
-              <span className={`font-price font-bold text-lg tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</span>
+              <span className={`font-price font-black text-lg tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</span>
           </div>
       </div>
 
@@ -497,7 +497,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                                 <h3 className={`text-sm font-medium line-clamp-2 mb-1 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{item.name}</h3>
                                 {item.variant && <p className={`text-xs mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Varian: {item.variant}</p>}
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className={`font-price font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {parseInt(item.price || 0).toLocaleString('id-ID')}</span>
+                                    <span className={`font-price font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {parseInt(item.price || 0).toLocaleString('id-ID')}</span>
                                     {item.originalPrice && (
                                         <span className={`font-price text-xs line-through ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Rp {parseInt(item.originalPrice || 0).toLocaleString('id-ID')}</span>
                                     )}
@@ -539,7 +539,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                     <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
                         <div className="hidden md:block">
                             <p className="text-xs text-gray-400">Total Harga</p>
-                            <p className="text-lg font-bold text-sky-600">Rp {(totalPrice || 0).toLocaleString('id-ID')}</p>
+                            <p className={`text-lg font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</p>
                         </div>
                         <button 
                             onClick={() => setCheckoutStep(2)}
@@ -564,7 +564,7 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                                 <p className="text-xs text-gray-500">{item.quantity} x Rp {item.price.toLocaleString('id-ID')}</p>
                             </div>
                             <div className="text-right">
-                                <p className="text-sm font-bold text-sky-600">Rp {(item.price * item.quantity).toLocaleString('id-ID')}</p>
+                                <p className={`text-sm font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {(item.price * item.quantity).toLocaleString('id-ID')}</p>
                             </div>
                         </div>
                     ))}

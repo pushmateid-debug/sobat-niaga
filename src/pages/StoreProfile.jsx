@@ -108,7 +108,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       isMounted = false; // Prevent state updates
       unsubFollow(); // Cukup panggil fungsi unsubFollow
     };
-  }, [sellerId, currentUserId]);
+  }, [effectiveSellerId, currentUserId]);
 
   // Copy Voucher Code
   const handleCopyVoucher = (code) => {
@@ -274,11 +274,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
       
       {/* 1. Sticky Header (Navigasi) */}
       <div className={`sticky top-0 z-50 backdrop-blur-md shadow-sm border-b transition-all ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-100'}`}>
-        <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between h-full">
-          <button onClick={handleInternalBack} className="p-1 rounded-full hover:bg-sky-50 transition-colors text-sky-600">
-            <ChevronLeft size={32} />
-          </button>
-          
+        <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-center h-full">
           <div className="flex-1 max-w-md mx-4 hidden md:block">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
@@ -291,10 +287,6 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
               />
             </div>
           </div>
-
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-1 text-sky-600 hover:bg-sky-50 rounded-full">
-              <Menu size={24} />
-          </button>
         </div>
       </div>
 
@@ -302,21 +294,21 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
         
         {/* 2. Header Toko (Modern Flexbox Style) */}
         <div className={`border-b transition-colors ${isDarkMode ? 'bg-gradient-to-b from-slate-800 to-slate-900 border-slate-800' : 'bg-gradient-to-b from-sky-50 to-white border-gray-100'}`}>
-          <div className="max-w-5xl mx-auto p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="max-w-5xl mx-auto p-4 md:p-6 flex items-center justify-between gap-3 md:gap-6">
             
             {/* Sisi Kiri: Profil Image & Info Utama */}
-            <div className="flex items-center gap-4 md:gap-8">
+            <div className="flex items-center gap-3 md:gap-8 flex-1 min-w-0">
               <div className="relative shrink-0">
                   {sellerData?.photoURL ? (
                     // JIKA FOTO GMAIL ADA: Tampilkan dengan border mewah dan animasi fade-in
                     <img 
                         src={sellerData.photoURL} 
                         alt={displayStoreName || "Store Profile"} 
-                        className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-slate-600 shadow-md animate-fade-in"
+                        className="w-16 h-16 md:w-24 md:h-24 rounded-full object-cover border-2 border-slate-600 shadow-md animate-fade-in"
                     />
                   ) : (
                     // JIKA SEDANG LOADING/KOSONG: Ganti icon orang lama dengan Skeleton Pulse bunder abu-abu
-                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-slate-700 animate-pulse border-2 border-slate-600" />
+                    <div className="w-16 h-16 md:w-24 md:h-24 rounded-full bg-slate-700 animate-pulse border-2 border-slate-600" />
                   )}
                   {isTrusted && (
                       <div className="absolute bottom-1 right-1 bg-white rounded-full p-0.5 shadow">
@@ -346,8 +338,8 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
               </div>
             </div>
 
-            {/* Sisi Kanan: Tombol Aksi Vertikal Ramping */}
-            <div className="flex flex-col gap-2 shrink-0 w-32 md:w-44">
+            {/* Sisi Kanan: Tombol Aksi Vertikal Ramping (Pojok Kanan) */}
+            <div className="flex flex-col gap-1.5 md:gap-2 shrink-0 w-28 md:w-44">
                 {isOwner ? (
                     // Jika ini toko milik user sendiri
                     <>
@@ -485,7 +477,7 @@ const StoreProfile = ({ sellerId, onBack, onProductClick, currentUserId, onChatC
                             <div className="p-3">
                                 <h3 className={`text-xs md:text-sm font-bold line-clamp-2 mb-1 leading-snug min-h-[2.5em] ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product.name}</h3>
                                 <div className="flex items-end justify-between mt-2">
-                                    <div className="text-[#FFD662] font-black text-sm md:text-base mt-1">
+                                    <div className={`font-black text-sm md:text-base mt-1 ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
                                         <span className="text-xs font-medium mr-0.5">Rp</span>
                                         <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
                                     </div>

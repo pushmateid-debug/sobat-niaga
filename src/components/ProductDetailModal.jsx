@@ -495,7 +495,11 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
             <button 
               onClick={() => handleAddToCart(false)} 
               disabled={isAdding} 
-              className={`flex-1 py-5 rounded-[1.25rem] transition-all flex items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+              className={`flex-1 py-5 rounded-[1.25rem] transition-all flex items-center justify-center transition-colors duration-300 ${
+                isDarkMode 
+                  ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' 
+                  : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'
+              }`}
               title="Tambah ke Keranjang"
             >
               {isAdding ? <Loader2 className="animate-spin" size={24} /> : <ShoppingCart size={24} />}

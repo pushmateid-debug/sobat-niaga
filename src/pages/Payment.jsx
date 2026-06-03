@@ -277,8 +277,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {orderData?.status === 'waiting_verification' ? 'Total Pembayaran' : 'Total Tagihan'}
             </p>
-            <h2 className={`font-price text-3xl font-bold ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {(orderData?.totalPrice || 0).toLocaleString('id-ID')}</h2>
-            <h2 className="font-price text-3xl font-bold text-[#FFD662]">Rp {(orderData?.totalPrice || 0).toLocaleString('id-ID')}</h2>
+            <h2 className={`font-price text-3xl font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {(orderData?.totalPrice || 0).toLocaleString('id-ID')}</h2>
             <div className={`mt-2 text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               Harga: Rp {((orderData?.totalPrice || 0) - calculateAdminFee(orderData?.totalPrice || 0)).toLocaleString('id-ID')} +
               Admin: Rp {calculateAdminFee(orderData?.totalPrice || 0).toLocaleString('id-ID')}
