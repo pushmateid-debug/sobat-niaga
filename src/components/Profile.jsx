@@ -29,7 +29,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
           if (data.username) setUsername(data.username);
           if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
           
-          const nSaldo = parseInt(data.saldo || 0);
+          const nSaldo = parseInt(data.balance || 0);
           const sBalance = parseInt(data.sellerInfo?.balance || 0);
           
           setNiagaSaldo(nSaldo);

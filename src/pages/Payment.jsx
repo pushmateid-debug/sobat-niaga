@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles } from 'lucide-react';
-import { db } from '../config/firebase';
+import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle } from 'lucide-react';
+import { db, auth } from '../config/firebase';
 import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
@@ -21,12 +21,26 @@ const motivations = [
   "Langkah kecil hari ini adalah awal dari kesuksesan besar besok. 🔥"
 ];
 
+// Helper: Generate Nomor Resi Internal Otomatis (Booking Resi)
+// Format: SN-DDMMYY-XXXXXYY (Contoh: SN-050626-K9X2B7Z)
+const generateInstantResi = () => {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const y = String(now.getFullYear()).slice(-2);
+  const dateString = `${d}${m}${y}`;
+  const uniqueTime = Date.now().toString(36).toUpperCase().slice(-5);
+  const randomPart = Math.random().toString(36).substring(2, 4).toUpperCase();
+  return `SN-${dateString}-${uniqueTime}${randomPart}`;
+};
+
 const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const [orderData, setOrderData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [proofFile, setProofFile] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('transfer'); // 'transfer' | 'qris'
@@ -37,24 +51,33 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [randomMotivation] = useState(() => motivations[Math.floor(Math.random() * motivations.length)]);
   const receiptRef = useRef(null);
 
+  // MENGGUNAKAN onValue AGAR DATA SELALU REAL-TIME (SINKRON DENGAN RESI PENJUAL)
   useEffect(() => {
     if (order?.id) {
-      const fetchOrder = async () => {
-        try {
-          const snapshot = await get(ref(db, `orders/${order.id}`));
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            setOrderData(data);
-          }
-        } catch (error) {
-          console.error("Error fetching order:", error);
-        } finally {
-          setIsLoading(false);
+      const orderRef = ref(db, `orders/${order.id}`);
+      const unsubscribe = onValue(orderRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setOrderData(snapshot.val());
         }
-      };
-      fetchOrder();
+        setIsLoading(false);
+      }, (error) => {
+        console.error("Error fetching order:", error);
+        setIsLoading(false);
+      });
+      return () => unsubscribe();
     }
-  }, [order]);
+  }, [order?.id]);
+
+  // Ambil Data Profil Pembeli (Saldo) secara Real-time
+  useEffect(() => {
+    if (auth.currentUser) {
+      const userRef = ref(db, `users/${auth.currentUser.uid}`);
+      const unsubscribe = onValue(userRef, (snap) => {
+        if (snap.exists()) setUserProfile(snap.val());
+      });
+      return () => unsubscribe();
+    }
+  }, []);
 
   // Fetch Data Rekening Pusat (Admin Rekber) dari Firebase
   useEffect(() => {
@@ -136,6 +159,55 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   };
 
   const handleConfirmPayment = async () => {
+    // --- LOGIKA PEMBAYARAN VIA SALDO (INSTAN) ---
+    if (paymentMethod === 'saldo') {
+      const currentBalance = parseInt(userProfile?.balance || 0);
+      const totalToPay = parseInt(orderData?.totalPrice || 0);
+
+      if (currentBalance < totalToPay) {
+        Swal.fire('Saldo Kurang', 'Saldo kamu gak cukup nih, Bro! Top up dulu yuk.', 'error');
+        return;
+      }
+
+      setIsUploading(true);
+      try {
+        const instantResi = generateInstantResi();
+        
+        // 1. Potong Saldo Pembeli
+        await update(ref(db, `users/${auth.currentUser.uid}`), {
+          balance: currentBalance - totalToPay
+        });
+
+        // 2. Update Status Order: Langsung 'processed' (Bypass Admin)
+        await update(ref(db, `orders/${order.id}`), {
+          status: 'processed',
+          paymentMethod: 'saldo',
+          resi: instantResi, // Langsung kasih No. Resi booking agar struk tidak kosong
+          paidAt: new Date().toISOString()
+        });
+
+        // 3. Notifikasi ke Seller (Agar langsung di-ACC/Kirim)
+        const sellers = orderData.involvedSellerIds || (orderData.sellerId ? [orderData.sellerId] : []);
+        for (const sid of sellers) {
+          await push(ref(db, 'notifications'), {
+            recipientId: sid,
+            title: 'Pesanan Terbayar (Saldo)!',
+            message: `Pembayaran pesanan #${order.id.slice(-6)} berhasil via saldo. Silakan langsung proses kirim!`,
+            status: 'unread',
+            createdAt: serverTimestamp(),
+            type: 'success',
+            targetView: 'dashboard-seller'
+          });
+        }
+
+        setShowReceipt(true);
+        Swal.fire('Pembayaran Berhasil!', 'Saldo terpotong dan pesanan langsung diteruskan ke penjual, Bro.', 'success');
+        return;
+      } catch (error) {
+        console.error("Saldo payment error:", error);
+      } finally { setIsUploading(false); return; }
+    }
+
     if (!proofFile) {
       Swal.fire({
         title: 'Bukti Transfer Kosong',
@@ -152,6 +224,8 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
     setIsUploading(true);
     try {
+      const instantResi = generateInstantResi();
+      
       // 1. Upload Bukti
       const proofUrl = await uploadToCloudinary(proofFile);
 
@@ -159,6 +233,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
       await update(ref(db, `orders/${order.id}`), {
         status: 'waiting_verification',
         proofUrl: proofUrl,
+        resi: instantResi, // Tetap kasih resi booking biar struk jernih ada angkanya
         paidAt: new Date().toISOString()
       });
 
@@ -263,7 +338,12 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
               <div className="mt-4 space-y-1 text-[11px] font-medium text-slate-600">
                 <p><span className="font-bold text-slate-400">PEMBELI:</span> {orderData.buyerName || 'Pelanggan Setia'}</p>
                 <p><span className="font-bold text-slate-400">TOKO:</span> {orderData.items?.[0]?.storeName || 'Official Store'}</p>
-                <p><span className="font-bold text-slate-400">STATUS:</span> <span className="text-green-600 font-black">LUNAS</span></p>
+                <p>
+                  <span className="font-bold text-slate-400">STATUS:</span>{" "}
+                  <span className={`${paymentMethod === 'saldo' ? 'text-green-600' : 'text-orange-600'} font-black`}>
+                    {paymentMethod === 'saldo' ? 'LUNAS' : 'DIPROSES'}
+                  </span>
+                </p>
               </div>
 
               <div className="mt-4 flex justify-between items-end text-[10px] font-mono text-slate-500 border-t pt-4 border-slate-50">
@@ -279,6 +359,18 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
             {/* Isi Struk Utama */}
             <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500">No. Transaksi</span>
+                <span className="text-xs font-mono font-bold text-slate-800 uppercase">#{order.id.toUpperCase().slice(-10)}</span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500">No. Resi (Kurir)</span>
+                <span className="text-xs font-mono font-bold uppercase text-sky-600">
+                  {orderData.resi || 'GENERATING...'}
+                </span>
+              </div>
+
               <div className="flex justify-between items-start">
                 <span className="text-xs font-bold text-slate-500">Produk Selektif</span>
                 <div className="text-right">
@@ -394,7 +486,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Transfer ke Rekening Pusat:</p>
 
           {/* Pilihan Metode Bayar */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="grid grid-cols-3 gap-2 mb-6">
             <button 
               onClick={() => setPaymentMethod('transfer')}
               className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${paymentMethod === 'transfer' ? (isDarkMode ? 'border-sky-500 bg-sky-900/30 text-sky-400' : 'border-sky-600 bg-sky-50 text-sky-700') : (isDarkMode ? 'border-slate-700 bg-slate-900 text-gray-400 hover:border-slate-600' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200')}`}
@@ -408,6 +500,13 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             >
               <CreditCard size={24} />
               <span className="text-xs font-bold">Scan QRIS</span>
+            </button>
+            <button 
+              onClick={() => setPaymentMethod('saldo')}
+              className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${paymentMethod === 'saldo' ? (isDarkMode ? 'border-sky-500 bg-sky-900/30 text-sky-400' : 'border-sky-600 bg-sky-50 text-sky-700') : (isDarkMode ? 'border-slate-700 bg-slate-900 text-gray-400 hover:border-slate-600' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200')}`}
+            >
+              <Wallet size={24} />
+              <span className="text-[10px] font-bold text-center leading-tight">Saldo Profil</span>
             </button>
           </div>
 
@@ -425,6 +524,24 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
               <div className="flex flex-col items-center gap-2">
                 <Loader2 className="animate-spin text-sky-500" />
                 <p className="text-[10px] text-gray-400">Memuat data pembayaran...</p>
+              </div>
+            ) : paymentMethod === 'saldo' ? (
+              <div className="text-center animate-in zoom-in duration-300 w-full">
+                <div className={`p-4 rounded-2xl border-2 border-dashed ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-sky-100 shadow-inner'}`}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Saldo Kamu Saat Ini</p>
+                  <h3 className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    Rp {(userProfile?.balance || 0).toLocaleString('id-ID')}
+                  </h3>
+                </div>
+                {parseInt(userProfile?.balance || 0) < parseInt(orderData?.totalPrice || 0) ? (
+                  <p className="text-[10px] text-red-500 font-bold mt-3 flex items-center justify-center gap-1">
+                    <AlertCircle size={12} /> Saldo tidak cukup untuk membayar tagihan ini.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-green-500 font-bold mt-3 flex items-center justify-center gap-1">
+                    <CheckCircle size={12} /> Saldo cukup. Pembayaran akan langsung diverifikasi!
+                  </p>
+                )}
               </div>
             ) : paymentMethod === 'transfer' ? (
               <div className="flex justify-between items-center w-full animate-in fade-in duration-300">
@@ -483,7 +600,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
         </div>
 
         {/* Upload Bukti */}
-        {['waiting_payment', 'payment_rejected'].includes(orderData?.status) && (
+        {['waiting_payment', 'payment_rejected'].includes(orderData?.status) && paymentMethod !== 'saldo' && (
         <div className={`p-6 rounded-2xl shadow-sm border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
           <h3 className={`font-bold mb-4 ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Upload Bukti Transfer</h3>
           
@@ -528,7 +645,9 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
       <div className={`fixed bottom-0 left-0 right-0 border-t p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
         <div className="max-w-3xl mx-auto">
           <button onClick={handleConfirmPayment} disabled={isUploading} className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isUploading ? (isDarkMode ? 'bg-sky-800 cursor-wait' : 'bg-sky-400 cursor-wait') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>
-            {isUploading ? <><Loader2 size={20} className="animate-spin" /> Mengirim Bukti...</> : 'Konfirmasi Pembayaran'}
+            {isUploading ? <><Loader2 size={20} className="animate-spin" /> {paymentMethod === 'saldo' ? 'Memproses...' : 'Mengirim Bukti...'}</> : 
+             paymentMethod === 'saldo' ? 'Bayar Sekarang' : 'Konfirmasi Pembayaran'
+            }
           </button>
         </div>
       </div>

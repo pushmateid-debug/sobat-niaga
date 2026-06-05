@@ -37,7 +37,7 @@ const Login = () => {
           displayName: user.displayName,
           photoURL: user.photoURL,
           role: 'user',
-          saldo: 0,
+          balance: 0,
           createdAt: serverTimestamp()
         });
       }
@@ -96,7 +96,7 @@ const Login = () => {
         email: user.email,
         displayName: name,
         role: 'user',
-        saldo: 0,
+        balance: 0,
         createdAt: serverTimestamp()
       });
 

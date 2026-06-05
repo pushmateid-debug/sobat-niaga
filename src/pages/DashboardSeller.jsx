@@ -918,8 +918,14 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       title: 'Hapus Produk?',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Ya, Hapus!'
+      confirmButtonText: 'Ya, Hapus!',
+      cancelButtonText: 'Batal',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+        confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200 transition-all !opacity-100 mx-2 active:scale-95',
+        cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+      }
     }).then(async (result) => {
       if (result.isConfirmed) {
         await remove(ref(db, `products/${id}`));
@@ -954,8 +960,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       icon: 'info',
       showCancelButton: true,
       confirmButtonText: 'Ya, Lanjutkan',
-      confirmButtonColor: '#0284c7',
-      cancelButtonColor: '#6b7280',
+      cancelButtonText: 'Batal',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-[2.5rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+        confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 mx-2 active:scale-95',
+        cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+      }
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
@@ -1162,8 +1173,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Ya, Terima & Masak',
-      confirmButtonColor: '#16a34a', // green
-      cancelButtonText: 'Batal'
+      cancelButtonText: 'Batal',
+      buttonsStyling: false,
+      customClass: {
+        popup: `rounded-[2.5rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+        confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-green-600 hover:bg-green-700 shadow-lg shadow-green-200 transition-all !opacity-100 mx-2 active:scale-95',
+        cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+      }
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
