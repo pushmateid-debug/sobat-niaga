@@ -337,13 +337,18 @@ const ProductDetailPage = () => {
                 <button onClick={handleShareOptions} className="p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
               </div>
             </div>
-            <div className="flex items-center gap-4 mb-8">
-              <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20"><Star size={18} className="fill-yellow-400 text-yellow-400" /><span className="text-base font-black text-yellow-700">{product.rating || '4.8'}</span></div>
-              <span className="text-sm font-bold text-gray-400">{product?.sold || 0} Terjual</span>
+            <div className={`flex items-center gap-1 mb-8 text-xs md:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className="text-[#FFD662]">★</span>
+              <span className={`font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{product?.rating || '4.8'}</span>
+              <span className="mx-1 opacity-50">|</span>
+              <span>{product?.sold || 0} Terjual</span>
             </div>
             <div className="mb-10">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {parseInt(product?.price || 0).toLocaleString('id-ID')}</h2>
+              <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
+                <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
+                <span className="text-3xl md:text-5xl tracking-tight">{parseInt(product?.price || 0).toLocaleString('id-ID')}</span>
+              </div>
             </div>
 
             {/* Tabs */}

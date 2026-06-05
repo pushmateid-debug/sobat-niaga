@@ -426,54 +426,46 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoT
               </div>
             )}
 
-            {/* JANGAN LUPA GANTI YANG DI BAGIAN DESKTOP VIEW JUGA, BRO! */}
-            <div className={`flex items-center justify-between p-4 rounded-2xl border mb-6 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-              
-              {/* SISI KIRI: Foto Profil Lingkaran Gmail & Nama Toko */}
-              <div className="flex items-center gap-3">
-                {sellerProfile?.photoURL ? ( // Proteksi Skeleton
-                  // Jika data foto Gmail sudah sukses diambil dari Firebase, langsung tampilkan
-                  <img 
-                    src={sellerProfile.photoURL} 
-                    alt="Store Profile" 
-                    className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm animate-fade-in"
-                  />
-                ) : (
-                  // JIKA DATA BELUM SELESAI DIMUAT: Hapus icon orang lama, ganti pake bulatan abu-abu berkedip (Skeleton Loading)
-                  <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
-                )}
-                <div className="min-w-0">
-                  <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                    {product?.storeName || "Nama Toko"}
-                  </h4>
-                  <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
-                </div>
-              </div>
-
-              {/* SISI KANAN: Tombol Aksi Vertikal Pendek Tanpa Icon */}
-              <div className="flex flex-col gap-1.5 min-w-[125px]">
-                <button 
-                  onClick={handleInternalChat}
-                  className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                >
-                  Chat Penjual
-                </button>
-                
-                <button 
-                  onClick={() => onVisitStore(product?.sellerId)}
-                  className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm"
-                >
-                  Kunjungi Toko
-                </button>
-              </div>
+            {/* Tabs Navigation (Pemisah Deskripsi & Review) */}
+            <div className={`flex border-b mb-6 mt-6 transition-colors duration-300 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
+                {['about', 'review'].map(tab => (
+                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? (isDarkMode ? 'text-sky-400' : 'text-sky-600') : (isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-gray-400 hover:text-gray-600')}`}>
+                        {tab === 'about' ? 'Tentang' : 'Ulasan'}
+                        {activeTab === tab && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-sky-600 rounded-t-full"></div>}
+                    </button>
+                ))}
             </div>
 
-            {/* Deskripsi */}
-            <div className="mb-10">
-              <h4 className="text-sm font-black uppercase tracking-widest mb-3 border-b pb-2 dark:border-slate-800">Deskripsi Produk</h4>
-              <p className={`text-sm leading-relaxed px-4 md:p-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
-              </p>
+            {/* Content Berdasarkan Tab yang Dipilih */}
+            <div className="flex-1">
+                {activeTab === 'about' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                      <div className="flex items-center gap-3">
+                        {sellerProfile?.photoURL ? (
+                          <img src={sellerProfile.photoURL} alt="Store Profile" className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm" />
+                        ) : (
+                          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
+                        )}
+                        <div className="min-w-0">
+                          <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product?.storeName || "Nama Toko"}</h4>
+                          <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5 min-w-[125px]">
+                        <button onClick={handleInternalChat} className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>Chat Penjual</button>
+                        <button onClick={() => onVisitStore(product?.sellerId)} className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm">Kunjungi Toko</button>
+                      </div>
+                    </div>
+                    <div className="mb-10">
+                      <h4 className="text-sm font-black uppercase tracking-widest mb-3 border-b pb-2 dark:border-slate-800">Deskripsi Produk</h4>
+                      <p className={`text-sm leading-relaxed px-4 md:p-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{product?.description || 'Tidak ada deskripsi untuk produk ini.'}</p>
+                    </div>
+                  </div>
+                )}
+                {activeTab === 'review' && (
+                  <div className="py-10 text-center opacity-30 animate-in fade-in duration-300"><Star size={48} className="mx-auto mb-2" /><p className="font-bold text-sm uppercase tracking-widest">Belum Ada Ulasan</p><p className="text-xs mt-1">Jadilah yang pertama memberikan ulasan, Bro!</p></div>
+                )}
             </div>
 
             {/* Footer Action - Desktop */}

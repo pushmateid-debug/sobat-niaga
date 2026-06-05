@@ -187,7 +187,8 @@ const Home = () => {
         link.rel = 'shortcut icon';
         document.getElementsByTagName('head')[0].appendChild(link);
       }
-      link.href = url;
+      // Tambahkan cache buster agar browser tidak menggunakan icon lama yang tersimpan di cache
+      link.href = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
     }
   }, [bannerImages.favicon]);
 
@@ -1142,7 +1143,7 @@ const Home = () => {
             <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
                 {cat.key && bannerImages[cat.key] ? (
                 <img 
-                  src={(typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key]} 
+                  src={`${((typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
                   alt={cat.name} 
                   className="w-12 h-12 object-contain bg-transparent" 
                   style={{ backgroundColor: 'transparent' }}

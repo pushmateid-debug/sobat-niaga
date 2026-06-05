@@ -355,18 +355,17 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
               </div>
             </div>
             
-            <div className="flex items-center gap-3 mb-8">
-              <div className="flex items-center gap-1 bg-yellow-400/10 px-3 py-1.5 rounded-xl border border-yellow-400/20">
-                <Star size={18} className="fill-yellow-400 text-yellow-400" />
-                <span className="text-base font-black text-yellow-700">{rating}</span>
-              </div>
-              <span className={`text-sm font-bold ${isDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>{sold} Terjual</span>
+            <div className={`flex items-center gap-1 mb-8 text-xs md:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className="text-[#FFD662]">★</span>
+              <span className={`font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{rating}</span>
+              <span className="mx-1 opacity-50">|</span>
+              <span>{sold} Terjual</span>
             </div>
 
             <div className="mb-10">
               <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
-                <span className="text-lg font-medium mr-1">Rp</span>
-                <span className="text-5xl tracking-tighter">{displayPrice}</span>
+                <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
+                <span className="text-3xl md:text-5xl tracking-tight">{displayPrice}</span>
               </div>
               {voucherCode && (
                 <div className={`flex items-center gap-2 mt-2 px-3 py-1.5 rounded-xl border font-sans ${

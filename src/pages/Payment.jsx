@@ -1,14 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles } from 'lucide-react';
 import { db } from '../config/firebase';
 import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
+import { toPng } from 'html-to-image';
 
 const calculateAdminFee = (amount) => {
   if (amount < 15000) return 500;
   return 2000;
 };
+
+// Kumpulan kata-kata motivasi random khusus SobatNiaga
+const motivations = [
+  "Semangat belajarnya, calon orang sukses! 🚀",
+  "Usaha tidak akan mengkhianati hasil, teruslah berjuang! 💪",
+  "Sobat Niaga percaya kamu bisa jadi yang terbaik! ✨",
+  "Jangan lupa istirahat, kesehatanmu itu investasi paling berharga. 🍎",
+  "Hari ini belanja di SobatNiaga, besok jadi pengusaha sukses! Amin. 💸",
+  "Langkah kecil hari ini adalah awal dari kesuksesan besar besok. 🔥"
+];
 
 const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const { theme } = useTheme();
@@ -22,6 +33,9 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [isZoomed, setIsZoomed] = useState(false);
   const [countdown, setCountdown] = useState("");
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [randomMotivation] = useState(() => motivations[Math.floor(Math.random() * motivations.length)]);
+  const receiptRef = useRef(null);
 
   useEffect(() => {
     if (order?.id) {
@@ -159,15 +173,17 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
         targetView: 'admin-dashboard'
       });
 
+      // Langsung munculkan struk untuk di download
+      setShowReceipt(true);
+      
       Swal.fire({
         icon: 'success',
-        title: 'Bukti Terkirim!',
-        text: 'Sistem sedang memverifikasi pembayaranmu...',
-        timer: 2000,
-        showConfirmButton: false
+        title: 'Pembayaran Berhasil Dikirim!',
+        text: 'Silakan simpan struk belanja kamu, Bro.',
+        confirmButtonText: 'Lihat Struk',
+        confirmButtonColor: '#0ea5e9'
       });
 
-      onPaymentSuccess();
     } catch (error) {
       console.error("Payment error:", error);
       Swal.fire({
@@ -185,8 +201,166 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
     }
   };
 
+  const downloadReceiptImage = async () => {
+    if (receiptRef.current === null) return;
+    
+    try {
+      // Kita tambahkan pixelRatio: 3 biar hasilnya super tajam (HD)
+      const dataUrl = await toPng(receiptRef.current, { 
+        cacheBust: true,
+        pixelRatio: 3, // Meningkatkan kepadatan pixel agar gambar jernih
+        style: {
+          transform: 'scale(1)', // Memastikan tidak ada distorsi saat pengambilan gambar
+        }
+      });
+      const link = document.createElement('a');
+      link.download = `Struk-SobatNiaga-${order.id.slice(-6)}.png`;
+      link.href = dataUrl;
+      link.click();
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Struk Tersimpan!',
+        text: 'Gambar struk berhasil di-download.',
+        toast: true,
+        position: 'top',
+        showConfirmButton: false,
+        timer: 3000
+      });
+    } catch (err) {
+      console.error('Gagal generate struk:', err);
+    }
+  };
+
   if (isLoading) return <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}><Loader2 className="animate-spin text-sky-600" /></div>;
   if (!orderData) return null;
+
+  // TAMPILAN HALAMAN STRUK SETELAH BAYAR
+  if (showReceipt) {
+    const subtotal = (orderData.totalPrice || 0) - (orderData.deliveryFee || 0) + (orderData.appliedVoucher?.amount || 0);
+    const totalBarang = Array.isArray(orderData.items) ? orderData.items.reduce((acc, item) => acc + (item.quantity || 1), 0) : 1;
+
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors ${isDarkMode ? 'bg-slate-950' : 'bg-gray-100'}`}>
+        <div className="max-w-md w-full animate-in zoom-in duration-300">
+          
+          {/* KOMPONEN STRUK YANG AKAN DI-CONVERT JADI GAMBAR */}
+          <div 
+            ref={receiptRef}
+            className="bg-white text-slate-800 p-8 shadow-2xl rounded-sm border-t-[12px] border-sky-600 relative overflow-hidden"
+            style={{ fontFamily: "'Inter', sans-serif" }}
+          >
+            {/* Watermark Background */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] rotate-[-35deg] pointer-events-none whitespace-nowrap text-6xl font-black">
+              SOBAT NIAGA OFFICIAL
+            </div>
+
+            {/* Header Struk */}
+            <div className="text-center border-b-2 border-dashed border-slate-200 pb-6 mb-6">
+              <h2 className="text-2xl font-black tracking-tighter text-sky-600 mb-1">SOBAT-NIAGA</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kantin & Marketplace Mahasiswa</p>
+              
+              <div className="mt-4 space-y-1 text-[11px] font-medium text-slate-600">
+                <p><span className="font-bold text-slate-400">PEMBELI:</span> {orderData.buyerName || 'Pelanggan Setia'}</p>
+                <p><span className="font-bold text-slate-400">TOKO:</span> {orderData.items?.[0]?.storeName || 'Official Store'}</p>
+                <p><span className="font-bold text-slate-400">STATUS:</span> <span className="text-green-600 font-black">LUNAS</span></p>
+              </div>
+
+              <div className="mt-4 flex justify-between items-end text-[10px] font-mono text-slate-500 border-t pt-4 border-slate-50">
+                <div className="text-left">
+                  <p className="font-bold">ID TRANS: #{order.id.toUpperCase()}</p>
+                </div>
+                <div className="text-right">
+                  <p>{new Date().toLocaleDateString('id-ID')}</p>
+                  <p>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Isi Struk Utama */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-500">Produk Selektif</span>
+                <div className="text-right">
+                  <p className="text-xs font-black text-slate-800">{totalBarang} Barang</p>
+                  {Array.isArray(orderData.items) && orderData.items.map((item, i) => (
+                    <p key={i} className="text-[10px] text-slate-500 italic">{item.name} (x{item.quantity})</p>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-2 border-y border-slate-50">
+                <span className="text-xs font-bold text-slate-500">Total Harga ({totalBarang} barang)</span>
+                <span className="text-xs font-bold text-slate-800">Rp {subtotal.toLocaleString('id-ID')}</span>
+              </div>
+
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-500">Catatan</span>
+                <span className="text-xs text-slate-600 italic text-right max-w-[150px]">{orderData.note || '-'}</span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500">Ongkos Kirim</span>
+                <span className="text-xs font-bold text-slate-800">Rp {(orderData.deliveryFee || 0).toLocaleString('id-ID')}</span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500">Total Diskon Barang</span>
+                <span className="text-xs font-bold text-green-600">-Rp {(orderData.appliedVoucher?.amount || 0).toLocaleString('id-ID')}</span>
+              </div>
+
+              {/* Total Final */}
+              <div className="pt-4 border-t-2 border-slate-800 flex justify-between items-center">
+                <span className="text-sm font-black uppercase">Total Belanja</span>
+                <span className="text-xl font-black text-sky-600 tracking-tight">Rp {orderData.totalPrice.toLocaleString('id-ID')}</span>
+              </div>
+            </div>
+
+            {/* Footer Struk: Motivasi & QR Code Palsu buat estetik */}
+            <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-200">
+              <div className="flex flex-col items-center text-center mb-6">
+                <CheckCircle className="text-green-600 mb-2" size={32} />
+                <p className="text-[10px] text-slate-500 leading-relaxed px-4">
+                  Terima kasih telah berbelanja! Pembayaran Anda aman dalam sistem Rekber SobatNiaga.
+                </p>
+              </div>
+
+              <div className="mb-6 text-[10px] text-slate-400 border-l-2 border-sky-500 pl-3">
+                <p className="font-bold text-slate-600">Sobat Niaga Support:</p>
+                <p>Admin: 089654568782</p>
+                <p>Alamat: Kampus Pusat - Niaga Center</p>
+              </div>
+              
+              {/* RANDOM MOTIVASI SECTION */}
+              <div className="p-4 bg-sky-50 rounded-xl border border-sky-100 relative text-center">
+                <h4 className="text-[10px] font-black text-sky-600 mb-2 uppercase tracking-tighter flex items-center justify-center gap-1"><Sparkles size={12}/> Pesan Hangat Sobat-Niaga</h4>
+                <p className="text-[11px] font-bold text-sky-700 italic">"{randomMotivation}"</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tombol Aksi Luar Struk */}
+          <div className="mt-8 grid grid-cols-2 gap-4">
+            <button 
+              onClick={downloadReceiptImage}
+              className="flex items-center justify-center gap-2 py-3.5 bg-sky-600 text-white font-bold rounded-2xl shadow-xl shadow-sky-200 active:scale-95 transition-all"
+            >
+              <Download size={20} /> Simpan Gambar
+            </button>
+            <button 
+              onClick={() => {
+                onPaymentSuccess();
+              }}
+              className={`py-3.5 font-bold rounded-2xl border transition-all active:scale-95 flex items-center justify-center gap-2 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'}`}
+            >
+              Selesai <ArrowLeft size={18} className="rotate-180" />
+            </button>
+          </div>
+          <p className="text-center text-[10px] text-gray-500 mt-6 font-medium uppercase tracking-widest opacity-50">SobatNiaga Digital Receipt System v1.0</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>

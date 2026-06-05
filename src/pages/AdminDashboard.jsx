@@ -85,8 +85,7 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIco
       {imgSrc ? (
         <>
           {/* Gunakan object-contain dan padding p-2 agar ikon terlihat melayang dan tidak kepentok pinggir */}
-          <img src={imgSrc} alt="Preview" className={`w-full h-full ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
-          <img src={imgSrc} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
+          <img src={`${imgSrc}${imgSrc.includes('?') ? '&' : '?'}t=${Date.now()}`} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
@@ -1311,7 +1310,7 @@ const AdminDashboard = ({ onBack, user }) => {
   // Fungsi Handle File Select (Buka Editor)
   const handleFileSelect = (file, key, type = 'banners') => {
     // Filter Ekstensi & MIME: Cuma boleh JPG dan PNG untuk keamanan
-    const allowedTypes = ['image/jpeg', 'image/png'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'];
     if (!allowedTypes.includes(file.type)) {
       Swal.fire({
         title: 'Format Ditolak',
@@ -1450,14 +1449,16 @@ const AdminDashboard = ({ onBack, user }) => {
       const url = await uploadToCloudinary(file);
 
       if (type === 'banners') {
-        // Cek apakah data lama berupa object (ada link) atau string
         const currentData = banners[key];
-        const newValue = (typeof currentData === 'object' && currentData !== null) 
-          ? { ...currentData, url: url } 
-          : url;
+        const isObject = typeof currentData === 'object' && currentData !== null;
+        
+        // 1. Update ke Realtime Database (Gunakan serverTimestamp hanya di sini)
+        const dbValue = isObject ? { ...currentData, url, updatedAt: serverTimestamp() } : url;
+        await update(ref(realDb, 'admin/banners'), { [key]: dbValue });
 
-        await update(ref(realDb, 'admin/banners'), { [key]: newValue });
-        setBanners(prev => ({ ...prev, [key]: newValue }));
+        // 2. Update State Lokal (Tanpa serverTimestamp agar tidak merusak objek state)
+        const stateValue = isObject ? { ...currentData, url } : url;
+        setBanners(prev => ({ ...prev, [key]: stateValue }));
       } else if (type === 'flashDeal') {
         await update(ref(realDb, 'admin/flashDeal'), { [key]: url });
         setFlashDeal(prev => ({ ...prev, [key]: url }));

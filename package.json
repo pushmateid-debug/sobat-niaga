@@ -9,6 +9,7 @@
     "cloudinary-react": "^1.8.1",
     "cropperjs": "^2.1.0",
     "firebase": "^10.8.0",
+    "html-to-image": "^1.11.13",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.330.0",
