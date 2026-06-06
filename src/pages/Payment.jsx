@@ -54,7 +54,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [randomMotivation] = useState(() => motivations[Math.floor(Math.random() * motivations.length)]);
   const receiptRef = useRef(null);
-  const [sellerContact, setSellerContact] = useState({ phone: '-', address: '-' });
+  const [sellerContact, setSellerContact] = useState({ name: '-', phone: '-', address: '-' });
 
   // MENGGUNAKAN onValue AGAR DATA SELALU REAL-TIME (SINKRON DENGAN RESI PENJUAL)
   useEffect(() => {
@@ -92,6 +92,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
         if (snap.exists()) {
           const data = snap.val();
           setSellerContact({
+            name: data.sellerInfo?.storeName || data.displayName || '-',
             phone: data.phoneNumber || data.sellerInfo?.phone || '-',
             address: data.sellerInfo?.storeAddress || '-'
           });
@@ -388,7 +389,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-dashed border-slate-100">
               <div className="space-y-2">
                 <h4 className="text-[10px] font-black text-sky-600 uppercase border-b border-sky-100 pb-1">Pengirim (Seller)</h4>
-                <p className="text-[11px] font-bold text-slate-800">{orderData.items?.[0]?.storeName || 'Toko Niaga'}</p>
+                <p className="text-[11px] font-bold text-slate-800">{sellerContact.name}</p>
                 <p className="text-[10px] text-slate-500 font-medium">{sellerContact.phone}</p>
                 <p className="text-[9px] text-slate-400 leading-tight italic">{sellerContact.address}</p>
               </div>
