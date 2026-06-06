@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle, Truck } from 'lucide-react';
 import { db, auth } from '../config/firebase';
 import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
@@ -12,23 +12,27 @@ const calculateAdminFee = (amount) => {
 };
 
 // Kumpulan kata-kata motivasi random khusus SobatNiaga
+// 10 Rekomendasi Kata-Kata Hangat Struk SobatNiaga (System Random Array)
 const motivations = [
-  "Semangat belajarnya, calon orang sukses! 🚀",
-  "Usaha tidak akan mengkhianati hasil, teruslah berjuang! 💪",
-  "Sobat Niaga percaya kamu bisa jadi yang terbaik! ✨",
-  "Jangan lupa istirahat, kesehatanmu itu investasi paling berharga. 🍎",
-  "Hari ini belanja di SobatNiaga, besok jadi pengusaha sukses! Amin. 💸",
-  "Langkah kecil hari ini adalah awal dari kesuksesan besar besok. 🔥"
+  "Terima kasih sudah berbelanja, Sobat! Kehadiranmu adalah energi berharga bagi pertumbuhan langkah usaha kami.",
+  "Setiap transaksi darimu adalah bentuk kepercayaan yang sangat kami jaga. Terima kasih ya, SobatNiaga!",
+  "Makasih banyak ya, Sobat! Semoga produk yang kamu beli hari ini membawa manfaat, keberkahan, dan senyuman.",
+  "Belanjaanmu sudah aman, sekarang giliran harimu yang harus penuh semangat! Terima kasih telah memilih SobatNiaga.",
+  "Bukan sekadar transaksi biasa, bagis kami kamu adalah sahabat terbaik. Terima kasih atas dukungan luar biasamu hari ini!",
+  "Terima kasih sudah setia bersama SobatNiaga. Kepercayaanmu adalah alasan utama kami untuk terus memberikan yang terbaik.",
+  "Satu ulasan senyum darimu berharga sejuta semangat buat kami. Terima kasih banyak sudah berbelanja hari ini, Sobat!",
+  "Senang bisa menjadi bagian dari pemenuh kebutuhanmu hari ini. Semoga harimu menyenangkan dan berkah selalu, Sobat!",
+  "Terima kasih ya sudah meluangkan waktu belanja di sini. Ditunggu kedatangan dan cerita serumu berikutnya di SobatNiaga!",
+  "Kepercayaanmu adalah amanah, kepuasanmu adalah kebahagiaan kami. Terima kasih banyak telah menjadi pelanggan setia SobatNiaga!"
 ];
 
 // Helper: Generate Nomor Resi Internal Otomatis (Booking Resi)
 // Format: SN-DDMMYY-XXXXXYY (Contoh: SN-050626-K9X2B7Z)
 const generateInstantResi = () => {
-  const now = new Date();
-  const d = String(now.getDate()).padStart(2, '0');
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const y = String(now.getFullYear()).slice(-2);
-  const dateString = `${d}${m}${y}`;
+  const date = new Date();
+  const dateString = ('0' + date.getDate()).slice(-2) +
+                     ('0' + (date.getMonth() + 1)).slice(-2) +
+                     date.getFullYear().toString().slice(-2);
   const uniqueTime = Date.now().toString(36).toUpperCase().slice(-5);
   const randomPart = Math.random().toString(36).substring(2, 4).toUpperCase();
   return `SN-${dateString}-${uniqueTime}${randomPart}`;
@@ -50,6 +54,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [randomMotivation] = useState(() => motivations[Math.floor(Math.random() * motivations.length)]);
   const receiptRef = useRef(null);
+  const [sellerContact, setSellerContact] = useState({ phone: '-', address: '-' });
 
   // MENGGUNAKAN onValue AGAR DATA SELALU REAL-TIME (SINKRON DENGAN RESI PENJUAL)
   useEffect(() => {
@@ -78,6 +83,22 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
       return () => unsubscribe();
     }
   }, []);
+
+  // Ambil Data Kontak Seller untuk Struk
+  useEffect(() => {
+    const sId = orderData?.sellerId || (orderData?.involvedSellerIds ? orderData.involvedSellerIds[0] : null);
+    if (sId) {
+      get(ref(db, `users/${sId}`)).then(snap => {
+        if (snap.exists()) {
+          const data = snap.val();
+          setSellerContact({
+            phone: data.phoneNumber || data.sellerInfo?.phone || '-',
+            address: data.sellerInfo?.storeAddress || '-'
+          });
+        }
+      });
+    }
+  }, [orderData]);
 
   // Fetch Data Rekening Pusat (Admin Rekber) dari Firebase
   useEffect(() => {
@@ -312,8 +333,16 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
   // TAMPILAN HALAMAN STRUK SETELAH BAYAR
   if (showReceipt) {
-    const subtotal = (orderData.totalPrice || 0) - (orderData.deliveryFee || 0) + (orderData.appliedVoucher?.amount || 0);
+    const subtotal = (orderData.totalPrice || 0) - (orderData.deliveryFee || 0) - (paymentMethod === 'saldo' ? 0 : calculateAdminFee(orderData.totalPrice || 0)) + (orderData.appliedVoucher?.amount || 0);
     const totalBarang = Array.isArray(orderData.items) ? orderData.items.reduce((acc, item) => acc + (item.quantity || 1), 0) : 1;
+
+    // Map Status Pengiriman Sesuai Request
+    const getShippingStatus = (status) => {
+      if (status === 'waiting_payment' || status === 'waiting_verification') return 'PENDING';
+      if (status === 'processed' || status === 'being_prepared' || status === 'ready_for_pickup') return 'DIPROSES';
+      if (status === 'shipped' || status === 'delivering' || status === 'completed') return 'DIKIRIM';
+      return 'PENDING';
+    };
 
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors ${isDarkMode ? 'bg-slate-950' : 'bg-gray-100'}`}>
@@ -322,7 +351,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
           {/* KOMPONEN STRUK YANG AKAN DI-CONVERT JADI GAMBAR */}
           <div 
             ref={receiptRef}
-            className="bg-white text-slate-800 p-8 shadow-2xl rounded-sm border-t-[12px] border-sky-600 relative overflow-hidden"
+            className="bg-white text-slate-800 p-6 shadow-2xl rounded-sm border-t-[15px] border-sky-600 relative overflow-hidden"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
             {/* Watermark Background */}
@@ -334,75 +363,97 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
             <div className="text-center border-b-2 border-dashed border-slate-200 pb-6 mb-6">
               <h2 className="text-2xl font-black tracking-tighter text-sky-600 mb-1">SOBAT-NIAGA</h2>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kantin & Marketplace Mahasiswa</p>
-              
-              <div className="mt-4 space-y-1 text-[11px] font-medium text-slate-600">
-                <p><span className="font-bold text-slate-400">PEMBELI:</span> {orderData.buyerName || 'Pelanggan Setia'}</p>
-                <p><span className="font-bold text-slate-400">TOKO:</span> {orderData.items?.[0]?.storeName || 'Official Store'}</p>
-                <p>
-                  <span className="font-bold text-slate-400">STATUS:</span>{" "}
-                  <span className={`${paymentMethod === 'saldo' ? 'text-green-600' : 'text-orange-600'} font-black`}>
-                    {paymentMethod === 'saldo' ? 'LUNAS' : 'DIPROSES'}
-                  </span>
-                </p>
-              </div>
 
-              <div className="mt-4 flex justify-between items-end text-[10px] font-mono text-slate-500 border-t pt-4 border-slate-50">
-                <div className="text-left">
-                  <p className="font-bold">ID TRANS: #{order.id.toUpperCase()}</p>
+              <div className="mt-5 grid grid-cols-2 gap-4 text-left">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase">No. Resi Otomatis</p>
+                  <p className="text-xs font-mono font-bold text-sky-600">{orderData.resi || '-'}</p>
                 </div>
                 <div className="text-right">
-                  <p>{new Date().toLocaleDateString('id-ID')}</p>
-                  <p>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Status Pengiriman</p>
+                  <p className="text-xs font-black text-slate-800">{getShippingStatus(orderData.status)}</p>
                 </div>
+                <div className="mt-1">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Tanggal Transaksi</p>
+                  <p className="text-[10px] font-bold text-slate-700">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <div className="mt-1 text-right">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Waktu</p>
+                  <p className="text-[10px] font-bold text-slate-700">{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Data Alamat (Grid 2 Kolom) */}
+            <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-dashed border-slate-100">
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-black text-sky-600 uppercase border-b border-sky-100 pb-1">Pengirim (Seller)</h4>
+                <p className="text-[11px] font-bold text-slate-800">{orderData.items?.[0]?.storeName || 'Toko Niaga'}</p>
+                <p className="text-[10px] text-slate-500 font-medium">{sellerContact.phone}</p>
+                <p className="text-[9px] text-slate-400 leading-tight italic">{sellerContact.address}</p>
+              </div>
+              <div className="space-y-2 text-right">
+                <h4 className="text-[10px] font-black text-sky-600 uppercase border-b border-sky-100 pb-1 text-right">Penerima (Pembeli)</h4>
+                <p className="text-[11px] font-bold text-slate-800">{orderData.buyerName}</p>
+                <p className="text-[10px] text-slate-500 font-medium">{userProfile?.phoneNumber || '-'}</p>
+                <p className="text-[9px] text-slate-400 leading-tight italic">{orderData.deliveryAddress || 'Ambil di Toko'}</p>
+              </div>
+            </div>
+
+            {/* Informasi Transaksi */}
+            <div className="bg-slate-50 p-3 rounded-lg mb-6 flex justify-between items-center">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">ID Pemesanan</p>
+                <p className="text-xs font-mono font-bold text-slate-700 uppercase tracking-tighter">#{order.id.toUpperCase()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] font-black text-slate-400 uppercase">Ongkos Kirim</p>
+                <p className="text-xs font-bold text-slate-800">Rp {(orderData.deliveryFee || 0).toLocaleString('id-ID')}</p>
               </div>
             </div>
 
             {/* Isi Struk Utama */}
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-500">No. Transaksi</span>
-                <span className="text-xs font-mono font-bold text-slate-800 uppercase">#{order.id.toUpperCase().slice(-10)}</span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-500">No. Resi (Kurir)</span>
-                <span className="text-xs font-mono font-bold uppercase text-sky-600">
-                  {orderData.resi || 'GENERATING...'}
-                </span>
-              </div>
-
               <div className="flex justify-between items-start">
-                <span className="text-xs font-bold text-slate-500">Produk Selektif</span>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase">Detail Produk (Isi Paket)</h4>
+                <span className="text-[9px] font-bold text-slate-400">Berat Total: ~1.0kg</span>
+              </div>
+
+              <div className="space-y-3">
+                {Array.isArray(orderData.items) && orderData.items.map((item, i) => (
+                  <div key={i} className="flex justify-between items-center">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p className="text-[11px] font-bold text-slate-800 truncate">{item.name}</p>
+                      <p className="text-[9px] text-slate-400">Kuantitas: {item.quantity} pcs</p>
+                    </div>
+                    <p className="text-[11px] font-black text-slate-800 shrink-0">Rp {(item.price * item.quantity).toLocaleString('id-ID')}</p>
+                  </div>
+                ))}
+              </div>
+
+              {orderData.note && (
+                <div className="bg-yellow-50 p-2 rounded border border-yellow-100">
+                   <p className="text-[9px] font-black text-yellow-700 uppercase mb-0.5">Catatan Khusus:</p>
+                   <p className="text-[10px] text-yellow-800 italic">"{orderData.note}"</p>
+                </div>
+              )}
+
+              <div className="pt-4 border-t-2 border-slate-100 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500">Subtotal</span>
+                  <span className="text-xs font-bold text-slate-800">Rp {subtotal.toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500">Diskon</span>
+                  <span className="text-xs font-bold text-green-600">-Rp {(orderData.appliedVoucher?.amount || 0).toLocaleString('id-ID')}</span>
+                </div>
                 <div className="text-right">
-                  <p className="text-xs font-black text-slate-800">{totalBarang} Barang</p>
-                  {Array.isArray(orderData.items) && orderData.items.map((item, i) => (
-                    <p key={i} className="text-[10px] text-slate-500 italic">{item.name} (x{item.quantity})</p>
-                  ))}
+                  <span className="text-[9px] text-slate-400">(Sudah termasuk biaya layanan)</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center py-2 border-y border-slate-50">
-                <span className="text-xs font-bold text-slate-500">Total Harga ({totalBarang} barang)</span>
-                <span className="text-xs font-bold text-slate-800">Rp {subtotal.toLocaleString('id-ID')}</span>
-              </div>
-
-              <div className="flex justify-between items-start">
-                <span className="text-xs font-bold text-slate-500">Catatan</span>
-                <span className="text-xs text-slate-600 italic text-right max-w-[150px]">{orderData.note || '-'}</span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-500">Ongkos Kirim</span>
-                <span className="text-xs font-bold text-slate-800">Rp {(orderData.deliveryFee || 0).toLocaleString('id-ID')}</span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-500">Total Diskon Barang</span>
-                <span className="text-xs font-bold text-green-600">-Rp {(orderData.appliedVoucher?.amount || 0).toLocaleString('id-ID')}</span>
-              </div>
-
               {/* Total Final */}
-              <div className="pt-4 border-t-2 border-slate-800 flex justify-between items-center">
+              <div className="pt-4 border-t-2 border-sky-600 flex justify-between items-center">
                 <span className="text-sm font-black uppercase">Total Belanja</span>
                 <span className="text-xl font-black text-sky-600 tracking-tight">Rp {orderData.totalPrice.toLocaleString('id-ID')}</span>
               </div>

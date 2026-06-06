@@ -53,6 +53,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     voucherAmount: '', // Nominal Potongan
     isActive: true, // Status Produk (Aktif/Arsip)
   });
+  const [storeForm, setStoreForm] = useState({
+    storeName: '',
+    storeAddress: '',
+  });
   const [mediaFile, setMediaFile] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]); // Array untuk menampung {file, url, isNew}
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -233,6 +237,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
           // Sync Progress Bar & Stats dari Database (Bukan Hitung Manual)
           setMonthlyRevenue(data.competitionRevenue || 0);
           setMonthlyQty(data.competitionQty || 0);
+
+          setStoreForm({
+            storeName: data.storeName || '',
+            storeAddress: data.storeAddress || '',
+          });
 
           // Load Payment Details jika ada
           if (data.paymentDetails) {
@@ -912,6 +921,36 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
     } catch (err) { console.error(err); }
   };
 
+  // --- LOGIKA UPDATE PROFIL TOKO ---
+  const handleUpdateStore = async (e) => {
+    e.preventDefault();
+    setIsUploading(true);
+    try {
+      // 1. Update di node user/sellerInfo
+      await update(ref(db, `users/${user.uid}/sellerInfo`), {
+        storeName: storeForm.storeName,
+        storeAddress: storeForm.storeAddress
+      });
+
+      // 2. Sync nama toko ke semua produk milik seller ini agar sinkron di halaman pembeli
+      const pRef = realQuery(ref(db, 'products'), orderByChild('sellerId'), equalTo(user.uid));
+      const snap = await get(pRef);
+      if (snap.exists()) {
+        const updates = {};
+        Object.keys(snap.val()).forEach(key => {
+          updates[`products/${key}/storeName`] = storeForm.storeName;
+        });
+        await update(ref(db), updates);
+      }
+
+      Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Profil Toko berhasil diperbarui.', timer: 1500, showConfirmButton: false });
+    } catch (error) {
+      Swal.fire('Gagal', error.message, 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Handle Hapus Produk
   const handleDeleteProduct = async (id) => {
     Swal.fire({
@@ -937,11 +976,9 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   // Helper: Generate Resi Internal
   const generateResi = () => {
       const date = new Date();
-      // Format: DDMMYY
       const dateString = ('0' + date.getDate()).slice(-2) +
                          ('0' + (date.getMonth() + 1)).slice(-2) +
                          date.getFullYear().toString().slice(-2);
-      // Timestamp (Base36) 5 digit terakhir + 2 digit Random
       const uniqueTime = Date.now().toString(36).toUpperCase().slice(-5);
       const randomPart = Math.random().toString(36).substring(2, 4).toUpperCase();
       return `SN-${dateString}-${uniqueTime}${randomPart}`;
@@ -950,13 +987,16 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   // Handle Proses Pesanan & Generate Resi
   const handleProcessOrder = async (orderIds, isJasa = false) => {
     const ids = Array.isArray(orderIds) ? orderIds : [orderIds];
-    const newResi = isJasa ? 'JASA-INTERNAL' : generateResi();
+    
+    // Ambil resi yang sudah ada dari order pertama di batch ini (jika ada)
+    const firstOrder = sellerOrders.find(o => o.id === ids[0]);
+    const resiToUse = isJasa ? 'JASA-INTERNAL' : (firstOrder?.resi || generateResi());
 
     Swal.fire({
       title: isJasa ? 'Tandai Jasa Selesai?' : 'Proses & Kirim Pesanan?',
       html: isJasa 
         ? "Status akan diubah menjadi 'Menunggu Konfirmasi Pembeli'."
-        : `Akan membuat No. Resi Internal: <br/><b class="font-mono text-lg text-sky-600">${newResi}</b><br/><p class="text-sm mt-2">Pastikan barang sudah siap dikirim.</p>`,
+        : `Menggunakan No. Resi Internal: <br/><b class="font-mono text-lg text-sky-600">${resiToUse}</b><br/><p class="text-sm mt-2">Pastikan barang sudah siap dikirim.</p>`,
       icon: 'info',
       showCancelButton: true,
       confirmButtonText: 'Ya, Lanjutkan',
@@ -971,9 +1011,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       if (result.isConfirmed) {
         try {
           const promises = ids.map(async (orderId) => {
+            // Cari data order spesifik untuk mengambil resi-nya
+            const currentOrder = sellerOrders.find(o => o.id === orderId);
+            const finalResi = isJasa ? 'JASA-INTERNAL' : (currentOrder?.resi || generateResi());
+
             await update(ref(db, `orders/${orderId}`), {
               status: 'shipped',
-              resi: newResi,
+              resi: finalResi,
               shippedAt: new Date().toISOString()
             });
 
@@ -982,7 +1026,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               await push(ref(db, 'notifications'), {
                 userId: order.buyerId,
                 title: isJasa ? 'Jasa Selesai Dikerjakan' : 'Paket Dikirim',
-                message: isJasa ? `Seller menandai jasa selesai. Silakan cek hasil dan konfirmasi pesanan!` : `Paketmu sudah diserahkan ke kurir. Lacak dengan resi internal: ${newResi}`,
+                message: isJasa ? `Seller menandai jasa selesai. Silakan cek hasil dan konfirmasi pesanan!` : `Paketmu sudah diserahkan ke kurir. Lacak dengan resi internal: ${finalResi}`,
                 type: 'info',
                 targetView: 'history',
                 targetTab: 'shipped',
@@ -1600,6 +1644,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { id: 'messages', label: 'Pesan Pelanggan', icon: <MessageCircle size={20} /> },
+    { id: 'store_settings', label: 'Profil Toko', icon: <Store size={20} /> },
     { id: 'add_product', label: 'Tambah Produk', icon: <PlusSquare size={20} /> },
     { id: 'product_list', label: 'Produk Saya', icon: <Package size={20} /> },
     { id: 'orders', label: 'Pesanan Masuk', icon: <ShoppingBag size={20} />, badge: incomingOrdersCount },
@@ -2272,6 +2317,39 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </div>
               )}
 
+              {/* 8. EDIT PROFIL TOKO VIEW (DESKTOP) */}
+              {activeTab === 'store_settings' && (
+                <div className="max-w-2xl animate-in slide-in-from-right-4 duration-300">
+                  <div className={`p-8 rounded-3xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-2"><Store className="text-sky-50" /> Profil Toko</h3>
+                    <form onSubmit={handleUpdateStore} className="space-y-6">
+                      <div className="space-y-1">
+                        <label className={`block text-xs font-bold mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Nama Toko</label>
+                        <input 
+                          type="text" 
+                          value={storeForm.storeName} 
+                          onChange={e => setStoreForm({...storeForm, storeName: e.target.value})} 
+                          className={`w-full p-3 rounded-xl border outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-white border-gray-200 focus:border-sky-500'}`} 
+                          required 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={`block text-xs font-bold mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Alamat Toko / Lokasi Pengiriman</label>
+                        <textarea 
+                          value={storeForm.storeAddress} 
+                          onChange={e => setStoreForm({...storeForm, storeAddress: e.target.value})} 
+                          className={`w-full p-3 rounded-xl border outline-none transition-colors min-h-[100px] ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-white border-gray-200 focus:border-sky-500'}`} 
+                          required 
+                        />
+                      </div>
+                      <button disabled={isUploading} type="submit" className={`w-full py-4 bg-sky-600 text-white font-bold rounded-2xl shadow-xl shadow-sky-200 transition-all hover:bg-sky-700 active:scale-[0.98] ${isDarkMode ? 'shadow-none' : ''}`}>
+                        {isUploading ? <Loader2 size={24} className="animate-spin mx-auto" /> : 'Simpan Perubahan Profil'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </main>
@@ -2433,6 +2511,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                         <button onClick={() => setMobileView('product_list')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Package size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Produk Saya</span></button>
                         <button onClick={() => setMobileView('finance')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Wallet size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Keuangan</span></button>
                         <button onClick={() => setMobileView('stats')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><BarChart2 size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Statistik</span></button>
+                        <button onClick={() => setMobileView('store_settings')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><Store size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Profil Toko</span></button>
                         <button onClick={() => setIsScannerOpen(true)} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 group-active:scale-95 transition-transform"><QrCode size={20}/></div><span className="text-[10px] font-bold text-center leading-tight text-emerald-600">Scan Bantuan</span></button>
                         <button onClick={onViewInbox} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-slate-700 text-white group-active:scale-95 transition-transform shadow-md"><MessageCircle size={20}/></div><span className="text-[10px] font-bold text-center leading-tight">Pesan</span></button>
                         <button onClick={() => setMobileView('sharing_recap')} className="flex flex-col items-center gap-2 group"><div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700 text-gray-700 dark:text-gray-300 group-active:scale-95 transition-transform"><RotateCcw size={20}/></div><span className="text-[10px] font-medium text-center leading-tight">Rekap Bantuan</span></button>
@@ -2444,6 +2523,35 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                 </div>
           </div>
           {/* Konten Mobile Dinamis (Bukan Menu Utama) */}
+            {/* --- MOBILE STORE EDIT VIEW --- */}
+            <div className={`p-4 md:p-6 rounded-2xl shadow-sm border transition-colors animate-in fade-in duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} ${mobileView === 'store_settings' ? 'block' : 'hidden'}`}>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Store className="text-sky-500" /> Profil Toko</h3>
+                <form onSubmit={handleUpdateStore} className="space-y-6">
+                    <div className="space-y-1">
+                        <label className={`block text-xs font-bold mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Nama Toko</label>
+                        <input 
+                            type="text" 
+                            value={storeForm.storeName} 
+                            onChange={e => setStoreForm({...storeForm, storeName: e.target.value})} 
+                            className={`w-full p-3 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-gray-50 border-gray-200 focus:border-sky-500'}`} 
+                            required 
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className={`block text-xs font-bold mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Alamat Toko</label>
+                        <textarea 
+                            value={storeForm.storeAddress} 
+                            onChange={e => setStoreForm({...storeForm, storeAddress: e.target.value})} 
+                            className={`w-full p-3 rounded-xl border outline-none transition-all min-h-[100px] ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-gray-50 border-gray-200 focus:border-sky-500'}`} 
+                            required 
+                        />
+                    </div>
+                    <button disabled={isUploading} type="submit" className={`w-full py-4 bg-sky-600 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98] ${isUploading ? 'opacity-50' : ''}`}>
+                        {isUploading ? <Loader2 size={24} className="animate-spin mx-auto" /> : 'Update Profil Toko'}
+                    </button>
+                </form>
+            </div>
+
             {/* --- SHARING RECAP VIEW (MOBILE) --- */}
             <div className={`space-y-4 ${mobileView === 'sharing_recap' ? 'block' : 'hidden'}`}>
               <div className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg"> <p className="text-xs opacity-80 uppercase font-bold">Total Klaim Hari Ini</p>

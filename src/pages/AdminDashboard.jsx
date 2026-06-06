@@ -5,7 +5,7 @@ import {
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield, MoreVertical, Trash2,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
-  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload
+  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Calendar as CalendarIcon
 } from 'lucide-react';
 import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -54,11 +54,12 @@ const uploadAudioToCloudinary = async (file) => {
 };
 
 const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIcon = false }) => {
-  const imgSrc = typeof currentUrl === 'object' ? currentUrl?.url : currentUrl;
-  
+  // Pastikan ambil URL baik dari object maupun string
+  const imgSrc = (currentUrl && typeof currentUrl === 'object') ? currentUrl.url : currentUrl;
+
   // Pola checkerboard untuk preview transparansi (hanya tampil jika ada gambar)
   const checkerboardStyle = imgSrc ? {
-    backgroundImage: 'linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)',
+    backgroundImage: 'linear-gradient(45deg, #010818 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)',
     backgroundSize: '10px 10px',
     backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
     backgroundColor: '#ffffff'
@@ -69,7 +70,7 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIco
     <label className="block text-xs font-bold opacity-70">{label}</label>
     <div 
       style={checkerboardStyle}
-      className={`relative aspect-square w-full ${rounded ? 'rounded-full' : 'rounded-xl'} ${imgSrc ? 'border-none' : 'border-2 border-dashed border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800'} overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 transition-all group`}
+      className={`relative aspect-square w-full ${rounded ? 'rounded-full' : 'rounded-xl'} ${imgSrc ? 'border-none' : 'border-2 border-dashed border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-inner'} overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-sky-500 transition-all group`}
     >
       <input 
         type="file" 
@@ -77,15 +78,16 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIco
         onChange={(e) => {
           if (e.target.files[0]) {
             onFileSelect(e.target.files[0]);
-            e.target.value = null; // Reset agar bisa pilih file sama ulang
           }
+          e.target.value = ''; // Reset input agar bisa pilih file sama berkali-kali
         }} 
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" 
+        title="" // Menghilangkan tooltip "No file chosen"
       />
       {imgSrc ? (
         <>
-          {/* Gunakan object-contain dan padding p-2 agar ikon terlihat melayang dan tidak kepentok pinggir */}
-          <img src={`${imgSrc}${imgSrc.includes('?') ? '&' : '?'}t=${Date.now()}`} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
+          {/* Menggunakan URL asli karena Cloudinary sudah memberikan unique ID di setiap upload baru */}
+          <img src={imgSrc} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
@@ -188,6 +190,11 @@ const AdminDashboard = ({ onBack, user }) => {
 
   // State Drivers
   const [driverRequests, setDriverRequests] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [marketplaceSales, setMarketplaceSales] = useState([]);
+  const [niagaSales, setNiagaSales] = useState([]);
+  const [users, setUsers] = useState([]);
   const [withdrawalRequests, setWithdrawalRequests] = useState([]); // State Antrean Pencairan
   const [drivers, setDrivers] = useState([]); // State Daftar Driver (Saldo)
   const [sellers, setSellers] = useState([]); // State Daftar Penjual
@@ -203,9 +210,8 @@ const AdminDashboard = ({ onBack, user }) => {
   const [topUpProof, setTopUpProof] = useState(null); // State Bukti Transfer Top Up
 
   // State Banners & Flash Deal
-  const [banners, setBanners] = useState({});
+  const [banners, setBanners] = useState({}); // State tunggal untuk semua manajemen gambar/banner
   const [flashDeal, setFlashDeal] = useState({ isActive: false, endTime: '', bannerUrl: '', selectedProducts: {}, discountLabel: '' });
-  const [transactions, setTransactions] = useState([]);
   const [niagaOrdersToVerify, setNiagaOrdersToVerify] = useState([]); // Order NiagaGo status 'paid'
   const [verificationQueue, setVerificationQueue] = useState([]); // State khusus untuk verifikasi marketplace
 
@@ -227,13 +233,14 @@ const AdminDashboard = ({ onBack, user }) => {
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
 
   // State Laporan Keuangan
-  const [marketplaceSales, setMarketplaceSales] = useState([]);
-  const [niagaSales, setNiagaSales] = useState([]);
   const [financeFilter, setFinanceFilter] = useState('today'); // today, week, month
   
   const [expandedGroup, setExpandedGroup] = useState(null); // State Expand Detail Transaksi
   const [saldoSearch, setSaldoSearch] = useState(''); // State Pencarian Saldo
   // State Tabs Internal
+  const [trxDateFilter, setTrxDateFilter] = useState('all'); // all, 7days, 30days, 90days, custom
+  const [trxCustomDate, setTrxCustomDate] = useState({ start: '', end: '' });
+
   const [sellerTabMode, setSellerTabMode] = useState('sellers'); // 'sellers' | 'drivers'
   const [trxTabMode, setTrxTabMode] = useState('marketplace'); // 'marketplace' | 'niagago'
 
@@ -306,6 +313,54 @@ const AdminDashboard = ({ onBack, user }) => {
     });
     return () => unsub();
   }, []);
+
+  // --- LOGIKA FILTER TANGGAL TRANSAKSI (MEMOIZED) ---
+  const filteredMarketplaceTrx = useMemo(() => {
+    if (trxDateFilter === 'all') return transactions;
+    const now = new Date();
+    const startOfRange = new Date();
+
+    if (trxDateFilter === '7days') startOfRange.setDate(now.getDate() - 7);
+    else if (trxDateFilter === '30days') startOfRange.setDate(now.getDate() - 30);
+    else if (trxDateFilter === '90days') startOfRange.setDate(now.getDate() - 90);
+    else if (trxDateFilter === 'custom' && trxCustomDate.start && trxCustomDate.end) {
+      const startCustom = new Date(trxCustomDate.start);
+      startCustom.setHours(0, 0, 0, 0);
+      const endCustom = new Date(trxCustomDate.end);
+      endCustom.setHours(23, 59, 59, 999);
+      return transactions.filter(item => {
+        const d = new Date(item.createdAt);
+        return d >= startCustom && d <= endCustom;
+      });
+    }
+    startOfRange.setHours(0,0,0,0);
+    return transactions.filter(item => new Date(item.createdAt) >= startOfRange);
+  }, [transactions, trxDateFilter, trxCustomDate]);
+
+  const filteredNiagaTrx = useMemo(() => {
+    if (trxDateFilter === 'all') return niagaOrdersToVerify;
+    const now = new Date();
+    const startOfRange = new Date();
+
+    if (trxDateFilter === '7days') startOfRange.setDate(now.getDate() - 7);
+    else if (trxDateFilter === '30days') startOfRange.setDate(now.getDate() - 30);
+    else if (trxDateFilter === '90days') startOfRange.setDate(now.getDate() - 90);
+    else if (trxDateFilter === 'custom' && trxCustomDate.start && trxCustomDate.end) {
+      const startCustom = new Date(trxCustomDate.start);
+      startCustom.setHours(0, 0, 0, 0);
+      const endCustom = new Date(trxCustomDate.end);
+      endCustom.setHours(23, 59, 59, 999);
+      return niagaOrdersToVerify.filter(item => {
+        const d = new Date(item.createdAt?.seconds ? item.createdAt.seconds * 1000 : item.createdAt);
+        return d >= startCustom && d <= endCustom;
+      });
+    }
+    startOfRange.setHours(0,0,0,0);
+    return niagaOrdersToVerify.filter(item => {
+      const d = new Date(item.createdAt?.seconds ? item.createdAt.seconds * 1000 : item.createdAt);
+      return d >= startOfRange;
+    });
+  }, [niagaOrdersToVerify, trxDateFilter, trxCustomDate]);
 
   // Fetch Marketplace Orders (Realtime DB) untuk Laporan Keuangan
   // Menggabungkan listener untuk 'transactions' dan 'marketplaceSales' untuk efisiensi
@@ -706,17 +761,6 @@ const AdminDashboard = ({ onBack, user }) => {
     });
     return () => unsubscribe();
   }, []);
-
-  // Fetch Banners (Realtime DB)
-  useEffect(() => {
-    if (activeTab === 'images') {
-      const bannersRef = ref(realDb, 'admin/banners');
-      const unsubscribe = onValue(bannersRef, (snapshot) => {
-        if (snapshot.exists()) setBanners(snapshot.val());
-      });
-      return () => unsubscribe();
-    }
-  }, [activeTab]);
 
   // Fetch Flash Deal (Realtime DB)
   useEffect(() => {
@@ -1450,15 +1494,15 @@ const AdminDashboard = ({ onBack, user }) => {
 
       if (type === 'banners') {
         const currentData = banners[key];
-        const isObject = typeof currentData === 'object' && currentData !== null;
+        // Untuk branding (favicon/logo), paksa jadi object agar konsisten
+        const isBranding = key === 'favicon' || key === 'login_logo';
+        const isObject = isBranding || (typeof currentData === 'object' && currentData !== null);
         
         // 1. Update ke Realtime Database (Gunakan serverTimestamp hanya di sini)
-        const dbValue = isObject ? { ...currentData, url, updatedAt: serverTimestamp() } : url;
+        const dbValue = isObject ? { ...(typeof currentData === 'object' ? currentData : {}), url, updatedAt: serverTimestamp() } : url;
         await update(ref(realDb, 'admin/banners'), { [key]: dbValue });
 
-        // 2. Update State Lokal (Tanpa serverTimestamp agar tidak merusak objek state)
-        const stateValue = isObject ? { ...currentData, url } : url;
-        setBanners(prev => ({ ...prev, [key]: stateValue }));
+        // Note: setBanners akan otomatis diupdate oleh onValue listener
       } else if (type === 'flashDeal') {
         await update(ref(realDb, 'admin/flashDeal'), { [key]: url });
         setFlashDeal(prev => ({ ...prev, [key]: url }));
@@ -1627,6 +1671,53 @@ const AdminDashboard = ({ onBack, user }) => {
             Swal.fire('Error', error.message, 'error');
         }
     }
+  };
+
+  // --- POPUP PILIH TANGGAL TRANSAKSI ---
+  const handleTrxDateFilter = () => {
+    Swal.fire({
+      title: 'Filter Tanggal Transaksi',
+      background: isDarkMode ? '#1e293b' : '#ffffff',
+      color: isDarkMode ? '#f1f5f9' : '#1e293b',
+      html: `
+        <div class="flex flex-col gap-2 mt-4 text-left">
+          <button id="f-7" class="w-full py-3 px-4 rounded-xl border text-sm font-bold transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-slate-300' : 'border-gray-100 hover:bg-gray-50 text-gray-700'}">7 Hari Terakhir</button>
+          <button id="f-30" class="w-full py-3 px-4 rounded-xl border text-sm font-bold transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-slate-300' : 'border-gray-100 hover:bg-gray-50 text-gray-700'}">30 Hari Terakhir</button>
+          <button id="f-90" class="w-full py-3 px-4 rounded-xl border text-sm font-bold transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-slate-300' : 'border-gray-100 hover:bg-gray-50 text-gray-700'}">90 Hari Terakhir</button>
+          
+          <div class="mt-4 pt-4 border-t border-dashed ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}">
+            <p class="text-[10px] font-black uppercase tracking-widest text-sky-500 mb-3 text-center">Atur Rentang Sendiri</p>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold opacity-50 uppercase block">Mulai</label>
+                <input type="date" id="s-date" class="w-full p-2.5 rounded-lg border text-xs focus:ring-2 focus:ring-sky-500 outline-none ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-50 border-gray-200'}">
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold opacity-50 uppercase block">Sampai</label>
+                <input type="date" id="e-date" class="w-full p-2.5 rounded-lg border text-xs focus:ring-2 focus:ring-sky-500 outline-none ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-50 border-gray-200'}">
+              </div>
+            </div>
+            <button id="f-custom" class="w-full py-3 bg-sky-600 text-white font-bold rounded-xl text-sm shadow-lg shadow-sky-200 dark:shadow-none">Terapkan Filter Custom</button>
+          </div>
+          
+          <button id="f-all" class="mt-2 py-2 text-xs font-bold text-gray-400 hover:text-sky-600 transition-colors text-center">Lihat Semua Data</button>
+        </div>
+      `,
+      showConfirmButton: false,
+      customClass: { popup: 'rounded-3xl', title: 'text-lg font-black' },
+      didOpen: () => {
+        document.getElementById('f-7').onclick = () => { setTrxDateFilter('7days'); Swal.close(); };
+        document.getElementById('f-30').onclick = () => { setTrxDateFilter('30days'); Swal.close(); };
+        document.getElementById('f-90').onclick = () => { setTrxDateFilter('90days'); Swal.close(); };
+        document.getElementById('f-all').onclick = () => { setTrxDateFilter('all'); Swal.close(); };
+        document.getElementById('f-custom').onclick = () => {
+          const start = document.getElementById('s-date').value;
+          const end = document.getElementById('e-date').value;
+          if (start && end) { setTrxCustomDate({ start, end }); setTrxDateFilter('custom'); Swal.close(); }
+          else { Swal.showValidationMessage('Isi dulu dua-duanya, Bro!'); }
+        };
+      }
+    });
   };
 
   const inputClass = `w-full p-3 rounded-xl border outline-none text-sm transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-sky-500' : 'bg-white border-gray-200 focus:border-sky-500'}`;
@@ -1878,21 +1969,6 @@ const AdminDashboard = ({ onBack, user }) => {
             <div className="space-y-8">
               <h2 className="text-2xl font-bold">Manajemen Gambar & Aset</h2>
               
-              {/* 1. SLIDE HOME (BANNER UTAMA) */}
-              <div>
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-sky-500"/> Banner Slider Utama (Home)</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {[1, 2, 3, 4, 5].map(num => (
-                    <ImageUploader 
-                      key={num} 
-                      label={`Slide ${num}`} 
-                      currentUrl={banners[`home_slider_${num}`]} 
-                      onFileSelect={(file) => handleFileSelect(file, `home_slider_${num}`)} 
-                    />
-                  ))}
-                </div>
-              </div>
-
               {/* 2. BRANDING (LOGO & FAVICON) */}
               <div>
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Branding (Logo & Icon)</h3>
@@ -2007,11 +2083,30 @@ const AdminDashboard = ({ onBack, user }) => {
           {/* --- VERIFIKASI TRANSAKSI --- */}
           {activeTab === 'transactions' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Verifikasi Transaksi</h2>
-                <div className={`flex rounded-lg p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                    <button onClick={() => setTrxTabMode('marketplace')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${trxTabMode === 'marketplace' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>Marketplace</button>
-                    <button onClick={() => setTrxTabMode('niagago')} className={`px-4 py-2 text-xs font-bold rounded-md transition-all ${trxTabMode === 'niagago' ? 'bg-sky-600 text-white shadow-sm' : 'text-gray-500'}`}>NiagaGo {niagaOrdersToVerify.length > 0 && `(${niagaOrdersToVerify.length})`}</button>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold">Verifikasi Transaksi</h2>
+                  <p className="text-xs text-gray-500 mt-1">Kelola dan validasi pembayaran masuk dari pelanggan.</p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Button Filter Tanggal */}
+                  <button 
+                    onClick={handleTrxDateFilter}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-tighter transition-all shadow-sm active:scale-95 ${trxDateFilter !== 'all' ? 'bg-sky-600 text-white border-sky-600' : (isDarkMode ? 'bg-slate-800 border-slate-700 text-gray-400' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                  >
+                    <CalendarIcon size={16} />
+                    {trxDateFilter === 'all' ? 'Filter Tanggal' : 
+                     trxDateFilter === '7days' ? '7 Hari Terakhir' : 
+                     trxDateFilter === '30days' ? '30 Hari Terakhir' :
+                     trxDateFilter === '90days' ? '90 Hari Terakhir' : 
+                     `${new Date(trxCustomDate.start).toLocaleDateString('id-ID', {day:'numeric', month:'short'})} - ${new Date(trxCustomDate.end).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}`}
+                  </button>
+
+                  <div className={`flex rounded-xl p-1 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                      <button onClick={() => setTrxTabMode('marketplace')} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${trxTabMode === 'marketplace' ? 'bg-sky-600 text-white shadow-md' : 'text-gray-500 hover:text-sky-600'}`}>Marketplace</button>
+                      <button onClick={() => setTrxTabMode('niagago')} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${trxTabMode === 'niagago' ? 'bg-sky-600 text-white shadow-md' : 'text-gray-500 hover:text-sky-600'}`}>NiagaGo {niagaOrdersToVerify.length > 0 && `(${niagaOrdersToVerify.length})`}</button>
+                  </div>
                 </div>
               </div>
 
@@ -2031,7 +2126,7 @@ const AdminDashboard = ({ onBack, user }) => {
                       </tr>
                     </thead>
                     <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                      {transactions.map(trx => (
+                      {filteredMarketplaceTrx.map(trx => (
                         <tr key={trx.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
                           {/* 1. PRODUK */}
                           <td className="px-3 md:px-6 py-4 align-middle font-medium">
@@ -2065,8 +2160,8 @@ const AdminDashboard = ({ onBack, user }) => {
                           </td>
                           {/* 5. WAKTU */}
                           <td className="px-3 md:px-6 py-4 align-middle text-[10px] md:text-xs text-gray-500 whitespace-nowrap hidden md:table-cell">
-                            {trx.paidAt ? new Date(trx.paidAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 
-                             (trx.createdAt ? new Date(trx.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-')}
+                            {trx.paidAt ? new Date(trx.paidAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 
+                             (trx.createdAt ? new Date(trx.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-')}
                           </td>
                           {/* 6. AKSI */}
                           <td className="px-3 md:px-6 py-4 align-middle">
@@ -2107,7 +2202,7 @@ const AdminDashboard = ({ onBack, user }) => {
                           </td>
                         </tr>
                       ))} 
-                      {transactions.length === 0 && (
+                      {filteredMarketplaceTrx.length === 0 && (
                       <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Hore! Semua transaksi sudah diverifikasi.</td></tr>
                       )}
                       </tbody>
@@ -2131,7 +2226,7 @@ const AdminDashboard = ({ onBack, user }) => {
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700' : 'divide-gray-100'}`}>
-                        {niagaOrdersToVerify.map(order => (
+                        {filteredNiagaTrx.map(order => (
                           <tr key={order.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors`}>
                             <td className="px-3 md:px-6 py-4 align-middle">
                                 <div className="font-bold text-xs">{order.pickup}</div>
@@ -2140,7 +2235,7 @@ const AdminDashboard = ({ onBack, user }) => {
                             <td className="px-3 md:px-6 py-4 align-middle text-xs hidden sm:table-cell">{order.driverName}</td>
                             <td className="px-3 md:px-6 py-4 align-middle font-bold text-sky-500 text-xs">Rp {order.price.toLocaleString('id-ID')}</td>
                             <td className="px-3 md:px-6 py-4 align-middle text-[10px] text-gray-500 whitespace-nowrap hidden md:table-cell">
-                                {new Date(order.verifiedAt || order.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                {new Date(order.verifiedAt || order.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td className="px-3 md:px-6 py-4 align-middle">
                                 <div className="flex items-center gap-2">
@@ -2163,7 +2258,7 @@ const AdminDashboard = ({ onBack, user }) => {
                             </td>
                           </tr>
                         ))}
-                        {niagaOrdersToVerify.length === 0 && <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Tidak ada pesanan NiagaGo yang perlu diverifikasi.</td></tr>}
+                        {filteredNiagaTrx.length === 0 && <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Tidak ada pesanan NiagaGo yang perlu diverifikasi.</td></tr>}
                       </tbody>
                     </table>
                   </div>
