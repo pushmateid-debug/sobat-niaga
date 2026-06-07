@@ -2,15 +2,14 @@ importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
 // Inisialisasi Firebase di dalam Service Worker
-// Note: Masukkan config firebase kamu di sini
 firebase.initializeApp({
-    apiKey: "AIzaSy...", 
-    authDomain: "sobat-niaga.firebaseapp.com",
-    databaseURL: "https://sobat-niaga-default-rtdb.firebaseio.com",
-    projectId: "sobat-niaga",
-    storageBucket: "sobat-niaga.appspot.com",
-    messagingSenderId: "...",
-    appId: "..."
+    apiKey: "AIzaSyCp8Rjx2SuTxNabf51uFjmKHwbJyBgU7Ps", 
+    authDomain: "sobatniaga.firebaseapp.com",
+    databaseURL: "https://sobatniaga-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "sobatniaga",
+    storageBucket: "sobatniaga.firebasestorage.app",
+    messagingSenderId: "198089863049",
+    appId: "1:198089863049:web:15db89ba8985b802ae7b58"
 });
 
 const messaging = firebase.messaging();
