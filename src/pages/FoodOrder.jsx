@@ -25,7 +25,7 @@ const FoodOrder = ({ onBack, products, onProductClick }) => {
       {/* Header Sticky */}
       <div className={`shadow-sm sticky top-0 z-50 transition-colors ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white border-gray-100'}`}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-indigo-400' : 'text-gray-600 hover:text-indigo-600'}`}>
+          <button onClick={onBack} className={`hidden md:flex transition-colors ${isDarkMode ? 'text-gray-300 hover:text-indigo-400' : 'text-gray-600 hover:text-indigo-600'}`}>
             <ArrowLeft size={24} />
           </button>
           <div>
@@ -36,8 +36,13 @@ const FoodOrder = ({ onBack, products, onProductClick }) => {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 lg:p-6">
+        <style>{`
+          .no-scrollbar::-webkit-scrollbar { display: none; }
+          .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
+
         {/* Filter Kategori (Horizontal Scroll) */}
-        <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide mb-2">
+        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scrollbar-hide mb-4">
             {categories.map((cat) => (
                 <button
                     key={cat.name}

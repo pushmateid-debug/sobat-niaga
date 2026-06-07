@@ -87,6 +87,53 @@ const Home = () => {
   const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop (Floating)
   const [chatSellerId, setChatSellerId] = useState(null); // ID Seller untuk chat aktif
   const [activeChatBuyerId, setActiveChatBuyerId] = useState(null); // ID Buyer untuk chat aktif (Sisi Seller)
+
+  // --- LAYANAN CHATBOT ADMIN (BOT RESPONSE LOGIC) ---
+  const chatbotMenu = [
+    { label: "💸 Saldo Top Up belum masuk", botResponse: "Halo Sobat! Untuk melakukan Top Up Saldo SobatNiaga, kamu bisa langsung menghubungi admin keuangan kami via WhatsApp di nomor 089517587498. Proses cepat dan aman!" },
+    { label: "📦 Cek status transaksi Rekber", botResponse: "Halo! Jika kamu ingin mengecek status pencairan dana Rekber atau verifikasi pembayaran QRIS, mohon kirimkan ID Transaksi atau Screenshot Bukti Transfer di sini ya. Admin akan segera memproses dalam 5-10 menit." },
+    { label: "🛡️ Laporkan kendala transaksi / penipuan", botResponse: "SobatNiaga sangat menjaga keamanan bertransaksi. Jika kamu menemukan indikasi penipuan, akun palsu, atau masalah transaksi, harap lampirkan kronologi singkat dan bukti foto. Laporanmu akan langsung ditangani tim keamanan kami." },
+    { label: "🤝 Cara daftar menjadi penjual (Seller)", botResponse: "Tertarik buka toko sendiri di SobatNiaga? Caranya gampang banget! Cukup masuk ke menu 'Profil', klik 'Buka Toko Gratis', lalu lengkapi data tokomu. Yuk, mulai jualan dan sukses bareng SobatNiaga!" }
+  ];
+
+  const [isInstantMenuOpen, setIsInstantMenuOpen] = useState(false);
+
+  const handleChatBotClick = async (option) => {
+    if (!user?.uid) return;
+    const messagesRef = ref(db, `chats/${user.uid}/messages`);
+    const chatRef = ref(db, `chats/${user.uid}`);
+    
+    try {
+      // 1. Pesan User (Pilihan yang diklik)
+      await push(messagesRef, {
+        text: option.label,
+        sender: 'user',
+        timestamp: serverTimestamp(),
+        status: 'sent'
+      });
+
+      // 2. Pesan Balasan Otomatis Admin (Bot)
+      setTimeout(async () => {
+        await push(messagesRef, {
+          text: option.botResponse,
+          sender: 'admin',
+          timestamp: serverTimestamp(),
+          status: 'sent',
+          isBot: true
+        });
+        // Update Metadata Chat agar Admin di Dashboard tau ada aktifitas
+        await update(chatRef, { lastMessageText: option.botResponse, lastMessageTime: serverTimestamp(), hasUnreadAdmin: true });
+      }, 600);
+      setIsInstantMenuOpen(false); // Otomatis tutup menu setelah pilih
+    } catch (error) { console.error("Chatbot Error:", error); }
+  };
+
+  useEffect(() => {
+    if ((currentView === 'chat' || isDesktopChatOpen) && chatTab === 'admin') {
+      setIsInstantMenuOpen(true);
+    }
+  }, [currentView, isDesktopChatOpen, chatTab]);
+
   const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
@@ -788,6 +835,10 @@ const Home = () => {
   // Render Content Helper
   const renderContent = () => {
     switch (currentView) {
+      case 'topup': return <TopUp onBack={() => setCurrentView('home')} />;
+      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'skincare': return <SkinCare onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
       case 'cart': return <Cart 
         onBack={() => startTransition(() => setCurrentView('home'))} 
@@ -920,7 +971,45 @@ const Home = () => {
                   }}
               pendingProduct={pendingProduct}
               setPendingProduct={setPendingProduct}
+              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
               />
+
+              {/* Bottom Sheet Pesan Instan (Mobile) */}
+              {isInstantMenuOpen && chatTab === 'admin' && (
+                <div className="absolute inset-0 z-[210] flex flex-col justify-end animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/40" onClick={() => setIsInstantMenuOpen(false)}></div>
+                    <div className={`relative w-full rounded-t-[2.5rem] p-6 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
+                        <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-6"></div>
+                        
+                        <div className="mb-6">
+                            <h3 className={`text-lg font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan 🤖</h3>
+                            <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, saya dari Customer Service SobatNiaga siap bantuin kamu. Kamu ada kendala apa?
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            {chatbotMenu.map((option, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => handleChatBotClick(option)}
+                                    className={`w-full text-left p-4 rounded-2xl border font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
+                                >
+                                    <span>{option.label}</span>
+                                    <ChevronRight size={18} className="text-gray-400 group-hover:text-sky-500 transition-colors" />
+                                </button>
+                            ))}
+                        </div>
+                        
+                        <button 
+                            onClick={() => setIsInstantMenuOpen(false)}
+                            className="w-full mt-6 py-4 rounded-2xl font-bold text-gray-400 dark:text-slate-500 text-xs uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                        >
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+              )}
           </div>
         );
       
@@ -1355,8 +1444,13 @@ const Home = () => {
         {/* SECTION: Isi Pulsa */}
         <div ref={pulsaRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Isi Pulsa & Paket Data</h2>
-            <button onClick={() => startTransition(() => setCurrentView('topup'))} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
+            <h2 
+              onClick={() => setCurrentView('topup')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Isi Pulsa & Paket Data
+            </h2>
+            <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Isi Pulsa').slice(0, 6).map((product) => (
@@ -1371,8 +1465,13 @@ const Home = () => {
         {/* SECTION: Makan */}
         <div ref={makanRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Niaga Food</h2>
-            <button onClick={() => startTransition(() => setCurrentView('food'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <h2 
+              onClick={() => setCurrentView('food')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Niaga Food
+            </h2>
+            <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Niaga Food').slice(0, 6).map((product) => (
@@ -1387,8 +1486,13 @@ const Home = () => {
         {/* SECTION: Skin Care */}
         <div ref={skincareRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Skin Care Glowing</h2>
-            <button onClick={() => startTransition(() => setCurrentView('skincare'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <h2 
+              onClick={() => setCurrentView('skincare')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Skin Care Glowing
+            </h2>
+            <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Skin Care').slice(0, 6).map((product) => (
@@ -1403,8 +1507,13 @@ const Home = () => {
         {/* SECTION: Fashion */}
         <div ref={fashionRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Fashion Terkini</h2>
-            <button onClick={() => startTransition(() => setCurrentView('fashion'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <h2 
+              onClick={() => setCurrentView('fashion')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Fashion Terkini
+            </h2>
+            <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Fashion').slice(0, 6).map((product) => (
@@ -1419,8 +1528,13 @@ const Home = () => {
         {/* SECTION: Jasa */}
         <div ref={jasaRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Jasa Mahasiswa</h2>
-            <button onClick={() => startTransition(() => setCurrentView('jasa'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <h2 
+              onClick={() => setCurrentView('jasa')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Jasa Mahasiswa
+            </h2>
+            <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Jasa').slice(0, 6).map((product) => (
@@ -1435,8 +1549,13 @@ const Home = () => {
         {/* SECTION: Top Up Game */}
         <div ref={gameRef} className="scroll-mt-40">
           <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Top Up Game</h2>
-            <button onClick={() => startTransition(() => setCurrentView('digital-center'))} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+            <h2 
+              onClick={() => setCurrentView('digital-center')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Top Up Game
+            </h2>
+            <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {products.filter(p => p.category === 'Game').slice(0, 6).map((product) => (
@@ -1779,7 +1898,44 @@ const Home = () => {
                 }}
               pendingProduct={pendingProduct}
               setPendingProduct={setPendingProduct}
+              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
             />
+
+            {/* Desktop Quick Menu Overlay */}
+            {isInstantMenuOpen && chatTab === 'admin' && (
+                <div className="absolute inset-0 z-[10] flex flex-col justify-end animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/20" onClick={() => setIsInstantMenuOpen(false)}></div>
+                    <div className={`relative w-full rounded-t-2xl p-4 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
+                        <div className="w-10 h-1 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-4"></div>
+                        
+                        <div className="mb-4">
+                            <h3 className={`text-sm font-black mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan</h3>
+                            <p className={`text-[10px] leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, ada kendala apa?
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            {chatbotMenu.map((option, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => handleChatBotClick(option)}
+                                    className={`w-full text-left p-2.5 rounded-xl border font-bold text-[10px] transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
+                                >
+                                    <span className="truncate pr-2">{option.label}</span>
+                                    <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                                </button>
+                            ))}
+                        </div>
+                        <button 
+                            onClick={() => setIsInstantMenuOpen(false)}
+                            className="w-full mt-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"
+                        >
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
       )}
 

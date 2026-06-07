@@ -107,7 +107,7 @@ const SummaryComponent = ({
           </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="hidden md:flex gap-3">
           <button 
               onClick={onBackToStep1}
               className={`flex-1 py-3 rounded-xl font-bold border transition-all ${isDarkMode ? 'border-slate-600 text-gray-300 hover:bg-slate-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
@@ -598,6 +598,35 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
                                 onGoToAddress
                             }} 
                         />
+                    </div>
+                </div>
+
+                {/* Bottom Sticky Action Step 2 (Mobile Only) */}
+                <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-50 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]'}`}>
+                    <div className="max-w-5xl mx-auto flex flex-col gap-3">
+                        <div className="flex justify-between items-center">
+                            <span className={`text-sm font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Belanja</span>
+                            <span className={`font-price font-black text-lg tracking-tight ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>Rp {(totalPrice || 0).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setCheckoutStep(1)}
+                                className={`flex-1 py-3 rounded-xl font-bold border transition-all ${isDarkMode ? 'border-slate-600 text-gray-300 hover:bg-slate-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                            >
+                                Kembali
+                            </button>
+                            <button 
+                                className={`flex-[2] py-3 rounded-xl font-bold text-white transition-all shadow-lg ${
+                                    totalItems > 0 
+                                    ? (isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200') 
+                                    : (isDarkMode ? 'bg-slate-700 text-gray-500 cursor-not-allowed shadow-none' : 'bg-gray-300 cursor-not-allowed shadow-none')
+                                }`}
+                                disabled={totalItems === 0}
+                                onClick={handleFinalCheckout}
+                            >
+                                Beli Sekarang
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

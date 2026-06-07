@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2, ShoppingBag } from 'lucide-react';
+import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2, ShoppingBag, Sparkles } from 'lucide-react';
 import { db } from '../config/firebase';
 import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get, remove } from 'firebase/database';
 import Swal from 'sweetalert2';
@@ -21,7 +21,8 @@ export const ChatLayout = ({
   playCustomNotificationSound,
   onViewProfile,
   pendingProduct,
-  setPendingProduct
+  setPendingProduct,
+  onOpenInstantMenu
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -441,6 +442,16 @@ export const ChatLayout = ({
           )}
 
           <div className="flex gap-2 w-full">
+          {chatTab === 'admin' && (
+            <button 
+              type="button"
+              onClick={onOpenInstantMenu}
+              className={`p-2.5 rounded-full transition-all active:scale-90 ${isDarkMode ? 'bg-slate-700 text-sky-400' : 'bg-sky-50 text-sky-600'}`}
+              title="Pesan Instan"
+            >
+              <Sparkles size={20} />
+            </button>
+          )}
           <input 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

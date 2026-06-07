@@ -1975,6 +1975,7 @@ const AdminDashboard = ({ onBack, user }) => {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   <ImageUploader label="Logo Menu Login" currentUrl={banners['login_logo']} onFileSelect={(file) => handleFileSelect(file, 'login_logo')} isIcon />
                   <ImageUploader label="Favicon (Icon Browser)" currentUrl={banners['favicon']} onFileSelect={(file) => handleFileSelect(file, 'favicon')} rounded={true} />
+                  <ImageUploader label="Logo Struk (Receipt)" currentUrl={banners['receipt_logo']} onFileSelect={(file) => handleFileSelect(file, 'receipt_logo')} isIcon />
                 </div>
               </div>
 

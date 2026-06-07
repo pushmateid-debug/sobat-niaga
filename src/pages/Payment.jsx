@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle, Truck } from 'lucide-react';
+import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle, Truck, Instagram, MessageCircle } from 'lucide-react';
 import { db, auth } from '../config/firebase';
 import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
 import Swal from 'sweetalert2';
@@ -53,6 +53,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [randomMotivation] = useState(() => motivations[Math.floor(Math.random() * motivations.length)]);
+  const [receiptLogo, setReceiptLogo] = useState(null);
   const receiptRef = useRef(null);
   const [sellerContact, setSellerContact] = useState({ name: '-', phone: '-', address: '-' });
 
@@ -82,6 +83,20 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
       });
       return () => unsubscribe();
     }
+  }, []);
+
+  // Ambil Logo Struk dari Manajemen Gambar Admin
+  useEffect(() => {
+    const logoRef = ref(db, 'admin/banners/receipt_logo');
+    const unsubscribe = onValue(logoRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        setReceiptLogo(typeof data === 'object' ? data.url : data);
+      } else {
+        setReceiptLogo(null);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Ambil Data Kontak Seller untuk Struk
@@ -362,7 +377,11 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
 
             {/* Header Struk */}
             <div className="text-center border-b-2 border-dashed border-slate-200 pb-6 mb-6">
-              <h2 className="text-2xl font-black tracking-tighter text-sky-600 mb-1">SOBAT-NIAGA</h2>
+              {receiptLogo ? (
+                <img src={receiptLogo} alt="Logo" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <h2 className="text-2xl font-black tracking-tighter text-sky-600 mb-1">SOBAT-NIAGA</h2>
+              )}
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kantin & Marketplace Mahasiswa</p>
 
               <div className="mt-5 grid grid-cols-2 gap-4 text-left">
@@ -469,10 +488,17 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
                 </p>
               </div>
 
-              <div className="mb-6 text-[10px] text-slate-400 border-l-2 border-sky-500 pl-3">
-                <p className="font-bold text-slate-600">Sobat Niaga Support:</p>
-                <p>Admin: 089654568782</p>
-                <p>Alamat: Kampus Pusat - Niaga Center</p>
+              <div className="mb-6 space-y-1.5 border-l-2 border-sky-500 pl-3">
+                <p className="text-[10px] font-black text-slate-600 uppercase mb-1">Sobat Niaga Support:</p>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                  <MessageCircle size={12} className="text-green-600 fill-green-50" />
+                  <span className="font-bold">089517587498</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                  <Instagram size={12} className="text-pink-600" />
+                  <span className="font-bold">sobatniaga.id</span>
+                </div>
+                <p className="text-[9px] text-slate-400 mt-1 italic">Kampus Pusat - Niaga Center</p>
               </div>
               
               {/* RANDOM MOTIVASI SECTION */}
