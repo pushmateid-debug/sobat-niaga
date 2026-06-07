@@ -147,8 +147,12 @@ const Home = () => {
         
         if (token) {
           console.log('FCM Token didapat:', token);
-          // Simpan token ke Firestore untuk pengiriman notifikasi dari Admin/Backend
-          await setDoc(doc(dbFirestore, 'users', userId), { fcmToken: token }, { merge: true });
+          // PENTING: Simpan ke Firestore (untuk push background) dan Realtime DB (untuk trigger cepat)
+          const userFirestoreRef = doc(dbFirestore, 'users', userId);
+          await setDoc(userFirestoreRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
+          
+          const userRtdbRef = ref(db, `users/${userId}`);
+          await update(userRtdbRef, { fcmToken: token });
         }
       } else {
         console.warn('Izin notifikasi ditolak oleh user.');
@@ -157,6 +161,27 @@ const Home = () => {
       console.error('Error saat setup messaging:', error);
     }
   };
+
+  // Listener untuk pesan masuk saat App sedang terbuka (Foreground)
+  useEffect(() => {
+    if (!messaging) return;
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log('Pesan diterima di foreground:', payload);
+      // Tampilkan toast notifikasi manual jika user sedang tidak di halaman chat
+      if (currentView !== 'chat') {
+        Swal.fire({
+          title: payload.notification.title,
+          text: payload.notification.body,
+          icon: 'info',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 4000
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [currentView]);
 
   const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
   const desktopChatRef = useRef(null);

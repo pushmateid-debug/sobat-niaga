@@ -178,6 +178,31 @@ export const ChatLayout = ({
     }
   };
 
+  // Fungsi pembantu untuk memicu notifikasi (Trigger ke Cloud Functions)
+  const triggerPushNotification = async (recipientId, messageText) => {
+    try {
+      // 1. Ambil token penerima dari Firestore
+      const recipientDoc = await get(ref(db, `users/${recipientId}/fcmToken`));
+      const fcmToken = recipientDoc.val();
+
+      if (fcmToken) {
+        // 2. Kirim sinyal ke node 'notification_queue' di Realtime DB
+        // Kita pakai cara ini karena lebih cepat daripada HTTP POST manual di frontend
+        await push(ref(db, 'notification_queue'), {
+          to: fcmToken,
+          title: `Pesan Baru dari ${user.displayName}`,
+          body: messageText,
+          senderId: user.uid,
+          recipientId: recipientId,
+          url: '/chat', // Deep link pas notif diklik
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error("Gagal memicu notifikasi:", err);
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -227,8 +252,11 @@ export const ChatLayout = ({
 
       await update(ref(db, config.metaPath), metaUpdate);
 
-      // SYNC RIWAYAT CHAT (Double-Sided Indexing)
+      // --- TRIGGER PUSH NOTIFICATION ---
       const partnerId = isSellerView ? config.buyerId : config.sellerId;
+      triggerPushNotification(partnerId, inputText);
+
+      // SYNC RIWAYAT CHAT (Double-Sided Indexing)
       const now = Date.now();
 
       // 1. Update riwayat di sisi SAYA
