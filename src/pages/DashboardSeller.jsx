@@ -2357,7 +2357,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
       {/* --- MOBILE (Shopee Style Grid) --- */}
       {/* Bagian ini tetap dipertahankan untuk responsivitas HP (Hidden di md) */}
-      <div className={`md:hidden flex-1 overflow-y-auto w-full md:flex-1 ${isVerifiedSeller ? 'block' : 'hidden'}`}>
+      <div className={`md:hidden flex-1 overflow-y-auto w-full md:flex-1`}>
+          {!isVerifiedSeller ? (
+            <div className="p-4">
+              <SellerVerification user={user} onVerificationSuccess={handleVerificationSuccess} />
+            </div>
+          ) : (
+            <>
           {/* Header Mobile dengan Tombol Kembali */}
           <div className={`sticky top-0 z-50 p-4 border-b flex items-center gap-4 transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'} ${mobileView === 'menu' ? 'hidden' : 'flex'}`}>
               <button onClick={handleMobileBack} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}>
@@ -3204,6 +3210,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               </div>
             </div>
           </div>
+          </>
+          )}
         </div>
       {/* Modal Pengaturan Pembayaran */}
       {isPaymentModalOpen && (

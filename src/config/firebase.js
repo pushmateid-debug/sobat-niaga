@@ -4,6 +4,7 @@ import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } 
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
+import { getMessaging } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCp8Rjx2SuTxNabf51uFjmKHwbJyBgU7Ps",
@@ -28,3 +29,4 @@ export const googleProvider = new GoogleAuthProvider();
 export const db = getDatabase(app);
 export const dbFirestore = getFirestore(app);
 export const storage = getStorage(app);
+export const messaging = getMessaging(app);

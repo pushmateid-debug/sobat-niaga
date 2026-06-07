@@ -12,10 +12,11 @@ import ProductCard from '../components/ProductCard';
 import { ChatLayout } from '../components/ChatLayout'; // Import ChatLayout
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
 import ProductDetailModal from '../components/ProductDetailModal'; // Import Modal Detail Desktop
-import { auth, db, dbFirestore } from '../config/firebase';
+import { auth, db, dbFirestore, messaging } from '../config/firebase';
 import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
-import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { getToken, onMessage } from 'firebase/messaging';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
 // Lazy Load Pages untuk Optimasi Bundle Size
@@ -133,6 +134,29 @@ const Home = () => {
       setIsInstantMenuOpen(true);
     }
   }, [currentView, isDesktopChatOpen, chatTab]);
+
+  // --- WEB PUSH NOTIFICATION (FCM) LOGIC ---
+  const requestPermission = async (userId) => {
+    console.log('Meminta izin notifikasi...');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await getToken(messaging, { 
+          vapidKey: 'BIBHwt4wNcjkNxMT0KmI_babges5K0R7GQS9AcEMP61_6XXHFUfvUlAPIQ3bCR93mbELRgzWaySglN-QCYVlDcE' 
+        });
+        
+        if (token) {
+          console.log('FCM Token didapat:', token);
+          // Simpan token ke Firestore untuk pengiriman notifikasi dari Admin/Backend
+          await setDoc(doc(dbFirestore, 'users', userId), { fcmToken: token }, { merge: true });
+        }
+      } else {
+        console.warn('Izin notifikasi ditolak oleh user.');
+      }
+    } catch (error) {
+      console.error('Error saat setup messaging:', error);
+    }
+  };
 
   const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
   const desktopChatRef = useRef(null);
@@ -461,6 +485,10 @@ const Home = () => {
             // User baru, belum ada data di DB
             setUser(currentUser);
           }
+
+          // PENTING: Minta izin notifikasi begitu user login
+          requestPermission(currentUser.uid);
+
           // PENTING: Matikan loading HANYA setelah data user siap
           setIsLoading(false);
         });
