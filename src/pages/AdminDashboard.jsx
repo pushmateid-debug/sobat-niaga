@@ -783,11 +783,24 @@ const AdminDashboard = ({ onBack, user }) => {
   // Fetch Flash Deal (Realtime DB)
   useEffect(() => {
     if (activeTab === 'images') {
+      const bannersRef = ref(realDb, 'admin/banners');
+      const unsubscribeBanners = onValue(
+        bannersRef,
+        (snapshot) => setBanners(snapshot.exists() ? snapshot.val() : {}),
+        (error) => {
+          console.error('Gagal memuat aset gambar admin:', error);
+          Swal.fire('Gagal memuat gambar', 'Aset gambar tidak dapat dimuat dari database.', 'error');
+        }
+      );
+
       const fdRef = ref(realDb, 'admin/flashDeal');
       const unsubscribe = onValue(fdRef, (snapshot) => {
         if (snapshot.exists()) setFlashDeal(snapshot.val());
       });
-      return () => unsubscribe();
+      return () => {
+        unsubscribeBanners();
+        unsubscribe();
+      };
     }
   }, [activeTab]);
 
