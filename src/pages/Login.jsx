@@ -268,7 +268,7 @@ const Login = () => {
                     <div className={`absolute top-0 flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-0' : '-translate-x-[20%]'}`}>
                         <h1 className="font-bold text-3xl mb-4">Sudah Punya Akun?</h1>
                         <p className="text-sm mb-8 text-blue-100">
-                            Untuk tetap terhubung dengan kami, silakan login dengan info pribadi anda
+                            Kelola toko, produk, dan transaksi usahamu bersama SobatNiaga.
                         </p>
                         <button 
                             onClick={() => setIsSignUp(false)}
@@ -282,7 +282,7 @@ const Login = () => {
                     <div className={`absolute top-0 right-0 flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-[20%]' : 'translate-x-0'}`}>
                         <h1 className="font-bold text-3xl mb-4">Halo, Sobat!</h1>
                         <p className="text-sm mb-8 text-blue-100">
-                            Masukkan detail pribadi anda dan mulailah perjalanan bersama kami
+                            Temukan platform bisnis digital terpadu untuk mengembangkan usahamu.
                         </p>
                         <button 
                             onClick={() => setIsSignUp(true)}
