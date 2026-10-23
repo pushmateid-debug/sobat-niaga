@@ -28,6 +28,7 @@ import {
   Filler,
 } from 'chart.js';
 import { useTheme } from '../context/ThemeContext';
+import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -42,14 +43,17 @@ ChartJS.register(
 
 // Helper: Upload Audio ke Cloudinary
 const uploadAudioToCloudinary = async (file) => {
-  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli'; // Pastikan ini nama Cloudinary kamu
+  // Audio uploader (tetap pakai preset unsigned)
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
 
   const formData = new FormData();
-  // Cuma butuh 2 baris ini biar gak kena eror 400 Unsigned
-  formData.append('file', file); 
-  formData.append('upload_preset', 'sobatniaga_audio'); 
+  formData.append('file', file);
+  formData.append('upload_preset', 'sobatniaga_audio');
 
-  const response = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, formData);
+  const response = await axios.post(
+    `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
+    formData
+  );
   return response.data.secure_url;
 };
 
@@ -288,7 +292,9 @@ const AdminDashboard = ({ onBack, user }) => {
   useEffect(() => {
     const compRef = ref(realDb, 'admin/competitionSettings');
     const unsubscribe = onValue(compRef, (snapshot) => {
-      if (snapshot.exists()) setCompetitionSettings(snapshot.val());
+      if (snapshot.exists()) {
+        setCompetitionSettings(normalizeCompetitionSettings(snapshot.val()));
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -1637,10 +1643,30 @@ const AdminDashboard = ({ onBack, user }) => {
   const handleSaveCompetition = async (e) => {
     e.preventDefault();
     try {
-        await update(ref(realDb, 'admin/competitionSettings'), competitionSettings);
+        const payload = normalizeCompetitionSettings(competitionSettings);
+        await update(ref(realDb, 'admin/competitionSettings'), {
+          ...payload,
+          updatedAt: serverTimestamp()
+        });
+        setCompetitionSettings(payload);
         Swal.fire('Sukses', 'Pengaturan Event Disimpan!', 'success');
     } catch (error) {
         Swal.fire('Error', error.message, 'error');
+    }
+  };
+
+  const handleToggleCompetitionStatus = async () => {
+    const nextValue = !competitionSettings.isActive;
+    const payload = normalizeCompetitionSettings({ ...competitionSettings, isActive: nextValue });
+    setCompetitionSettings(payload);
+
+    try {
+      await update(ref(realDb, 'admin/competitionSettings'), {
+        ...payload,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      Swal.fire('Error', 'Gagal mengubah status event.', 'error');
     }
   };
 
@@ -2974,7 +3000,7 @@ const AdminDashboard = ({ onBack, user }) => {
                             <span className="text-xs font-bold">Status Event:</span>
                             <button 
                                 type="button" 
-                                onClick={() => setCompetitionSettings({...competitionSettings, isActive: !competitionSettings.isActive})} 
+                                onClick={handleToggleCompetitionStatus} 
                                 className={`w-12 h-6 rounded-full transition-colors relative ${competitionSettings.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
                             >
                                 <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${competitionSettings.isActive ? 'left-7' : 'left-1'}`}></div>

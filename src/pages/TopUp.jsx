@@ -9,6 +9,7 @@ const TopUp = ({ onBack }) => {
   const [operator, setOperator] = useState(null);
   const [activeTab, setActiveTab] = useState('pulsa'); // 'pulsa' | 'data'
   const [selectedItem, setSelectedItem] = useState(null);
+  const [showNotifModal, setShowNotifModal] = useState(false);
 
   // Logika Cerdas: Auto-Detect Operator
   useEffect(() => {
@@ -43,6 +44,28 @@ const TopUp = ({ onBack }) => {
 
   const options = activeTab === 'pulsa' ? pulsaOptions : dataOptions;
 
+  const handleBuy = () => {
+    if (!selectedItem || phoneNumber.length < 10) return;
+    // langsung tunjukkan modal notifikasi di UI terlebih dahulu
+    setShowNotifModal(true);
+
+    const title = 'Sistem Sibuk / Maintenance';
+    const body = 'Mohon maaf, fitur pembayaran otomatis untuk Isi Pulsa & Paket Data sedang dalam perbaikan atau mengalami overload. Silakan coba beberapa saat lagi atau hubungi admin SobatNiaga.';
+
+    // Coba juga tampilkan System Notification (non-blocking)
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try { new Notification(title, { body }); } catch (e) { /* ignore */ }
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            try { new Notification(title, { body }); } catch (e) { /* ignore */ }
+          }
+        });
+      }
+    }
+  };
+
   return (
     <div className={`min-h-screen pb-24 lg:pb-10 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
       {/* Header */}
@@ -67,7 +90,7 @@ const TopUp = ({ onBack }) => {
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, ''); // Cuma boleh angka
+                    const val = e.target.value.replace(/\D/g, ''); // Hanya angka
                     setPhoneNumber(val);
                   }}
                   placeholder="08xx-xxxx-xxxx"
@@ -97,11 +120,14 @@ const TopUp = ({ onBack }) => {
                 </div>
                 <div className={`border-t pt-3 flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
                   <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Total Bayar</span>
-                  <span className={`font-price font-bold text-xl tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedItem ? `Rp ${selectedItem.price}` : '-'}</span>
+                  <span className={`font-bold text-xl tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+                    {selectedItem ? `Rp ${selectedItem.price}` : '-'}
+                  </span>
                 </div>
               </div>
               <button
                 disabled={!selectedItem || phoneNumber.length < 10}
+                onClick={handleBuy}
                 className={`w-full py-3 rounded-xl font-bold text-white transition-all shadow-lg ${
                   selectedItem && phoneNumber.length >= 10
                     ? (isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200')
@@ -113,14 +139,15 @@ const TopUp = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Sisi Kanan: Tab & Grid */}
+          {/* Sisi Kanan: Pilihan Paket */}
           <div className="lg:col-span-8">
-            {/* Pilihan Tab */}
             <div className={`flex gap-2 mb-6 p-1.5 rounded-xl border shadow-sm transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
               <button
                 onClick={() => { setActiveTab('pulsa'); setSelectedItem(null); }}
                 className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                  activeTab === 'pulsa' ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-300 shadow-sm ring-1 ring-indigo-500/50' : 'bg-indigo-100 text-indigo-600 shadow-sm ring-1 ring-indigo-200') : (isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50')
+                  activeTab === 'pulsa'
+                    ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-300 shadow-sm ring-1 ring-indigo-500/50' : 'bg-indigo-100 text-indigo-600 shadow-sm ring-1 ring-indigo-200')
+                    : (isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50')
                 }`}
               >
                 <Smartphone size={18} /> Pulsa
@@ -128,14 +155,15 @@ const TopUp = ({ onBack }) => {
               <button
                 onClick={() => { setActiveTab('data'); setSelectedItem(null); }}
                 className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                  activeTab === 'data' ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-300 shadow-sm ring-1 ring-indigo-500/50' : 'bg-indigo-100 text-indigo-600 shadow-sm ring-1 ring-indigo-200') : (isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50')
+                  activeTab === 'data'
+                    ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-300 shadow-sm ring-1 ring-indigo-500/50' : 'bg-indigo-100 text-indigo-600 shadow-sm ring-1 ring-indigo-200')
+                    : (isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50')
                 }`}
               >
                 <Globe size={18} /> Paket Data
               </button>
             </div>
 
-            {/* Grid Pilihan Harga */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {options.map((item) => (
                 <div
@@ -150,7 +178,7 @@ const TopUp = ({ onBack }) => {
                   <h3 className={`font-bold mb-1 text-lg ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
                     {activeTab === 'pulsa' ? item.nominal : item.name}
                   </h3>
-                  <p className={`font-price text-sm font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {item.price}</p>
+                  <p className={`text-sm font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {item.price}</p>
                   {item.promo && (
                     <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold shadow-sm">
                       Promo
@@ -168,10 +196,11 @@ const TopUp = ({ onBack }) => {
         <div className="max-w-md mx-auto flex items-center justify-between gap-4">
           <div>
             <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Bayar</p>
-            <p className={`font-price text-lg font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedItem ? `Rp ${selectedItem.price}` : '-'}</p>
+            <p className={`text-lg font-bold tracking-wide ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedItem ? `Rp ${selectedItem.price}` : '-'}</p>
           </div>
           <button
             disabled={!selectedItem || phoneNumber.length < 10}
+            onClick={handleBuy}
             className={`px-6 py-3 rounded-full font-bold text-white transition-all ${
               selectedItem && phoneNumber.length >= 10
                 ? (isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200')
@@ -182,6 +211,22 @@ const TopUp = ({ onBack }) => {
           </button>
         </div>
       </div>
+
+      {/* Fallback In-App Modal / Notification Alert */}
+      {showNotifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowNotifModal(false)} />
+          <div className={`relative p-6 rounded-xl w-11/12 max-w-md mx-auto shadow-lg z-50 ${isDarkMode ? 'bg-slate-800 text-gray-100' : 'bg-white text-gray-800'}`}>
+            <h3 className="font-bold text-lg mb-2">Sistem Sibuk / Maintenance</h3>
+            <p className="text-sm mb-4">Mohon maaf, fitur pembayaran otomatis untuk Isi Pulsa & Paket Data sedang dalam perbaikan atau mengalami overload. Silakan coba beberapa saat lagi atau hubungi admin SobatNiaga.</p>
+            <div className="flex justify-end">
+              <button onClick={() => setShowNotifModal(false)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

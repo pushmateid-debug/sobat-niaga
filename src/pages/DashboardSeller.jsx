@@ -9,6 +9,7 @@ import confetti from 'canvas-confetti';
 import SellerVerification from './SellerVerification';
 import Swal from 'sweetalert2';
 import { Line } from 'react-chartjs-2';
+import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -84,7 +85,30 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const [leaderboard, setLeaderboard] = useState([]);
   const [daysLeft, setDaysLeft] = useState(0);
   const [compSettings, setCompSettings] = useState({ isActive: false, startDate: '', endDate: '' });
+  const [eventDismissed, setEventDismissed] = useState(false);
   const prevIncomingCountRef = useRef(0);
+
+  // Handler: seller joins competition -> write participant record and mark user as competitor
+  const joinCompetition = async () => {
+    if (!user?.uid) return Swal.fire('Gagal', 'User tidak terdeteksi', 'error');
+    try {
+      const participantRef = ref(db, `admin/competitionParticipants/${user.uid}`);
+      await set(participantRef, {
+        storeId: user.uid,
+        storeName: sellerInfo?.storeName || '',
+        joinedAt: serverTimestamp(),
+        status: 'registered'
+      });
+
+      const userSellerRef = ref(db, `users/${user.uid}/sellerInfo`);
+      await update(userSellerRef, { isCompetitor: true, competitionJoinedAt: serverTimestamp(), competitionRevenue: sellerInfo?.competitionRevenue || 0, competitionQty: sellerInfo?.competitionQty || 0, points_event: sellerInfo?.points_event || 0 });
+
+      Swal.fire('Terdaftar', 'Kamu telah terdaftar di event. Semoga beruntung!', 'success');
+    } catch (error) {
+      console.error('Join competition error:', error);
+      Swal.fire('Gagal', 'Gagal mendaftar event. Coba lagi nanti.', 'error');
+    }
+  };
   const isFirstLoad = useRef(true);
   const isCompetitorRef = useRef(false); // Ref untuk akses status di dalam listener
 
@@ -258,7 +282,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
       const unsubscribeComp = onValue(compRef, (snapshot) => {
         if (snapshot.exists()) {
-          setCompSettings(snapshot.val());
+          setCompSettings(normalizeCompetitionSettings(snapshot.val()));
         }
       });
 
@@ -409,6 +433,15 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       };
     }
   }, [user, compSettings.isActive, compSettings.startDate, compSettings.endDate]);
+
+  // Restore dismissed flag from localStorage (per seller)
+  useEffect(() => {
+    try {
+      const key = `eventDismissed_${user?.uid}`;
+      const v = localStorage.getItem(key);
+      if (v === '1') setEventDismissed(true);
+    } catch (e) { /* ignore */ }
+  }, [user?.uid]);
 
   // Fungsi Upload ke Cloudinary
   const uploadToCloudinary = async (file) => {
@@ -1536,22 +1569,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const points = sellerInfo?.points_loyalty || 0; // Poin Seller (Loyalitas)
 
   // Logic Saklar Otomatis (Date Range + Active Status)
-  const statusKompetisi = useMemo(() => {
-    if (!compSettings.isActive) return false;
-    
-    // Cek Tanggal Otomatis
-    if (compSettings.startDate && compSettings.endDate) {
-        const now = new Date();
-        const start = new Date(compSettings.startDate);
-        start.setHours(0, 0, 0, 0); // Reset ke 00:00 waktu lokal
-        
-        const end = new Date(compSettings.endDate);
-        end.setHours(23, 59, 59, 999); // Sampai akhir hari waktu lokal
-        return now >= start && now <= end;
-    }
-    
-    return compSettings.isActive;
-  }, [compSettings]);
+  const statusKompetisi = useMemo(() => isCompetitionVisible(compSettings), [compSettings]);
+  const isCompetitionEnabled = useMemo(() => compSettings.isActive, [compSettings]);
 
   // Helper Status Badge (Biar warna-warni sesuai status)
   const getOrderStatusBadge = (status) => {
@@ -1741,6 +1760,29 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               {/* 1. DASHBOARD VIEW */}
               {activeTab === 'dashboard' && (
                 <div className="space-y-8 animate-in fade-in duration-500">
+                  {compSettings.isActive && compSettings.startDate && compSettings.endDate && !eventDismissed && (() => {
+                    const now = new Date();
+                    const start = new Date(compSettings.startDate);
+                    const end = new Date(compSettings.endDate);
+                    if (!(now >= start && now <= end)) return null;
+                    return (
+                      <div className={`p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-lg">Sobat Juara — Event</h3>
+                          <p className="text-sm text-gray-500 mt-1">Biaya Tiket: {compSettings.ticketPrice ? `Rp ${parseInt(compSettings.ticketPrice).toLocaleString('id-ID')}` : '-'} • Kuota: {compSettings.quota || '-'}</p>
+                          <p className="text-sm text-gray-500">Hadiah: 1) {compSettings.prizes?.first ? `Rp ${parseInt(compSettings.prizes.first).toLocaleString('id-ID')}` : '-'} • 2) {compSettings.prizes?.second ? `Rp ${parseInt(compSettings.prizes.second).toLocaleString('id-ID')}` : '-'} • 3) {compSettings.prizes?.third ? `Rp ${parseInt(compSettings.prizes.third).toLocaleString('id-ID')}` : '-'}</p>
+                          <p className="text-xs text-gray-400 mt-2">Periode: {compSettings.startDate} — {compSettings.endDate}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {!sellerInfo?.isCompetitor && (
+                            <button onClick={joinCompetition} className="px-4 py-2 bg-sky-600 text-white rounded-lg font-bold">Ikuti Event</button>
+                          )}
+                          <button onClick={() => { setEventDismissed(true); try { localStorage.setItem(`eventDismissed_${user?.uid}`, '1'); } catch(e){} }} className="px-3 py-2 text-sm text-gray-500">Tutup</button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Row 1: Ringkasan Hari Ini */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* Card Saldo */}
@@ -2376,11 +2418,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
           {/* Gue tambahin pengecekan agar mobile tetap dapet Shopee-style lo yang keren */}
           <div className="max-w-7xl mx-auto px-6 py-4 space-y-6">
             {/* Banner Join Competition (Jika Belum Join) */}
-            {statusKompetisi && !sellerInfo?.isCompetitor && (
+            {isCompetitionEnabled && !sellerInfo?.isCompetitor && (
               <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-700">
                 <div className="relative z-10">
-                  <h2 className="text-lg font-bold mb-1 flex items-center gap-2"><Trophy className="text-yellow-400" size={20} /> SobatNiaga Monthly Race</h2>
-                  <p className="text-indigo-200 text-xs md:text-sm">Jadilah Top Seller dan menangkan Total Hadiah <strong>Rp 300.000</strong> + Promosi Gratis!</p>
+                  <h2 className="text-lg font-bold mb-1 flex items-center gap-2"><Trophy className="text-yellow-400" size={20} /> SobatJuara Event Aktif</h2>
+                  <p className="text-indigo-200 text-xs md:text-sm">Event 'Sobat Juara' sedang berlangsung. Bergabung sekarang untuk kesempatan hadiah dan promosi toko.</p>
                 </div>
                 <button onClick={handleJoinCompetition} className="relative z-10 bg-yellow-400 text-indigo-900 px-5 py-2 rounded-xl font-bold text-sm hover:bg-yellow-300 transition-all shadow-lg shadow-yellow-400/20 whitespace-nowrap active:scale-95">
                   Join Kompetisi

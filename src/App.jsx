@@ -15,15 +15,18 @@ function App() {
     const unsubscribe = onValue(faviconRef, (snap) => {
       if (snap.exists()) {
         const data = snap.val();
-        const url = typeof data === 'object' ? data.url : data;
+          const url = typeof data === 'object' ? data.url : data;
         if (url) {
-          let link = document.querySelector("link[rel~='icon']");
+          let link = document.getElementById('app-favicon');
           if (!link) {
             link = document.createElement('link');
+            link.id = 'app-favicon';
             link.rel = 'icon';
             document.head.appendChild(link);
           }
-          link.href = url;
+          // Anti-cache: tambahkan timestamp biar browser selalu ambil versi terbaru
+          const sep = url.includes('?') ? '&' : '?';
+          link.href = `${url}${sep}v=${Date.now()}`;
         }
       }
     });
