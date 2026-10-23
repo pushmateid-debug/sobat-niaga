@@ -6,6 +6,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore } from '../config/firebase';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -719,29 +720,8 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // Helper: Upload ke Cloudinary (Optimasi Upload Gambar)
   const uploadToCloudinary = async (file, folder = 'sobatniaga/drivers') => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
-    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
-    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    
-    const params = { folder: folder, timestamp: timestamp };
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', folder);
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
-    return data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    const secureUrl = await uploadCloudinaryFile(file, folder);
+    return secureUrl.replace('/upload/', '/upload/q_auto,f_auto/');
   };
 
   // Helper: Reverse Geocoding (Koordinat -> Alamat)

@@ -4,6 +4,7 @@ import { db } from '../config/firebase';
 import { ref, onValue, query, orderByChild, equalTo, update, get, push, set } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 
 // Helper: Hitung Biaya Admin (Logic Math.min)
 const calculateAdminFee = (amount) => {
@@ -66,30 +67,9 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
   // Fungsi Upload ke Cloudinary (Reused)
   const uploadToCloudinary = async (file) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY;
-    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET;
     const type = file.type.startsWith('video/') ? 'video' : 'image';
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    
-    const params = { folder: 'sobatniaga/reviews', timestamp: timestamp };
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', 'sobatniaga/reviews');
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${type}/upload`, { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
-    return data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    const secureUrl = await uploadCloudinaryFile(file, 'sobatniaga/reviews', type);
+    return secureUrl.replace('/upload/', '/upload/q_auto,f_auto/');
   };
 
   const handleCopyResi = (resi) => {

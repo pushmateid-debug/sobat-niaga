@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { updateProfile } from 'firebase/auth';
 import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
 import Swal from 'sweetalert2';
@@ -49,47 +50,13 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
     }
   };
 
-  // Helper: Generate Signature untuk Cloudinary (SHA-1)
-  const generateSignature = async (params, apiSecret) => {
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
   // Fungsi Upload ke Cloudinary
   const uploadToCloudinary = async (file) => {
-    // Perbaikan: Hapus duplikasi variabel const yang bikin garis merah
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
-    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
-    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-
-    // Debugging: Cek apakah variabel environment terbaca
-    console.log("DEBUG CLOUDINARY (HARDCODED):", { cloudName, apiKey, apiSecret: apiSecret ? '***' : 'undefined' });
-
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    const params = {
-      folder: 'sobatniaga/profiles',
-      timestamp: timestamp,
-    };
-
-    const signature = await generateSignature(params, apiSecret);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', 'sobatniaga/profiles');
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
+    const secureUrl = await uploadCloudinaryFile(file, 'sobatniaga/profiles');
 
     // Optimization: Auto-crop (Face detection) & Auto-quality
     // Inject parameter transformasi ke URL
-    return data.secure_url.replace('/upload/', '/upload/c_fill,g_face,w_500,h_500,q_auto,f_auto/');
+    return secureUrl.replace('/upload/', '/upload/c_fill,g_face,w_500,h_500,q_auto,f_auto/');
   };
 
   const handleSave = async (e) => {

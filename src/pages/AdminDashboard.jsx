@@ -29,6 +29,8 @@ import {
 } from 'chart.js';
 import { useTheme } from '../context/ThemeContext';
 import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 ChartJS.register(
   CategoryScale,
@@ -91,7 +93,12 @@ const ImageUploader = ({ label, currentUrl, onFileSelect, rounded = false, isIco
       {imgSrc ? (
         <>
           {/* Menggunakan URL asli karena Cloudinary sudah memberikan unique ID di setiap upload baru */}
-          <img src={imgSrc} alt="Preview" className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`} />
+          <ImageWithFallback
+            src={imgSrc}
+            alt="Preview"
+            className={`w-full h-full bg-transparent ${rounded || isIcon ? 'object-contain p-2' : 'object-cover'}`}
+            fallback={<div className="text-center text-gray-400"><ImageIcon size={20} className="mx-auto mb-1" /><span className="text-[10px]">Pratinjau tidak tersedia</span></div>}
+          />
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             Ganti Gambar
           </div>
@@ -1359,12 +1366,14 @@ const AdminDashboard = ({ onBack, user }) => {
 
   // Fungsi Handle File Select (Buka Editor)
   const handleFileSelect = (file, key, type = 'banners') => {
-    // Filter Ekstensi & MIME: Cuma boleh JPG dan PNG untuk keamanan
+    if (!file) return;
+
+    // Batasi format gambar yang dapat diproses oleh editor.
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'];
     if (!allowedTypes.includes(file.type)) {
       Swal.fire({
         title: 'Format Ditolak',
-        text: 'Hanya file .jpg atau .png yang diperbolehkan demi keamanan sistem!',
+        text: 'Gunakan file JPG, PNG, WebP, atau ICO.',
         icon: 'error',
         confirmButtonText: 'Oke Sip',
         buttonsStyling: false,
@@ -1372,6 +1381,10 @@ const AdminDashboard = ({ onBack, user }) => {
           confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200 transition-all !opacity-100'
         }
       });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire('Ukuran Terlalu Besar', 'Ukuran gambar maksimal 5 MB.', 'warning');
       return;
     }
 
@@ -1441,10 +1454,12 @@ const AdminDashboard = ({ onBack, user }) => {
         }
 
         canvas.toBlob((blob) => {
-            if (blob) {
-                handleFileUpload(blob, editingImage.key, editingImage.type);
-                setEditingImage(null); // Close modal
+            if (!blob) {
+                Swal.fire('Gagal', 'Gambar tidak dapat diproses. Coba gunakan file gambar lain.', 'error');
+                return;
             }
+            handleFileUpload(blob, editingImage.key, editingImage.type);
+            setEditingImage(null);
         }, (isIcon) ? 'image/png' : 'image/jpeg', 0.85); 
         // Pakai PNG untuk icon/logo supaya transparansi tetap aman
     }
@@ -1452,37 +1467,10 @@ const AdminDashboard = ({ onBack, user }) => {
 
   // Helper: Upload ke Cloudinary (Pengganti Firebase Storage)
   const uploadToCloudinary = async (file) => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-    
-    const type = file.type.startsWith('video/') ? 'video' : 'image';
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    
-    // Signature Generation
-    const params = {
-      folder: 'sobatniaga/admin',
-      timestamp: timestamp,
-    };
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', 'sobatniaga/admin');
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${type}/upload`, { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
+    const secureUrl = await uploadCloudinaryFile(file, 'sobatniaga/admin');
 
     // Optimasi: Gunakan auto-quality dan auto-format agar file enteng
-    return data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    return secureUrl.replace('/upload/', '/upload/q_auto,f_auto/');
   };
 
   // Fungsi Upload File

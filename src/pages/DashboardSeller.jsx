@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle, LayoutDashboard, Send } from 'lucide-react';
 import { db, dbFirestore } from '../config/firebase';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useTheme } from '../context/ThemeContext';
@@ -445,42 +446,15 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
   // Fungsi Upload ke Cloudinary
   const uploadToCloudinary = async (file) => {
-    const cloudName = 'djqnnguli';
-    const apiKey = '156244598362341';
-    const apiSecret = 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-    
     const type = file.type.startsWith('video/') ? 'video' : 'image';
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    
-    // Generate Signature
-    const params = { folder: 'sobatniaga/products', timestamp: timestamp };
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', 'sobatniaga/products');
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${type}/upload`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
+    const uploadedUrl = await uploadCloudinaryFile(file, 'sobatniaga/products', type);
     
     // Auto-Compress: Quality Auto & Format Auto
-    const videoUrl = data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    const videoUrl = uploadedUrl.replace('/upload/', '/upload/q_auto,f_auto/');
     let thumbnailUrl = null;
     if (type === 'video') {
       // Generate thumbnail URL dari Cloudinary (ambil frame pertama sebagai JPG)
-      thumbnailUrl = data.secure_url.replace('/upload/', '/upload/f_jpg,vc_auto,w_300,h_500,c_fill/').replace(/\.(mp4|mov|avi|webm)$/i, '.jpg');
+      thumbnailUrl = uploadedUrl.replace('/upload/', '/upload/f_jpg,vc_auto,w_300,h_500,c_fill/').replace(/\.(mp4|mov|avi|webm)$/i, '.jpg');
     }
     return { url: videoUrl, type: type, thumbnailUrl: thumbnailUrl };
   };

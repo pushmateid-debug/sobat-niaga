@@ -3,6 +3,7 @@ import { ArrowLeft, Star, Smartphone, Utensils, Sparkles, ShoppingBag, Wrench, G
 import { useTheme } from '../context/ThemeContext';
 import { db } from '../config/firebase';
 import { ref, onValue } from 'firebase/database';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 const AllCategories = ({ onBack, onNavigate }) => {
   const { theme } = useTheme();
@@ -66,16 +67,13 @@ const AllCategories = ({ onBack, onNavigate }) => {
                     : `${cat.color} group-hover:border-transparent`}
                 `}
               >
-                {cat.key && bannerImages[cat.key] ? (
-                  <img 
-                    src={`${(typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
-                    alt={cat.name} 
-                    className="w-12 h-12 object-contain bg-transparent"
-                    style={{ backgroundColor: 'transparent' }}
-                  />
-                ) : (
-                  cat.icon
-                )}
+                <ImageWithFallback
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
+                  alt={cat.name}
+                  className="w-12 h-12 object-contain bg-transparent"
+                  style={{ backgroundColor: 'transparent' }}
+                  fallback={cat.icon}
+                />
               </div>
               <span className={`
                 text-[11px] md:text-sm font-bold text-center leading-tight 

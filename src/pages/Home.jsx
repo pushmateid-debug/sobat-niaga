@@ -18,6 +18,7 @@ import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { useTheme } from '../context/ThemeContext'; // Import Context
+import ImageWithFallback from '../components/ImageWithFallback';
 
 // Lazy Load Pages untuk Optimasi Bundle Size
 const TopUp = React.lazy(() => import('./TopUp'));
@@ -1283,16 +1284,13 @@ const Home = () => {
               className="flex flex-col items-center gap-2 group"
             >
             <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
-                {cat.key && bannerImages[cat.key] ? (
-                <img 
-                  src={`${((typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
-                  alt={cat.name} 
-                  className="w-12 h-12 object-contain bg-transparent" 
+                <ImageWithFallback
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
+                  alt={cat.name}
+                  className="w-12 h-12 object-contain bg-transparent"
                   style={{ backgroundColor: 'transparent' }}
+                  fallback={cat.icon}
                 />
-                ) : (
-                  cat.icon
-                )}
               </div>
               <span className={`text-[10px] font-medium text-center leading-tight ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{cat.name}</span>
             </button>
@@ -1339,16 +1337,13 @@ const Home = () => {
                   }`}
                 >
               <div className="flex items-center gap-2">
-                {cat.key && bannerImages[cat.key] ? (
-                  <img 
-                    src={`${((typeof bannerImages[cat.key] === 'object' && bannerImages[cat.key] !== null) ? bannerImages[cat.key].url : bannerImages[cat.key])}?t=${Date.now()}`} 
-                    alt="" 
-                    className="w-5 h-5 object-contain bg-transparent" 
-                    style={{ backgroundColor: 'transparent' }}
-                  />
-                ) : (
-                  cat.icon
-                )}
+                <ImageWithFallback
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
+                  alt=""
+                  className="w-5 h-5 object-contain bg-transparent"
+                  style={{ backgroundColor: 'transparent' }}
+                  fallback={cat.icon}
+                />
                 {cat.name}
               </div>
                 </button>

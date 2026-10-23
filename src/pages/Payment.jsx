@@ -5,6 +5,7 @@ import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/datab
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 import { toPng } from 'html-to-image';
+import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 
 const calculateAdminFee = (amount) => {
   if (amount < 15000) return 500;
@@ -169,30 +170,9 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   };
 
   const uploadToCloudinary = async (file) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'djqnnguli';
-    const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || '156244598362341';
-    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'INGJr-KgmBPNwqwBYFZy9w7Fa18';
-    const timestamp = Math.round((new Date()).getTime() / 1000);
-    
-    const params = { folder: 'sobatniaga/payments', timestamp: timestamp };
-    const sortedKeys = Object.keys(params).sort();
-    const stringToSign = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    const msgBuffer = new TextEncoder().encode(stringToSign);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
-    const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', 'sobatniaga/payments');
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Upload failed');
+    const secureUrl = await uploadCloudinaryFile(file, 'sobatniaga/payments');
     // Auto-Compress: Quality Auto & Format Auto
-    return data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+    return secureUrl.replace('/upload/', '/upload/q_auto,f_auto/');
   };
 
   const handleConfirmPayment = async () => {
