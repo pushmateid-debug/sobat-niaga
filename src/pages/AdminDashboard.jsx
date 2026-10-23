@@ -222,6 +222,11 @@ const AdminDashboard = ({ onBack, user }) => {
 
   // State Banners & Flash Deal
   const [banners, setBanners] = useState({}); // State tunggal untuk semua manajemen gambar/banner
+  const faviconDraft = banners.favicon_draft;
+  const faviconDraftUrl = typeof faviconDraft === 'object' && faviconDraft !== null ? faviconDraft.url : faviconDraft;
+  const activeFavicon = banners.favicon;
+  const activeFaviconUrl = typeof activeFavicon === 'object' && activeFavicon !== null ? activeFavicon.url : activeFavicon;
+  const faviconCandidateUrl = faviconDraftUrl || activeFaviconUrl;
   const [flashDeal, setFlashDeal] = useState({ isActive: false, endTime: '', bannerUrl: '', selectedProducts: {}, discountLabel: '' });
   const [niagaOrdersToVerify, setNiagaOrdersToVerify] = useState([]); // Order NiagaGo status 'paid'
   const [verificationQueue, setVerificationQueue] = useState([]); // State khusus untuk verifikasi marketplace
@@ -1489,7 +1494,7 @@ const AdminDashboard = ({ onBack, user }) => {
       if (type === 'banners') {
         const currentData = banners[key];
         // Untuk branding (favicon/logo), paksa jadi object agar konsisten
-        const isBranding = key === 'favicon' || key === 'login_logo';
+        const isBranding = key === 'favicon' || key === 'favicon_draft' || key === 'login_logo';
         const isObject = isBranding || (typeof currentData === 'object' && currentData !== null);
         
         // 1. Update ke Realtime Database (Gunakan serverTimestamp hanya di sini)
@@ -1513,7 +1518,9 @@ const AdminDashboard = ({ onBack, user }) => {
 
       Swal.fire({
         title: 'Berhasil',
-        text: 'Gambar berhasil diupload',
+        text: key === 'favicon_draft'
+          ? 'Gambar favicon tersimpan. Klik "Terapkan sebagai favicon" untuk mengaktifkannya.'
+          : 'Gambar berhasil diupload',
         icon: 'success',
         confirmButtonText: 'Mantap',
         buttonsStyling: false,
@@ -1533,6 +1540,30 @@ const AdminDashboard = ({ onBack, user }) => {
           confirmButton: 'px-8 py-2.5 rounded-xl text-sm font-bold text-white bg-gray-600 hover:bg-gray-700 shadow-lg transition-all !opacity-100'
         }
       });
+    }
+  };
+
+  const handleApplyFavicon = async () => {
+    const candidate = banners.favicon_draft || banners.favicon;
+    const url = typeof candidate === 'object' && candidate !== null ? candidate.url : candidate;
+    if (!url || typeof url !== 'string') {
+      Swal.fire('Favicon belum tersedia', 'Upload gambar favicon terlebih dahulu.', 'warning');
+      return;
+    }
+
+    try {
+      const faviconUrl = new URL(url);
+      if (faviconUrl.protocol !== 'https:' || faviconUrl.hostname !== 'res.cloudinary.com') {
+        throw new Error('Gunakan gambar yang telah diunggah ke Cloudinary.');
+      }
+
+      await update(ref(realDb, 'admin/banners'), {
+        favicon: { url, updatedAt: serverTimestamp() }
+      });
+      Swal.fire('Berhasil', 'Favicon website telah diterapkan.', 'success');
+    } catch (error) {
+      console.error('Gagal menerapkan favicon:', error);
+      Swal.fire('Gagal menerapkan favicon', error.message || 'Pengaturan favicon tidak dapat disimpan.', 'error');
     }
   };
 
@@ -1988,7 +2019,27 @@ const AdminDashboard = ({ onBack, user }) => {
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Branding (Logo & Icon)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   <ImageUploader label="Logo Menu Login" currentUrl={banners['login_logo']} onFileSelect={(file) => handleFileSelect(file, 'login_logo')} isIcon />
-                  <ImageUploader label="Favicon (Icon Browser)" currentUrl={banners['favicon']} onFileSelect={(file) => handleFileSelect(file, 'favicon')} rounded={true} />
+                  <ImageUploader
+                    label={faviconDraftUrl ? 'Gambar Favicon (Belum Diterapkan)' : 'Upload Gambar Favicon'}
+                    currentUrl={faviconDraft || banners['favicon']}
+                    onFileSelect={(file) => handleFileSelect(file, 'favicon_draft')}
+                    rounded
+                  />
+                  <div className={`flex flex-col justify-center gap-3 p-4 rounded-xl border ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
+                    <p className="text-sm font-bold">Favicon Website</p>
+                    <p className="text-xs text-gray-500">
+                      {activeFaviconUrl ? 'Favicon kustom aktif.' : 'Belum ada favicon kustom; favicon lokal digunakan.'}
+                      {' '}Upload gambar di samping, lalu terapkan secara terpisah.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleApplyFavicon}
+                      disabled={!faviconCandidateUrl}
+                      className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-bold hover:bg-sky-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      Terapkan sebagai favicon
+                    </button>
+                  </div>
                   <ImageUploader label="Logo Struk (Receipt)" currentUrl={banners['receipt_logo']} onFileSelect={(file) => handleFileSelect(file, 'receipt_logo')} isIcon />
                 </div>
               </div>

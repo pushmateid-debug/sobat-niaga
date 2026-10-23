@@ -6,31 +6,61 @@ import { db } from './config/firebase';
 import { ref, onValue } from 'firebase/database';
 import { WifiOff } from 'lucide-react';
 
+const FALLBACK_FAVICON = '/favicon.svg';
+
 function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   // Logic untuk update Favicon Browser secara Realtime
   useEffect(() => {
+    let link = document.getElementById('app-favicon');
+    if (!link) {
+      link = document.createElement('link');
+      link.id = 'app-favicon';
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    const setFallbackFavicon = () => {
+      link.type = 'image/svg+xml';
+      link.href = FALLBACK_FAVICON;
+    };
+    setFallbackFavicon();
+    link.onerror = () => {
+      if (!link.href.endsWith(FALLBACK_FAVICON)) {
+        setFallbackFavicon();
+      }
+    };
+
     const faviconRef = ref(db, 'admin/banners/favicon');
     const unsubscribe = onValue(faviconRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.val();
-          const url = typeof data === 'object' ? data.url : data;
-        if (url) {
-          let link = document.getElementById('app-favicon');
-          if (!link) {
-            link = document.createElement('link');
-            link.id = 'app-favicon';
-            link.rel = 'icon';
-            document.head.appendChild(link);
-          }
-          // Anti-cache: tambahkan timestamp biar browser selalu ambil versi terbaru
-          const sep = url.includes('?') ? '&' : '?';
-          link.href = `${url}${sep}v=${Date.now()}`;
-        }
+      const data = snap.exists() ? snap.val() : null;
+      const url = typeof data === 'object' && data !== null ? data.url : data;
+      if (!url || typeof url !== 'string') {
+        setFallbackFavicon();
+        return;
       }
+
+      try {
+        const faviconUrl = new URL(url);
+        if (faviconUrl.protocol !== 'https:') {
+          setFallbackFavicon();
+          return;
+        }
+        faviconUrl.searchParams.set('v', String(Date.now()));
+        link.removeAttribute('type');
+        link.href = faviconUrl.toString();
+      } catch {
+        setFallbackFavicon();
+      }
+    }, (error) => {
+      console.error('Gagal memuat favicon dari Firebase:', error);
+      setFallbackFavicon();
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      link.onerror = null;
+    };
   }, []);
 
   // Monitor Status Internet (Realtime)

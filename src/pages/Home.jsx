@@ -273,22 +273,6 @@ const Home = () => {
     return (typeof data === 'object' && data !== null) ? data?.url : data;
   }, [bannerImages]);
 
-  // --- DYNAMIC FAVICON UPDATE ---
-  useEffect(() => {
-    const data = bannerImages.favicon;
-    const url = (typeof data === 'object' && data !== null) ? data?.url : data;
-    if (url) {
-      let link = document.querySelector("link[rel*='icon']");
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'shortcut icon';
-        document.getElementsByTagName('head')[0].appendChild(link);
-      }
-      // Tambahkan cache buster agar browser tidak menggunakan icon lama yang tersimpan di cache
-      link.href = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
-    }
-  }, [bannerImages.favicon]);
-
   // Kategori Navigasi Baru (Sticky)
   const navCategories = [
     { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
