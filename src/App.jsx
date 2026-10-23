@@ -6,7 +6,7 @@ import { db } from './config/firebase';
 import { ref, onValue } from 'firebase/database';
 import { WifiOff } from 'lucide-react';
 
-const FALLBACK_FAVICON = '/favicon.svg';
+const FALLBACK_FAVICON = '/favicon.png';
 
 function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -18,13 +18,13 @@ function App() {
       link = document.createElement('link');
       link.id = 'app-favicon';
       link.rel = 'icon';
+      link.href = '/api/favicon';
       document.head.appendChild(link);
     }
     const setFallbackFavicon = () => {
-      link.type = 'image/svg+xml';
+      link.type = 'image/png';
       link.href = FALLBACK_FAVICON;
     };
-    setFallbackFavicon();
     link.onerror = () => {
       if (!link.href.endsWith(FALLBACK_FAVICON)) {
         setFallbackFavicon();
@@ -42,11 +42,20 @@ function App() {
 
       try {
         const faviconUrl = new URL(url);
-        if (faviconUrl.protocol !== 'https:') {
+        if (faviconUrl.protocol !== 'https:' || faviconUrl.hostname !== 'res.cloudinary.com') {
           setFallbackFavicon();
           return;
         }
-        faviconUrl.searchParams.set('v', String(Date.now()));
+        const cloudinaryPath = faviconUrl.pathname.match(/^\/([^/]+)\/image\/upload\/(.+)$/);
+        if (!cloudinaryPath) {
+          setFallbackFavicon();
+          return;
+        }
+        const [, cloudName, publicId] = cloudinaryPath;
+        const assetPath = publicId.replace(/^(q_auto,f_auto|c_fill,w_256,h_256,r_max,f_png)\//, '');
+        faviconUrl.pathname = `/${cloudName}/image/upload/c_fill,w_256,h_256,r_max,f_png/${assetPath}`;
+        faviconUrl.search = '';
+        faviconUrl.hash = '';
         link.removeAttribute('type');
         link.href = faviconUrl.toString();
       } catch {

@@ -1566,12 +1566,21 @@ const AdminDashboard = ({ onBack, user }) => {
 
     try {
       const faviconUrl = new URL(url);
-      if (faviconUrl.protocol !== 'https:' || faviconUrl.hostname !== 'res.cloudinary.com') {
+      const cloudinaryPath = faviconUrl.pathname.match(/^\/([^/]+)\/image\/upload\/(.+)$/);
+      if (faviconUrl.protocol !== 'https:' || faviconUrl.hostname !== 'res.cloudinary.com' || !cloudinaryPath) {
         throw new Error('Gunakan gambar yang telah diunggah ke Cloudinary.');
       }
 
+      const [, cloudName, publicId] = cloudinaryPath;
+      const assetPath = publicId.startsWith('q_auto,f_auto/')
+        ? publicId.slice('q_auto,f_auto/'.length)
+        : publicId;
+      faviconUrl.pathname = `/${cloudName}/image/upload/c_fill,w_256,h_256,r_max,f_png/${assetPath}`;
+      faviconUrl.search = '';
+      faviconUrl.hash = '';
+
       await update(ref(realDb, 'admin/banners'), {
-        favicon: { url, updatedAt: serverTimestamp() }
+        favicon: { url: faviconUrl.toString(), updatedAt: serverTimestamp() }
       });
       Swal.fire('Berhasil', 'Favicon website telah diterapkan.', 'success');
     } catch (error) {
