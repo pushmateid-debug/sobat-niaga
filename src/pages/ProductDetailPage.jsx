@@ -349,6 +349,11 @@ const ProductDetailPage = () => {
                 <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
                 <span className="text-3xl md:text-5xl tracking-tight">{parseInt(product?.price || 0).toLocaleString('id-ID')}</span>
               </div>
+              {(product?.stock !== undefined || product?.quantity !== undefined) && (
+                <p className={`mt-3 text-sm font-bold ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                  Stok tersedia: {product?.stock ?? product?.quantity ?? 0}
+                </p>
+              )}
             </div>
 
             {/* Tabs */}
