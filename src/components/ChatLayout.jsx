@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2, ShoppingBag, Sparkles } from 'lucide-react';
+import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2, ShoppingBag, Sparkles, Eye, EyeOff, Save, Lock } from 'lucide-react';
 import { db, auth } from '../config/firebase';
 import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get, remove } from 'firebase/database';
 import Swal from 'sweetalert2';
@@ -31,6 +31,12 @@ export const ChatLayout = ({
   const [loading, setLoading] = useState(true);
   const [sellerChatPartners, setSellerChatPartners] = useState([]);
   const [aiThinking, setAiThinking] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordMode, setPasswordMode] = useState('create');
+  const [terminalPassword, setTerminalPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const messagesEndRef = useRef(null);
 
   const aiQuickPrompts = [
@@ -40,13 +46,44 @@ export const ChatLayout = ({
     'Laporkan kendala transaksi'
   ];
 
+  const getAIStorageKey = () => `sobatniaga_gemini_${user?.uid || 'guest'}`;
+  const getAIHistoryKey = () => `sobatniaga_ai_history_${user?.uid || 'guest'}`;
+  const getAIKey = () => localStorage.getItem(getAIStorageKey()) || '';
+
+  const saveAIHistory = (history) => {
+    let trimmedHistory = history.slice(-100);
+    try {
+      localStorage.setItem(getAIHistoryKey(), JSON.stringify(trimmedHistory));
+      return true;
+    } catch (error) {
+      trimmedHistory = history.slice(-30);
+      try {
+        localStorage.setItem(getAIHistoryKey(), JSON.stringify(trimmedHistory));
+        Swal.fire({ icon: 'warning', title: 'Riwayat hampir penuh', text: 'Pesan lama otomatis dipotong agar riwayat baru tetap tersimpan.', timer: 2200, showConfirmButton: false });
+        return true;
+      } catch {
+        localStorage.removeItem(getAIHistoryKey());
+        Swal.fire({ icon: 'error', title: 'Storage penuh', text: 'Riwayat chat tidak bisa disimpan. Hapus riwayat lama melalui menu titik tiga.', confirmButtonText: 'Mengerti' });
+        return false;
+      }
+    }
+  };
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (chatTab === 'admin') scrollToBottom();
+  }, [messages, aiThinking, chatTab]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const savedKey = getAIKey();
+    setApiKeyInput(savedKey ? '••••••••••••••••••••' : '');
+  }, [user?.uid]);
 
   // --- LOGIKA FETCH LIST PARTNER PENJUAL (SISI PEMBELI) ---
   useEffect(() => {
@@ -88,6 +125,46 @@ export const ChatLayout = ({
     }
   }, [chatTab, chatSellerId, user?.uid]);
 
+  const hashPassword = async (password) => {
+    if (window.crypto?.subtle) {
+      const data = new TextEncoder().encode(password);
+      const digest = await window.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    }
+    return btoa(password);
+  };
+
+  const openPasswordModal = () => {
+    setTerminalPassword('');
+    setPasswordError('');
+    setPasswordMode(localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`) ? 'verify' : 'create');
+    setPasswordModalOpen(true);
+  };
+
+  const submitPasswordModal = async () => {
+    if (terminalPassword.length !== 7) return;
+    const hash = await hashPassword(terminalPassword);
+    if (passwordMode === 'create') {
+      localStorage.setItem(`sobatniaga_ai_pass_${user?.uid}`, hash);
+      setPasswordModalOpen(false);
+      setPasswordError('');
+      setApiKeyVisible(true);
+      setApiKeyInput(getAIKey());
+      return;
+    }
+
+    const savedHash = localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`);
+    if (hash !== savedHash) {
+      setPasswordError('Password salah atau belum tepat.');
+      setTerminalPassword('');
+      return;
+    }
+    setPasswordModalOpen(false);
+    setPasswordError('');
+    setApiKeyVisible(true);
+    setApiKeyInput(getAIKey());
+  };
+
   // LOGIKA 1 & 2: Pisahkan Alur Simpan & Filter Path Berdasarkan Tab Aktif
   const getChatConfig = () => {
     const currentId = user?.uid;
@@ -122,13 +199,26 @@ export const ChatLayout = ({
 
   // LOGIKA 3: Ambil Pesan Realtime Berdasarkan Path Sesuai Tab
   useEffect(() => {
-    const config = getChatConfig();
-    if (!config.messagesPath) return;
-
     setLoading(true);
 
-    const msgQuery = query(ref(db, config.messagesPath), limitToLast(50));
+    if (chatTab === 'admin') {
+      try {
+        const saved = JSON.parse(localStorage.getItem(getAIHistoryKey()) || '[]');
+        setMessages(Array.isArray(saved) ? saved : []);
+      } catch {
+        setMessages([]);
+      }
+      setLoading(false);
+      return;
+    }
 
+    const config = getChatConfig();
+    if (!config.messagesPath) {
+      setLoading(false);
+      return;
+    }
+
+    const msgQuery = query(ref(db, config.messagesPath), limitToLast(50));
     const unsubscribe = onValue(msgQuery, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -137,17 +227,25 @@ export const ChatLayout = ({
       } else {
         setMessages([]);
       }
-      setLoading(false); // WAJIB: Matikan loading di sini, baik ada data atau kosong!
-    }, (error) => {
-      console.error("Firebase Error:", error);
       setLoading(false);
-    });
+    }, () => setLoading(false));
 
     return () => unsubscribe();
   }, [chatTab, chatSellerId, chatBuyerId, user?.uid, isSellerView]);
 
   // --- FUNGSI HAPUS SEMUA CHAT (CLEAR HISTORY) ---
   const handleClearAllChat = async () => {
+    if (chatTab === 'admin') {
+      const result = await Swal.fire({ title: 'Hapus riwayat Niaga AI?', text: 'Riwayat obrolan pada perangkat ini akan dihapus permanen.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Ya, hapus', cancelButtonText: 'Batal' });
+      if (result.isConfirmed) {
+        localStorage.removeItem(getAIHistoryKey());
+        setMessages([]);
+        setIsChatMenuOpen(false);
+        Swal.fire({ icon: 'success', title: 'Riwayat dihapus', timer: 1200, showConfirmButton: false });
+      }
+      return;
+    }
+
     const config = getChatConfig();
     if (!config.messagesPath) return;
 
@@ -211,7 +309,7 @@ export const ChatLayout = ({
     }
   };
 
-  const handleSendAIMessage = async (text) => {
+  const handleSendAIMessageLegacy = async (text) => {
     const trimmed = text.trim();
     if (!trimmed || !user?.uid || aiThinking) return;
 
@@ -303,6 +401,69 @@ export const ChatLayout = ({
         lastMessageTime: serverTimestamp(),
         hasUnreadUser: true
       });
+    } finally {
+      setAiThinking(false);
+    }
+  };
+
+  const handleSendAIMessage = async (text) => {
+    const trimmed = text.trim();
+    if (!trimmed || !user?.uid || aiThinking) return;
+
+    const key = getAIKey();
+    if (!key) {
+      Swal.fire({ icon: 'info', title: 'API Key belum tersedia', text: 'Tempel API Key Google Gemini lalu tekan Simpan.', confirmButtonText: 'Mengerti' });
+      return;
+    }
+
+    const userMessage = { id: `user-${Date.now()}`, senderId: user.uid, sender: 'user', text: trimmed, timestamp: Date.now(), status: 'sent' };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    saveAIHistory(nextMessages);
+    setInputText('');
+    setAiThinking(true);
+
+    try {
+      const history = nextMessages.slice(-20).map((item) => ({
+        role: item.sender === 'ai' ? 'model' : 'user',
+        parts: [{ text: item.text || '' }]
+      })).filter((item) => item.parts[0].text);
+
+      let aiResponse;
+      let aiData;
+      for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+        aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: history,
+            systemInstruction: { parts: [{ text: 'Anda adalah Niaga AI, asisten resmi SobatNiaga berbahasa Indonesia. Jawab dengan ramah, ringkas, akurat, dan praktis tentang belanja, rekber, pengiriman, top up, transaksi, serta menjadi penjual. Jangan meminta API key, kata sandi, PIN, OTP, atau data rahasia.' }] },
+            generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
+          })
+        });
+        aiData = await aiResponse.json().catch(() => null);
+        if (aiResponse.ok || ![400, 404].includes(aiResponse.status)) break;
+      }
+
+      if (!aiResponse.ok) {
+        const apiMessage = aiData?.error?.message || '';
+        if (apiMessage.toLowerCase().includes('api key') || [400, 403].includes(aiResponse.status)) throw new Error('API Key Gemini tidak valid atau belum aktif.');
+        if (aiResponse.status === 429) throw new Error('Kuota API Gemini sudah penuh. Coba lagi nanti atau gunakan API key baru.');
+        throw new Error(apiMessage || 'Google Gemini belum dapat menjawab saat ini.');
+      }
+
+      const reply = aiData?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+      if (!reply) throw new Error('Google Gemini tidak menghasilkan jawaban. Coba lagi.');
+
+      const aiMessage = { id: `ai-${Date.now()}`, senderId: 'ai-agent', sender: 'ai', isBot: true, text: reply, timestamp: Date.now(), status: 'sent' };
+      const completedMessages = [...nextMessages, aiMessage];
+      setMessages(completedMessages);
+      saveAIHistory(completedMessages);
+    } catch (error) {
+      const aiErrorMessage = { id: `error-${Date.now()}`, senderId: 'ai-agent', sender: 'ai', isBot: true, isError: true, text: `Maaf, ${error.message || 'Google Gemini tidak dapat menjawab saat ini.'}`, timestamp: Date.now(), status: 'sent' };
+      const completedMessages = [...nextMessages, aiErrorMessage];
+      setMessages(completedMessages);
+      saveAIHistory(completedMessages);
     } finally {
       setAiThinking(false);
     }
@@ -472,6 +633,47 @@ export const ChatLayout = ({
         >{isSellerView ? 'Chat Pelanggan' : 'Chat Penjual'}</button>
       </div>
 
+      {chatTab === 'admin' && (
+        <div className={`px-3 py-2.5 border-b ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-sky-50 border-sky-100'}`}>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <input
+                type={apiKeyVisible ? 'text' : 'password'}
+                value={apiKeyInput === '' ? '' : apiKeyInput}
+                onChange={(event) => { setApiKeyInput(event.target.value); setApiKeyVisible(true); }}
+                placeholder="Tempel API Key Google Gemini"
+                autoComplete="off"
+                className={`w-full rounded-xl border px-3 py-2 pr-10 text-xs font-mono outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-500' : 'bg-white border-sky-200 text-gray-800 placeholder:text-gray-400'}`}
+              />
+              <button type="button" onClick={() => {
+                if (apiKeyVisible) {
+                  setApiKeyVisible(false);
+                  setApiKeyInput(getAIKey() ? '••••••••••••••••••••' : apiKeyInput);
+                } else {
+                  openPasswordModal();
+                }
+              }} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-sky-500" title="Lihat atau sembunyikan API key">
+                {apiKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={!apiKeyInput.trim() || apiKeyInput.includes('••')}
+              onClick={() => {
+                const cleanKey = apiKeyInput.trim();
+                if (!cleanKey || cleanKey.includes('••')) return;
+                localStorage.setItem(getAIStorageKey(), cleanKey);
+                setApiKeyInput('••••••••••••••••••••');
+                setApiKeyVisible(false);
+                Swal.fire({ icon: 'success', title: 'API Key tersimpan', text: 'Niaga AI sekarang siap digunakan.', timer: 1500, showConfirmButton: false });
+              }}
+              className="h-9 px-3 rounded-xl bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+            ><Save size={14} />Simpan</button>
+          </div>
+          <div className="mt-1 text-[9px] text-gray-400">API Key tersimpan hanya di perangkat pengguna ini.</div>
+        </div>
+      )}
+
       {/* List Pesan */}
       <div className={`flex-1 overflow-y-auto p-4 custom-scrollbar ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
         {/* FIX BLANK SCREEN: Cek secara dinamis apakah ada partner chat yang aktif */}
@@ -623,6 +825,46 @@ export const ChatLayout = ({
           <button type="submit" disabled={!inputText.trim() || aiThinking} className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200 disabled:opacity-50"><Send size={20} /></button>
           </div>
         </form>
+      )}
+
+      {passwordModalOpen && (
+        <div className="absolute inset-0 z-[300] bg-black/70 backdrop-blur-sm flex items-center justify-center p-5">
+          <div className={`w-full max-w-sm rounded-2xl overflow-hidden border shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
+            <div className={`px-4 py-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-700 bg-slate-950' : 'border-gray-100 bg-gray-50'}`}>
+              <div className="flex items-center gap-2 text-xs font-mono text-green-500"><Lock size={14} /> terminal@niaga-ai:~</div>
+              <button type="button" onClick={() => setPasswordModalOpen(false)} className="text-gray-400 hover:text-red-500"><X size={18} /></button>
+            </div>
+            <div className={`p-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <p className="text-sm mb-4">
+                {passwordMode === 'create'
+                  ? 'Buat password 7 karakter bebas (huruf, angka, atau simbol).'
+                  : 'Masukkan password 7 karakter untuk melihat API Key.'}
+              </p>
+              {passwordError && <p className="mb-3 text-xs font-bold text-red-500">{passwordError}</p>}
+              <div className={`relative flex items-center rounded-xl border px-3 py-3 font-mono ${isDarkMode ? 'bg-black border-slate-700' : 'bg-gray-950 border-gray-800'}`}>
+                <span className="text-sky-400 mr-2">$&gt;</span>
+                <span className="text-gray-500 mr-2">password:</span>
+                <span className="inline-block w-2 h-4 bg-green-400 animate-pulse" />
+                <input
+                  type="text"
+                  value={terminalPassword}
+                  maxLength={7}
+                  autoFocus
+                  autoComplete="off"
+                  onChange={(event) => { setTerminalPassword(event.target.value); setPasswordError(''); }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-text"
+                />
+              </div>
+              <div className="mt-2 text-[10px] text-gray-400">{terminalPassword.length}/7 karakter</div>
+              <button
+                type="button"
+                disabled={terminalPassword.length !== 7}
+                onClick={submitPasswordModal}
+                className="w-full mt-4 py-3 rounded-xl text-sm font-black disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed bg-sky-600 text-white shadow-lg shadow-sky-500/20"
+              >{passwordMode === 'create' ? 'Simpan Password' : 'Lihat API Key'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
