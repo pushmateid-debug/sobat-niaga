@@ -2,6 +2,7 @@ import React, { Component, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import ProductDetailPage from './pages/ProductDetailPage';
+import PublicPreview from './pages/PublicPreview';
 import { ThemeProvider } from './context/ThemeContext';
 import { db } from './config/firebase';
 import { ref, onValue } from 'firebase/database';
@@ -127,6 +128,10 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
+          <Route path="/demo" element={<PublicPreview />} />
+          <Route path="/demo/dashboard" element={<PublicPreview />} />
+          <Route path="/fitur" element={<PublicPreview />} />
+          <Route path="/tentang" element={<PublicPreview />} />
         </Routes>
       </Router>
     </ThemeProvider>
