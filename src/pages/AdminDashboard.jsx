@@ -5,7 +5,7 @@ import {
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield, MoreVertical, Trash2,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
-  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Calendar as CalendarIcon
+  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Calendar as CalendarIcon, Brain, Bot, Database
 } from 'lucide-react';
 import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -239,6 +239,76 @@ const AdminDashboard = ({ onBack, user }) => {
   const [adminMessage, setAdminMessage] = useState('');
   const messagesEndRef = useRef(null);
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false);
+  const [aiKnowledgeInput, setAiKnowledgeInput] = useState('');
+  const [aiKnowledgeEntries, setAiKnowledgeEntries] = useState([]);
+  const [aiTestInput, setAiTestInput] = useState('');
+  const [aiTestMessages, setAiTestMessages] = useState([]);
+  const [aiTestThinking, setAiTestThinking] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'ai-agent') return;
+    const knowledgeRef = ref(realDb, 'admin/aiKnowledge/entries');
+    const unsub = onValue(knowledgeRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setAiKnowledgeEntries(Object.keys(data).map((id) => ({ id, ...data[id] })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+    });
+    return () => unsub();
+  }, [activeTab]);
+
+  const saveAIKnowledge = async () => {
+    const text = aiKnowledgeInput.trim();
+    if (!text) return;
+    const entryRef = push(ref(realDb, 'admin/aiKnowledge/entries'));
+    await set(entryRef, { text, createdAt: Date.now(), createdBy: user?.email || 'Administrator' });
+    await update(ref(realDb, 'admin/aiKnowledge'), { updatedAt: Date.now(), updatedBy: user?.email || 'Administrator' });
+    setAiKnowledgeInput('');
+    Swal.fire({ icon: 'success', title: 'Data AI disimpan', text: 'Pengetahuan baru sekarang tersedia untuk semua pengguna.', timer: 1800, showConfirmButton: false });
+  };
+
+  const sendAITestMessage = async () => {
+    const text = aiTestInput.trim();
+    if (!text || aiTestThinking) return;
+    const settings = await get(ref(realDb, `users/${user.uid}/aiSettings`));
+    const apiKey = settings.val()?.apiKey || localStorage.getItem(`sobatniaga_gemini_${user.uid}`);
+    if (!apiKey) {
+      Swal.fire({ icon: 'info', title: 'API Key pengguna belum tersedia', text: 'Simpan API Key Google Gemini terlebih dahulu di tab Niaga AI.' });
+      return;
+    }
+
+    const userMessage = { id: `u-${Date.now()}`, sender: 'user', text };
+    const nextMessages = [...aiTestMessages, userMessage];
+    setAiTestMessages(nextMessages);
+    setAiTestInput('');
+    setAiTestThinking(true);
+
+    try {
+      const knowledgeText = aiKnowledgeEntries.map((entry) => entry.text).join('\n---\n');
+      const contents = nextMessages.map((item) => ({ role: item.sender === 'ai' ? 'model' : 'user', parts: [{ text: item.text }] }));
+      let response;
+      let data;
+      for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            systemInstruction: { parts: [{ text: `Anda adalah Niaga AI. Jawab hanya berdasarkan DATA PENGETAHUAN ADMIN berikut. Jika pertanyaan tidak ada dalam data, katakan belum memiliki informasi tersebut dan arahkan ke Customer Service. Jangan mengarang dan jangan gunakan tanda bintang Markdown.\nDATA:\n${knowledgeText || 'Belum ada data.'}` }] },
+            generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+          })
+        });
+        data = await response.json().catch(() => null);
+        if (response.ok || ![400, 404].includes(response.status)) break;
+      }
+      if (!response.ok) throw new Error(data?.error?.message || 'Google Gemini gagal menjawab.');
+      const reply = (data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || 'Belum ada jawaban.')
+        .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)\*([^*]+)\*/g, '$1$2').replace(/#+\s*/g, '').replace(/`{1,3}/g, '').trim();
+      setAiTestMessages([...nextMessages, { id: `a-${Date.now()}`, sender: 'ai', text: reply }]);
+    } catch (error) {
+      setAiTestMessages([...nextMessages, { id: `e-${Date.now()}`, sender: 'ai', text: `Maaf, ${error.message}` }]);
+    } finally {
+      setAiTestThinking(false);
+    }
+  };
 
   // Derived state for mobile chat view
   const isMobileChatOpen = activeTab === 'chat' && selectedChat;
@@ -1799,6 +1869,7 @@ const AdminDashboard = ({ onBack, user }) => {
     { id: 'finance', label: 'Laporan Keuangan', icon: <TrendingUp size={20} /> },
     { id: 'images', label: 'Manajemen Gambar', icon: <ImageIcon size={20} /> },
     { id: 'chat', label: 'Pesan Pelanggan', icon: <MessageCircle size={20} />, badge: stats.unreadMessages },
+    { id: 'ai-agent', label: 'Niaga AI Manager', icon: <Brain size={20} /> },
     { id: 'settings', label: 'Pengaturan', icon: <Settings size={20} /> },
     { id: 'sharing', label: 'Sobat Berbagi', icon: <HeartHandshake size={20} /> },
   ];
@@ -2352,6 +2423,55 @@ const AdminDashboard = ({ onBack, user }) => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* --- NIAGA AI MANAGER --- */}
+          {activeTab === 'ai-agent' && (
+            <div className="h-[calc(100dvh-100px)] grid grid-cols-1 xl:grid-cols-[minmax(320px,0.9fr)_minmax(420px,1.1fr)] gap-4 overflow-hidden">
+              <div className={`rounded-2xl border flex flex-col overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <div className={`p-4 border-b flex items-center gap-3 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                  <div className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center"><Database size={20} /></div>
+                  <div><h3 className="font-black text-sm">Database Pengetahuan AI</h3><p className="text-[10px] text-gray-400">Data ini dipakai semua pengguna Gmail.</p></div>
+                </div>
+                <div className="p-4 border-b space-y-3">
+                  <label className="block text-xs font-bold">Tambahkan data atau aturan</label>
+                  <textarea value={aiKnowledgeInput} onChange={(e) => setAiKnowledgeInput(e.target.value)} rows={5} placeholder="Contoh: Harga ongkir SobatNiaga adalah Rp5.000 untuk radius 5 km. Jam layanan pelanggan 08.00-22.00." className={`w-full resize-none rounded-xl border p-3 text-sm outline-none ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-800'}`} />
+                  <button type="button" onClick={saveAIKnowledge} disabled={!aiKnowledgeInput.trim()} className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-bold disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2"><Save size={16} /> Simpan ke Database AI</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {aiKnowledgeEntries.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400"><Brain size={40} className="mb-2 opacity-50" /><p className="text-xs">Belum ada data pengetahuan.</p></div>
+                  ) : aiKnowledgeEntries.map((entry) => (
+                    <div key={entry.id} className={`group p-3 rounded-xl border text-xs flex gap-3 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
+                      <p className="flex-1 whitespace-pre-wrap leading-relaxed">{entry.text}</p>
+                      <button type="button" onClick={async () => { await remove(ref(realDb, `admin/aiKnowledge/entries/${entry.id}`)); }} className="self-start p-1 text-gray-400 hover:text-red-500 opacity-70 group-hover:opacity-100" title="Hapus data"><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`rounded-2xl border flex flex-col overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
+                <div className={`p-4 border-b flex items-center gap-3 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                  <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center"><Bot size={20} /></div>
+                  <div><h3 className="font-black text-sm">Uji Jawaban Niaga AI</h3><p className="text-[10px] text-gray-400">Jawaban hanya boleh berasal dari database pengetahuan.</p></div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {aiTestMessages.length === 0 && (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400"><Bot size={44} className="mb-3" /><p className="text-xs max-w-xs">Simpan data dulu, lalu tanyakan kepada AI untuk memeriksa apakah jawabannya sesuai.</p></div>
+                  )}
+                  {aiTestMessages.map((msg) => (
+                    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[82%] whitespace-pre-wrap px-4 py-2.5 rounded-2xl text-sm ${msg.sender === 'user' ? 'bg-sky-600 text-white rounded-tr-none' : (isDarkMode ? 'bg-slate-900 text-gray-200' : 'bg-gray-100 text-gray-800') + ' rounded-tl-none'}`}>{msg.text}</div>
+                    </div>
+                  ))}
+                  {aiTestThinking && <div className="text-xs text-gray-400 animate-pulse">Niaga AI sedang memeriksa database...</div>}
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); sendAITestMessage(); }} className={`p-3 border-t flex gap-2 ${isDarkMode ? 'border-slate-700' : 'border-gray-100'}`}>
+                  <input value={aiTestInput} onChange={(e) => setAiTestInput(e.target.value)} placeholder="Uji pertanyaan pengguna..." className={`flex-1 px-4 py-2.5 rounded-full border text-sm outline-none ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                  <button type="submit" disabled={!aiTestInput.trim() || aiTestThinking} className="w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center disabled:opacity-40"><Send size={18} /></button>
+                </form>
+              </div>
             </div>
           )}
 

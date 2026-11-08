@@ -49,11 +49,18 @@ export const ChatLayout = ({
   const getAIStorageKey = () => `sobatniaga_gemini_${user?.uid || 'guest'}`;
   const getAIHistoryKey = () => `sobatniaga_ai_history_${user?.uid || 'guest'}`;
   const getAIKey = () => localStorage.getItem(getAIStorageKey()) || '';
+  const cleanAIText = (text) => String(text || '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(^|\s)\*([^*]+)\*/g, '$1$2')
+    .replace(/#+\s*/g, '')
+    .replace(/`{1,3}/g, '')
+    .trim();
 
   const saveAIHistory = (history) => {
-    let trimmedHistory = history.slice(-100);
+    let trimmedHistory = history.slice(-100).map((item) => ({ ...item, text: cleanAIText(item.text) }));
     try {
       localStorage.setItem(getAIHistoryKey(), JSON.stringify(trimmedHistory));
+      if (user?.uid) update(ref(db, `users/${user.uid}/aiSettings`), { history: trimmedHistory });
       return true;
     } catch (error) {
       trimmedHistory = history.slice(-30);
@@ -81,8 +88,27 @@ export const ChatLayout = ({
 
   useEffect(() => {
     if (!user?.uid) return;
-    const savedKey = getAIKey();
-    setApiKeyInput(savedKey ? '••••••••••••••••••••' : '');
+    let cancelled = false;
+    get(ref(db, `users/${user.uid}/aiSettings`)).then((snapshot) => {
+      if (cancelled) return;
+      const settings = snapshot.val() || {};
+      const savedKey = settings.apiKey || getAIKey();
+      if (savedKey) {
+        localStorage.setItem(getAIStorageKey(), savedKey);
+        setApiKeyInput('••••••••••••••••••••');
+      }
+      if (Array.isArray(settings.history)) {
+        setMessages(settings.history.map((item) => ({ ...item, text: cleanAIText(item.text) })));
+        localStorage.setItem(getAIHistoryKey(), JSON.stringify(settings.history));
+      } else {
+        const savedKeyOnly = getAIKey();
+        setApiKeyInput(savedKeyOnly ? '••••••••••••••••••••' : '');
+      }
+    }).catch(() => {
+      const savedKeyOnly = getAIKey();
+      setApiKeyInput(savedKeyOnly ? '••••••••••••••••••••' : '');
+    });
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   // --- LOGIKA FETCH LIST PARTNER PENJUAL (SISI PEMBELI) ---
@@ -137,8 +163,15 @@ export const ChatLayout = ({
   const openPasswordModal = () => {
     setTerminalPassword('');
     setPasswordError('');
-    setPasswordMode(localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`) ? 'verify' : 'create');
-    setPasswordModalOpen(true);
+    get(ref(db, `users/${user.uid}/aiSettings/passwordHash`)).then((snapshot) => {
+      const cloudHash = snapshot.val();
+      const savedHash = cloudHash || localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`);
+      setPasswordMode(savedHash ? 'verify' : 'create');
+      setPasswordModalOpen(true);
+    }).catch(() => {
+      setPasswordMode(localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`) ? 'verify' : 'create');
+      setPasswordModalOpen(true);
+    });
   };
 
   const submitPasswordModal = async () => {
@@ -146,6 +179,7 @@ export const ChatLayout = ({
     const hash = await hashPassword(terminalPassword);
     if (passwordMode === 'create') {
       localStorage.setItem(`sobatniaga_ai_pass_${user?.uid}`, hash);
+      await update(ref(db, `users/${user.uid}/aiSettings`), { passwordHash: hash });
       setPasswordModalOpen(false);
       setPasswordError('');
       setApiKeyVisible(true);
@@ -153,7 +187,8 @@ export const ChatLayout = ({
       return;
     }
 
-    const savedHash = localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`);
+    const passwordSnapshot = await get(ref(db, `users/${user.uid}/aiSettings/passwordHash`));
+    const savedHash = passwordSnapshot.val() || localStorage.getItem(`sobatniaga_ai_pass_${user?.uid}`);
     if (hash !== savedHash) {
       setPasswordError('Password salah atau belum tepat.');
       setTerminalPassword('');
@@ -208,7 +243,13 @@ export const ChatLayout = ({
       } catch {
         setMessages([]);
       }
-      setLoading(false);
+      get(ref(db, `users/${user.uid}/aiSettings/history`)).then((snapshot) => {
+        const cloudHistory = snapshot.val();
+        if (Array.isArray(cloudHistory)) {
+          setMessages(cloudHistory.map((item) => ({ ...item, text: cleanAIText(item.text) })));
+        }
+        setLoading(false);
+      }).catch(() => setLoading(false));
       return;
     }
 
@@ -424,6 +465,14 @@ export const ChatLayout = ({
     setAiThinking(true);
 
     try {
+      const knowledgeSnapshot = await get(ref(db, 'admin/aiKnowledge')).catch(() => null);
+      const knowledgeData = knowledgeSnapshot?.val() || {};
+      const knowledgeText = Object.values(knowledgeData.entries || {})
+        .map((entry) => entry?.text || '')
+        .filter(Boolean)
+        .join('\n---\n')
+        .slice(0, 12000);
+
       const history = nextMessages.slice(-20).map((item) => ({
         role: item.sender === 'ai' ? 'model' : 'user',
         parts: [{ text: item.text || '' }]
@@ -437,7 +486,7 @@ export const ChatLayout = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: history,
-            systemInstruction: { parts: [{ text: 'Anda adalah Niaga AI, asisten resmi SobatNiaga berbahasa Indonesia. Jawab dengan ramah, ringkas, akurat, dan praktis tentang belanja, rekber, pengiriman, top up, transaksi, serta menjadi penjual. Jangan meminta API key, kata sandi, PIN, OTP, atau data rahasia.' }] },
+            systemInstruction: { parts: [{ text: `Anda adalah Niaga AI, asisten resmi SobatNiaga berbahasa Indonesia. Jawab hanya berdasarkan DATA PENGETAHUAN ADMIN berikut. Jika pertanyaan tidak ada atau tidak cukup dijelaskan dalam data, katakan dengan jelas bahwa Anda belum memiliki informasi tersebut dan sarankan bertanya kepada Customer Service. Jangan mengarang, jangan menyebut bintang atau format Markdown bintang, dan jangan meminta API key, kata sandi, PIN, OTP, atau data rahasia. DATA PENGETAHUAN ADMIN:\n${knowledgeText || 'Belum ada data pengetahuan yang disimpan admin.'}` }] },
             generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
           })
         });
@@ -452,7 +501,7 @@ export const ChatLayout = ({
         throw new Error(apiMessage || 'Google Gemini belum dapat menjawab saat ini.');
       }
 
-      const reply = aiData?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+      const reply = cleanAIText(aiData?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim());
       if (!reply) throw new Error('Google Gemini tidak menghasilkan jawaban. Coba lagi.');
 
       const aiMessage = { id: `ai-${Date.now()}`, senderId: 'ai-agent', sender: 'ai', isBot: true, text: reply, timestamp: Date.now(), status: 'sent' };
@@ -663,6 +712,7 @@ export const ChatLayout = ({
                 const cleanKey = apiKeyInput.trim();
                 if (!cleanKey || cleanKey.includes('••')) return;
                 localStorage.setItem(getAIStorageKey(), cleanKey);
+                update(ref(db, `users/${user.uid}/aiSettings`), { apiKey: cleanKey });
                 setApiKeyInput('••••••••••••••••••••');
                 setApiKeyVisible(false);
                 Swal.fire({ icon: 'success', title: 'API Key tersimpan', text: 'Niaga AI sekarang siap digunakan.', timer: 1500, showConfirmButton: false });
@@ -758,7 +808,7 @@ export const ChatLayout = ({
                         </div>
                       </div>
                     )}
-                    {msg.text}
+                    {cleanAIText(msg.text)}
                     {/* Menampilkan Jam Pesan */}
                     <p className={`text-[9px] mt-1 text-right ${isUserMessage ? 'text-sky-100' : 'text-gray-400'}`}>
                       {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}

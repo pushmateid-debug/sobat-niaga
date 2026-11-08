@@ -44,6 +44,16 @@
       ".write": "auth != null && auth.token.email == 'pushmate.id@gmail.com'"
     },
 
+    "aiKnowledge": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email == 'pushmate.id@gmail.com'",
+      "entries": {
+        "$entryId": {
+          ".validate": "newData.hasChild('text') && newData.child('text').isString()"
+        }
+      }
+    },
+
     "chats": {
       ".read": "auth != null && auth.token.email == 'pushmate.id@gmail.com'",
       "$uid": {
