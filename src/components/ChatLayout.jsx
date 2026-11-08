@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, MessageCircle, X, MoreVertical, ChevronLeft, ChevronRight, User, Loader2, Settings, Trash2, ShoppingBag, Sparkles } from 'lucide-react';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 import { ref, push, onValue, serverTimestamp, update, query, limitToLast, orderByChild, equalTo, get, remove } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -30,7 +30,15 @@ export const ChatLayout = ({
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sellerChatPartners, setSellerChatPartners] = useState([]);
+  const [aiThinking, setAiThinking] = useState(false);
   const messagesEndRef = useRef(null);
+
+  const aiQuickPrompts = [
+    'Cara melacak status pesanan?',
+    'Bagaimana cara menjadi penjual?',
+    'Saldo top up belum masuk',
+    'Laporkan kendala transaksi'
+  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -203,9 +211,111 @@ export const ChatLayout = ({
     }
   };
 
+  const handleSendAIMessage = async (text) => {
+    const trimmed = text.trim();
+    if (!trimmed || !user?.uid || aiThinking) return;
+
+    const messagesPath = `chats/${user.uid}/messages`;
+    const metaPath = `chats/${user.uid}`;
+
+    try {
+      await push(ref(db, messagesPath), {
+        senderId: user.uid,
+        senderName: user.displayName || 'Pengguna SobatNiaga',
+        text: trimmed,
+        timestamp: serverTimestamp(),
+        sender: 'user',
+        status: 'sent'
+      });
+
+      await update(ref(db, metaPath), {
+        userName: user.displayName || 'Pengguna SobatNiaga',
+        userPhoto: user.photoURL || '',
+        userEmail: user.email || '',
+        lastMessageText: trimmed,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadAdmin: true
+      });
+
+      setInputText('');
+      setAiThinking(true);
+
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Sesi login tidak valid. Silakan login kembali.');
+
+      const history = messages
+        .slice(-12)
+        .map((item) => ({
+          role: item.sender === 'ai' || item.isBot || item.sender === 'admin' ? 'model' : 'user',
+          text: item.text || ''
+        }))
+        .filter((item) => item.text);
+
+      const aiResponse = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ message: trimmed, history })
+      });
+      let aiData;
+      try {
+        aiData = await aiResponse.json();
+      } catch {
+        throw new Error('Server AI Agent mengirim respons yang tidak valid.');
+      }
+      if (!aiResponse.ok) throw new Error(aiData.error || 'AI Agent tidak dapat menjawab saat ini.');
+      if (!aiData.reply || typeof aiData.reply !== 'string') {
+        throw new Error('AI Agent tidak menghasilkan jawaban. Coba lagi.');
+      }
+
+      await push(ref(db, messagesPath), {
+        senderId: 'ai-agent',
+        senderName: 'Niaga AI',
+        text: aiData.reply,
+        timestamp: serverTimestamp(),
+        sender: 'ai',
+        isBot: true,
+        status: 'sent'
+      });
+
+      await update(ref(db, metaPath), {
+        lastMessageText: aiData.reply,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadAdmin: false,
+        hasUnreadUser: true
+      });
+    } catch (error) {
+      const message = error.message || 'AI Agent tidak dapat menjawab saat ini.';
+      await push(ref(db, messagesPath), {
+        senderId: 'ai-agent',
+        senderName: 'Niaga AI',
+        text: `Maaf, ${message}`,
+        timestamp: serverTimestamp(),
+        sender: 'ai',
+        isBot: true,
+        status: 'sent',
+        isError: true
+      });
+      await update(ref(db, metaPath), {
+        lastMessageText: `Maaf, ${message}`,
+        lastMessageTime: serverTimestamp(),
+        hasUnreadUser: true
+      });
+    } finally {
+      setAiThinking(false);
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
+
+    if (chatTab === 'admin') {
+      await handleSendAIMessage(inputText);
+      return;
+    }
 
     const config = getChatConfig();
     if (!config.messagesPath) return;
@@ -310,7 +420,7 @@ export const ChatLayout = ({
           <div className="flex flex-col">
             <span className="font-bold text-sm">
               {chatTab === 'admin' 
-                ? 'Customer Service' 
+                ? 'Niaga AI Assistant' 
                 : (isSellerView 
                 ? (chatBuyerId ? (sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerName || sellerChatPartners.find(p => p.id === chatBuyerId)?.partnerEmail || 'Pelanggan') : 'Kotak Masuk')
                 : (chatSellerId ? (sellerChatPartners.find(p => p.id === chatSellerId)?.partnerName || sellerChatPartners.find(p => p.id === chatSellerId)?.partnerEmail || 'Penjual') : 'Kotak Masuk'))}
@@ -355,7 +465,7 @@ export const ChatLayout = ({
         <button 
           onClick={() => { setChatTab('admin'); setChatSellerId(null); }}
           className={`flex-1 py-3 border-b-2 transition-all ${chatTab === 'admin' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-400'}`}
-        >Bantuan Admin</button>
+        >Niaga AI</button>
         <button 
           onClick={() => setChatTab('seller')}
           className={`flex-1 py-3 border-b-2 transition-all ${chatTab === 'seller' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-400'}`}
@@ -398,14 +508,41 @@ export const ChatLayout = ({
         ) : (
           <div className="space-y-3">
             {messages.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 text-xs italic">
-                Belum ada percakapan. Silakan kirim pesan untuk memulai.
-              </div>
+              chatTab === 'admin' ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center px-2">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-200/50 mb-4">
+                    <Sparkles size={26} />
+                  </div>
+                  <p className={`font-bold text-sm mb-1 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Hai, saya Niaga AI</p>
+                  <p className="text-xs text-gray-400 max-w-[240px] mb-4">Pilih topik atau ketik pertanyaanmu tentang belanja dan penjualan.</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {aiQuickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        disabled={aiThinking}
+                        onClick={() => handleSendAIMessage(prompt)}
+                        className={`px-3 py-2 rounded-full border text-[11px] font-bold transition-all active:scale-95 ${isDarkMode ? 'border-slate-700 bg-slate-800 text-slate-200 hover:border-sky-500' : 'border-sky-100 bg-white text-sky-700 hover:bg-sky-50'}`}
+                      >{prompt}</button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-gray-400 text-xs italic">
+                  Belum ada percakapan. Silakan kirim pesan untuk memulai.
+                </div>
+              )
             ) : (
-              messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.senderId === user.uid ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${
-                    msg.senderId === user.uid 
+              messages.map((msg) => {
+                const isUserMessage = msg.sender === 'user' || msg.senderId === user.uid;
+                const isAIMessage = msg.sender === 'ai' || msg.isBot;
+                return (
+                <div key={msg.id} className={`flex gap-2 items-end ${isUserMessage ? 'justify-end' : 'justify-start'}`}>
+                  {isAIMessage && (
+                    <div className="w-7 h-7 mb-1 rounded-full bg-gradient-to-br from-sky-400 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm"><Sparkles size={13} /></div>
+                  )}
+                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap ${
+                    isUserMessage 
                       ? 'bg-sky-500 text-white rounded-tr-none' 
                       : (isDarkMode ? 'bg-slate-800 text-gray-200' : 'bg-white text-gray-800') + ' rounded-tl-none'
                   }`}>
@@ -421,12 +558,19 @@ export const ChatLayout = ({
                     )}
                     {msg.text}
                     {/* Menampilkan Jam Pesan */}
-                    <p className={`text-[9px] mt-1 text-right ${msg.senderId === user.uid ? 'text-sky-100' : 'text-gray-400'}`}>
+                    <p className={`text-[9px] mt-1 text-right ${isUserMessage ? 'text-sky-100' : 'text-gray-400'}`}>
                       {msg.timestamp ? new Date(msg.timestamp.seconds ? msg.timestamp.seconds * 1000 : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
                     </p>
                   </div>
                 </div>
-              ))
+                );
+              })
+            )}
+            {aiThinking && chatTab === 'admin' && (
+              <div className="flex gap-2 items-end">
+                <div className="w-7 h-7 mb-1 rounded-full bg-gradient-to-br from-sky-400 to-indigo-600 text-white flex items-center justify-center flex-shrink-0"><Sparkles size={13} /></div>
+                <div className={`px-3 py-2 rounded-2xl rounded-tl-none text-xs flex items-center gap-2 ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-white text-gray-500'}`}><Loader2 size={14} className="animate-spin text-sky-500" /> Niaga AI sedang berpikir...</div>
+              </div>
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -470,23 +614,13 @@ export const ChatLayout = ({
           )}
 
           <div className="flex gap-2 w-full">
-          {chatTab === 'admin' && (
-            <button 
-              type="button"
-              onClick={onOpenInstantMenu}
-              className={`p-2.5 rounded-full transition-all active:scale-90 ${isDarkMode ? 'bg-slate-700 text-sky-400' : 'bg-sky-50 text-sky-600'}`}
-              title="Pesan Instan"
-            >
-              <Sparkles size={20} />
-            </button>
-          )}
           <input 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={chatTab === 'admin' ? "Ketik pesan untuk Admin..." : (isSellerView ? "Ketik balasan untuk pelanggan..." : "Ketik pesan untuk Penjual...")}
+            placeholder={chatTab === 'admin' ? "Tanyakan apa saja kepada Niaga AI..." : (isSellerView ? "Ketik balasan untuk pelanggan..." : "Ketik pesan untuk Penjual...")}
             className={`flex-1 px-4 py-2 rounded-full text-sm outline-none ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-800'}`}
           />
-          <button type="submit" disabled={!inputText.trim()} className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200 disabled:opacity-50"><Send size={20} /></button>
+          <button type="submit" disabled={!inputText.trim() || aiThinking} className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors shadow-md shadow-sky-200 disabled:opacity-50"><Send size={20} /></button>
           </div>
         </form>
       )}
