@@ -25,6 +25,7 @@ const ProductDetailPage = () => {
   const [followLoading, setFollowLoading] = useState(false);
   const [sellerProfile, setSellerProfile] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [productError, setProductError] = useState('');
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -39,6 +40,7 @@ const ProductDetailPage = () => {
     const getProductData = async () => {
       if (!id) return;
       setLoading(true);
+      setProductError('');
       try {
         const productRef = ref(db, `products/${id}`);
         const snapshot = await get(productRef);
@@ -48,12 +50,13 @@ const ProductDetailPage = () => {
           setProduct({ id, ...data });
           setActiveImage(data.mediaUrl || data.image);
         } else {
-          Swal.fire('Gagal', 'Produk tidak ditemukan, Bro!', 'error');
-          navigate('/');
+          setProductError('Produk tidak ditemukan atau sudah tidak tersedia. Periksa kembali tautan atau kembali ke halaman utama.');
+          setProduct(null);
         }
       } catch (error) {
         console.error("Gagal load produk:", error);
-        Swal.fire('Error', 'Gagal memuat produk. Cek koneksi lo, Bro!', 'error');
+        setProductError('Produk tidak dapat dimuat karena koneksi atau akses database bermasalah. Coba muat ulang halaman.');
+        setProduct(null);
       } finally {
         setLoading(false);
       }
@@ -268,6 +271,12 @@ const ProductDetailPage = () => {
     navigate('/chat', { state: { attachedProduct, sellerId: product?.sellerId } });
   };
 
+  const galleryImages = Array.isArray(product?.gallery)
+    ? product.gallery
+    : product?.gallery && typeof product.gallery === 'object'
+      ? Object.values(product.gallery)
+      : [];
+
   // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
   if (loading || !product) {
     return (
@@ -283,9 +292,13 @@ const ProductDetailPage = () => {
             <p className="text-sm font-bold animate-pulse text-sky-500">Membuka Produk SobatNiaga...</p>
           </div>
         ) : (
-          <div className="text-center px-6">
-            <p className="text-lg font-bold text-red-500 mb-4">Yah, Produk Gak Ditemukan, Bro! 😢</p>
-            <button onClick={() => navigate('/')} className="px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Balik ke Home</button>
+          <div className="text-center px-6 max-w-md">
+            <p className="text-lg font-bold text-red-500 mb-2">Produk tidak dapat dibuka</p>
+            <p className="text-sm text-gray-500 mb-5">{productError || 'Produk tidak ditemukan atau tautannya tidak valid.'}</p>
+            <div className="flex justify-center gap-2">
+              <button onClick={() => navigate(-1)} className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-bold">Kembali</button>
+              <button onClick={() => navigate('/')} className="px-5 py-2.5 bg-sky-600 text-white rounded-xl font-bold">Ke Beranda</button>
+            </div>
           </div>
         )}
       </div>
@@ -320,7 +333,7 @@ const ProductDetailPage = () => {
             <img src={activeImage || product?.mediaUrl || product?.image} className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" alt={product?.name} />
           </div>
           <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-            {[...new Set([product?.mediaUrl || product?.image, ...(product?.gallery || [])])].filter(Boolean).map((img, idx) => (
+            {[...new Set([product?.mediaUrl || product?.image, ...galleryImages])].filter((img) => typeof img === 'string' && img.trim()).map((img, idx) => (
               <button key={idx} onClick={() => setActiveImage(img)} className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}><img src={img} className="w-full h-full object-cover" alt="" /></button>
             ))}
           </div>

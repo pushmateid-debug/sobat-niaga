@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Component, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -8,6 +8,36 @@ import { ref, onValue } from 'firebase/database';
 import { WifiOff } from 'lucide-react';
 
 const FALLBACK_FAVICON = '/favicon.png';
+
+class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('SobatNiaga rendering error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#f8fafc', color: '#334155', fontFamily: 'sans-serif' }}>
+          <div style={{ maxWidth: 420, textAlign: 'center' }}>
+            <h2 style={{ marginBottom: 8 }}>Halaman tidak dapat ditampilkan</h2>
+            <p style={{ marginBottom: 20, color: '#64748b' }}>Terjadi kendala saat memuat tampilan. Silakan kembali atau muat ulang halaman.</p>
+            <button type="button" onClick={() => window.location.assign('/')} style={{ border: 0, borderRadius: 12, padding: '12px 18px', background: '#0284c7', color: 'white', fontWeight: 700 }}>Ke Beranda</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -86,6 +116,7 @@ function App() {
   }, []);
 
   return (
+    <AppErrorBoundary>
     <ThemeProvider>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         {isOffline && (
@@ -99,6 +130,7 @@ function App() {
         </Routes>
       </Router>
     </ThemeProvider>
+    </AppErrorBoundary>
   );
 }
 
