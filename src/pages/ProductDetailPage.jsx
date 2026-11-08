@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, ShoppingCart, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User, Heart } from 'lucide-react';
+import { Star, ShoppingCart, ShoppingBag, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User, Heart } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
 import { ref, get, push, update, serverTimestamp } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
@@ -73,6 +73,9 @@ const ProductDetailPage = () => {
         if (snapshot.exists()) {
           setSellerProfile(snapshot.val());
         }
+      }).catch((error) => {
+        console.warn('Profil penjual tidak dapat dimuat:', error?.message || error);
+        setSellerProfile(null);
       });
     }
   }, [product?.sellerId]);
@@ -93,6 +96,9 @@ const ProductDetailPage = () => {
       } else {
         setIsFollowing(false);
       }
+    }, (error) => {
+      console.warn('Status follow tidak dapat dimuat:', error?.message || error);
+      setIsFollowing(false);
     });
 
     return () => unsubFollow();
