@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
+import ProductDetailPage from './pages/ProductDetailPage';
 import { ThemeProvider } from './context/ThemeContext';
 import { db } from './config/firebase';
 import { ref, onValue } from 'firebase/database';
@@ -94,6 +95,7 @@ function App() {
         )}
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/product/:id" element={<ProductDetailPage />} />
         </Routes>
       </Router>
     </ThemeProvider>
