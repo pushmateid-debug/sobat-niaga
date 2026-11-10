@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/product/:id",
+      "destination": "/api/product-share?id=:id"
+    },
+    {
       "source": "/robots.txt",
       "destination": "/robots.txt"
     },

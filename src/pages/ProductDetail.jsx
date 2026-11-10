@@ -8,6 +8,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
+const PRODUCT_SHARE_ORIGIN = 'https://sobat-niaga.vercel.app';
+
 const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, isLoading = false, productError = '', onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
@@ -145,25 +147,45 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     };
   }, [isModal, onBack]);
 
-  // 4. Fungsi Salin Link Produk (Share)
-  const handleCopyShareLink = () => {
-    // DIPAKSA: Menggunakan format /product/[id] agar pembeli langsung diarahkan ke produk ini
-    const shareUrl = `${window.location.origin}/product/${product?.id}`;
-    
-    navigator.clipboard.writeText(shareUrl)
-      .then(() => {
-        Swal.fire({
-          icon: 'success',
-          title: 'Link Produk Disalin!',
-          text: 'Siap di-share ke WhatsApp, Bro! 🚀',
-          toast: true,
-          position: 'top',
-          showConfirmButton: false,
-          timer: 2500,
-          timerProgressBar: true,
-        });
-      })
-      .catch(err => console.error("Gagal copy:", err));
+  const getProductShareUrl = () => {
+    if (!product?.id) return '';
+    return `${PRODUCT_SHARE_ORIGIN}/product/${encodeURIComponent(product.id)}`;
+  };
+
+  const handleCopyShareLink = async () => {
+    const shareUrl = getProductShareUrl();
+    if (!shareUrl) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = shareUrl;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand('copy');
+        input.remove();
+        if (!copied) throw new Error('Clipboard tidak mengizinkan penyalinan.');
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Link Produk Disalin!',
+        text: 'Link siap dibagikan.',
+        toast: true,
+        position: 'top',
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true,
+      });
+    } catch (error) {
+      console.error('Gagal menyalin link produk:', error);
+      Swal.fire('Gagal Menyalin', 'Browser tidak mengizinkan akses clipboard. Silakan salin link secara manual.', 'error');
+    }
   };
 
   // Fungsi Toggle Favorite
@@ -180,8 +202,9 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
 
   // Fungsi Bagikan ke WhatsApp
   const handleShareWhatsApp = () => {
-    const shareUrl = `${window.location.origin}/product/${product?.id}`;
-    const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nLihat detailnya di sini, Bro:\n${shareUrl}`;
+    const shareUrl = getProductShareUrl();
+    if (!shareUrl) return;
+    const message = `Lihat produk ini di Sobat Niaga!\n\n${product?.name || 'Produk SobatNiaga'}\n\n${shareUrl}`;
     
     // Encode URL agar aman dikirim lewat chat
     const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
