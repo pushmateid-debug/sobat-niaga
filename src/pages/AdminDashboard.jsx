@@ -5,7 +5,7 @@ import {
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield, MoreVertical, Trash2,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
   Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
-  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Calendar as CalendarIcon, Brain, Bot, Database
+  Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Film, Calendar as CalendarIcon, Brain, Bot, Database
 } from 'lucide-react';
 import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -222,6 +222,10 @@ const AdminDashboard = ({ onBack, user }) => {
 
   // State Banners & Flash Deal
   const [banners, setBanners] = useState({}); // State tunggal untuk semua manajemen gambar/banner
+  const [isUploadingLoginCover, setIsUploadingLoginCover] = useState(false);
+  const loginCover = banners.login_cover_media;
+  const loginCoverUrl = typeof loginCover === 'string' ? loginCover : loginCover?.url;
+  const loginCoverType = typeof loginCover === 'object' && loginCover !== null ? loginCover.type : 'image';
   const faviconDraft = banners.favicon_draft;
   const faviconDraftUrl = typeof faviconDraft === 'object' && faviconDraft !== null ? faviconDraft.url : faviconDraft;
   const activeFavicon = banners.favicon;
@@ -1663,6 +1667,61 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     }
   };
 
+  const handleLoginCoverUpload = async (file) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    const allowedTypes = isVideo
+      ? ['video/mp4', 'video/webm']
+      : ['image/jpeg', 'image/png', 'image/webp'];
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!allowedTypes.includes(file.type)) {
+      Swal.fire('Format tidak didukung', 'Gunakan foto JPG, PNG, WebP atau video MP4, WebM.', 'warning');
+      return;
+    }
+    if (file.size > maxSize) {
+      Swal.fire('Ukuran file terlalu besar', `Ukuran maksimal ${isVideo ? 'video 50 MB' : 'foto 5 MB'}.`, 'warning');
+      return;
+    }
+
+    setIsUploadingLoginCover(true);
+    Swal.fire({ title: 'Mengupload cover login...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    try {
+      const url = await uploadCloudinaryFile(file, 'sobatniaga/login');
+      await update(ref(realDb, 'admin/banners'), {
+        login_cover_media: {
+          url,
+          type: isVideo ? 'video' : 'image',
+          updatedAt: serverTimestamp()
+        }
+      });
+      Swal.fire('Berhasil', 'Cover kartu login berhasil diperbarui.', 'success');
+    } catch (error) {
+      console.error('Gagal mengupload cover login:', error);
+      Swal.fire('Upload gagal', error.message || 'Cover kartu login tidak dapat diunggah.', 'error');
+    } finally {
+      setIsUploadingLoginCover(false);
+    }
+  };
+
+  const handleRemoveLoginCover = async () => {
+    const result = await Swal.fire({
+      title: 'Hapus cover login?',
+      text: 'Tampilan akan kembali menggunakan background gradasi.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Hapus cover',
+      cancelButtonText: 'Batal'
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await update(ref(realDb, 'admin/banners'), { login_cover_media: null });
+      Swal.fire('Berhasil', 'Cover login kembali menggunakan gradasi.', 'success');
+    } catch (error) {
+      console.error('Gagal menghapus cover login:', error);
+      Swal.fire('Gagal menghapus cover', error.message || 'Cover login tidak dapat dihapus.', 'error');
+    }
+  };
+
   const handleApplyFavicon = async () => {
     const candidate = banners.favicon_draft || banners.favicon;
     const url = typeof candidate === 'object' && candidate !== null ? candidate.url : candidate;
@@ -2143,6 +2202,55 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
           {activeTab === 'images' && (
             <div className="space-y-8">
               <h2 className="text-2xl font-bold">Manajemen Gambar & Aset</h2>
+
+              <section className={`rounded-2xl border p-5 ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                    <div className="mb-4 flex items-center gap-2">
+                      <Film size={20} className="text-purple-500" />
+                      <div>
+                        <h3 className="font-bold text-lg">Cover Kartu Login</h3>
+                        <p className="text-xs text-gray-500">Atur foto atau video pada sisi kanan kartu login.</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                      <div className="flex aspect-video w-full max-w-sm items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-purple-800 to-indigo-900">
+                        {loginCoverUrl && loginCoverType === 'video'
+                          ? <video src={loginCoverUrl} className="h-full w-full object-cover" controls muted playsInline />
+                          : loginCoverUrl
+                            ? <img src={loginCoverUrl} alt="Pratinjau cover kartu login" className="h-full w-full object-cover" />
+                            : <p className="px-4 text-center text-sm font-medium text-white">Background gradasi default</p>}
+                      </div>
+                      <div className="flex flex-col items-start gap-3">
+                        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white ${isUploadingLoginCover ? 'pointer-events-none bg-gray-400' : 'bg-sky-600 hover:bg-sky-700'}`}>
+                          {isUploadingLoginCover ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                          {isUploadingLoginCover ? 'Mengupload...' : 'Upload foto atau video'}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                            className="hidden"
+                            disabled={isUploadingLoginCover}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) handleLoginCoverUpload(file);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                        {loginCoverUrl && (
+                          <button
+                            type="button"
+                            onClick={handleRemoveLoginCover}
+                            disabled={isUploadingLoginCover}
+                            className="rounded-xl border border-red-200 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            Hapus cover
+                          </button>
+                        )}
+                        <p className="max-w-md text-xs leading-5 text-gray-500">
+                          Foto JPG, PNG, WebP maksimal 5 MB. Video MP4 atau WebM maksimal 50 MB. Video diputar otomatis tanpa suara dan berulang di halaman login.
+                        </p>
+                      </div>
+                    </div>
+              </section>
               
               {/* 2. BRANDING (LOGO & FAVICON) */}
               <div>

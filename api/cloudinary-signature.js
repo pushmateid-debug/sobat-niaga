@@ -5,6 +5,7 @@ const ADMIN_FOLDERS = new Set([
   'sobatniaga/admin',
   'sobatniaga/assets',
   'sobatniaga/banners',
+  'sobatniaga/login',
   'sobatniaga/payouts',
 ]);
 const USER_FOLDERS = new Set([
@@ -67,7 +68,7 @@ module.exports = async (request, response) => {
     ? ADMIN_FOLDERS.has(folder) || USER_FOLDERS.has(folder)
     : USER_FOLDERS.has(folder);
   const allowedResourceType = resourceType === 'image'
-    || (resourceType === 'video' && ['sobatniaga/products', 'sobatniaga/reviews'].includes(folder));
+    || (resourceType === 'video' && ['sobatniaga/login', 'sobatniaga/products', 'sobatniaga/reviews'].includes(folder));
 
   if (!isAllowedFolder || !allowedResourceType) {
     return response.status(403).json({ error: 'Akses upload tidak diizinkan.' });

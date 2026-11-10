@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
 import { 
   signInWithEmailAndPassword, 
@@ -7,7 +7,7 @@ import {
   GoogleAuthProvider, 
   updateProfile 
 } from 'firebase/auth';
-import { ref, set, get, serverTimestamp } from 'firebase/database';
+import { ref, set, get, onValue, serverTimestamp } from 'firebase/database';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -19,6 +19,21 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [coverMedia, setCoverMedia] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = onValue(ref(db, 'admin/banners/login_cover_media'), (snapshot) => {
+      setCoverMedia(snapshot.val() || null);
+    }, (error) => {
+      console.error('Gagal memuat media cover login:', error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const coverMediaUrl = typeof coverMedia === 'string' ? coverMedia : coverMedia?.url;
+  const coverMediaType = typeof coverMedia === 'object' && coverMedia !== null
+    ? coverMedia.type
+    : 'image';
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -258,14 +273,35 @@ const Login = () => {
                     className={`bg-gradient-to-br from-purple-800 to-indigo-900 text-white relative -left-full h-full w-[200%] transform ${isSignUp ? 'translate-x-1/2' : 'translate-x-0'}`}
                     style={{ transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }}
                 >
+                    {coverMediaUrl && (
+                      coverMediaType === 'video' ? (
+                        <video
+                          key={coverMediaUrl}
+                          src={coverMediaUrl}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          aria-hidden="true"
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-0 bg-cover bg-center"
+                          style={{ backgroundImage: `url("${coverMediaUrl}")` }}
+                        />
+                      )
+                    )}
+                    {coverMediaUrl && <div className="absolute inset-0 bg-gradient-to-br from-purple-950/65 via-indigo-950/45 to-slate-950/60"></div>}
                     
                     {/* Diagonal Line Decoration */}
-                    <div className="absolute inset-0 opacity-30">
+                    <div className="absolute inset-0 z-[1] opacity-30">
                         <div className="absolute top-0 left-1/2 w-full h-full bg-black/20 transform -skew-x-12 origin-bottom-left"></div>
                     </div>
 
                     {/* Overlay Left (For Sign In Context - Visible when Sign Up Form is Active) */}
-                    <div className={`absolute top-0 flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-0' : '-translate-x-[20%]'}`}>
+                    <div className={`absolute top-0 z-[2] flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-0' : '-translate-x-[20%]'}`}>
                         <h1 className="font-bold text-3xl mb-4">Sudah Punya Akun?</h1>
                         <p className="text-sm mb-8 text-blue-100">
                             Kelola toko, produk, dan transaksi usahamu bersama SobatNiaga.
@@ -279,7 +315,7 @@ const Login = () => {
                     </div>
 
                     {/* Overlay Right (For Sign Up Context - Visible when Login Form is Active) */}
-                    <div className={`absolute top-0 right-0 flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-[20%]' : 'translate-x-0'}`}>
+                    <div className={`absolute top-0 right-0 z-[2] flex flex-col items-center justify-center w-1/2 h-full px-12 text-center transform transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-[20%]' : 'translate-x-0'}`}>
                         <h1 className="font-bold text-3xl mb-4">Halo, Sobat!</h1>
                         <p className="text-sm mb-8 text-blue-100">
                             Temukan platform bisnis digital terpadu untuk mengembangkan usahamu.
