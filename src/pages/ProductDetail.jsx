@@ -8,12 +8,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
+const ProductDetail = ({ product, isLoading = false, productError = '', onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
 
-  const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(null);
@@ -289,10 +288,10 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoT
   };
 
   // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash)
-  if (loading || !product) {
+  if (isLoading || !product) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
-        {loading ? (
+        {isLoading ? (
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
               <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
@@ -304,7 +303,7 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoT
           </div>
         ) : (
           <div className="text-center px-6">
-            <p className="text-lg font-bold text-red-500 mb-4">Yah, Produk Gak Ditemukan, Bro! 😢</p>
+            <p className="text-lg font-bold text-red-500 mb-4">{productError || 'Yah, Produk Gak Ditemukan, Bro! 😢'}</p>
             <button onClick={onBack} className="px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Kembali</button>
           </div>
         )}
@@ -313,7 +312,17 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoT
   }
 
   return (
-    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}> {/* Main container */}
+    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
+      <header className={`sticky top-0 z-[100] border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-gray-200'}`}>
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+          <button type="button" onClick={onBack} aria-label="Kembali" className={`rounded-full p-2 ${isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} />
+          </button>
+          <button type="button" onClick={() => navigate('/')} className="text-lg font-black tracking-tight text-sky-600">
+            SobatNiaga
+          </button>
+        </div>
+      </header>
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)] relative">
         {/* Sisi Kiri: Foto Produk (Mobile Full Screen, Desktop Half) */}
         <div className={`w-full md:w-1/2 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'} p-0 md:p-10`}>

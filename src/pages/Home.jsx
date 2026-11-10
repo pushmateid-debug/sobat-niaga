@@ -11,7 +11,6 @@ import 'swiper/css/effect-coverflow';
 import ProductCard from '../components/ProductCard';
 import { ChatLayout } from '../components/ChatLayout'; // Import ChatLayout
 import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
-import ProductDetailModal from '../components/ProductDetailModal'; // Import Modal Detail Desktop
 import { auth, db, dbFirestore, messaging } from '../config/firebase';
 import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
 import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy, setDoc } from 'firebase/firestore';
@@ -30,7 +29,6 @@ const Cart = React.lazy(() => import('./Cart'));
 const Profile = React.lazy(() => import('./Profile'));
 const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
 const Address = React.lazy(() => import('./Address'));
-const ProductDetail = React.lazy(() => import('./ProductDetail'));
 const Payment = React.lazy(() => import('./Payment'));
 const TransactionHistory = React.lazy(() => import('./TransactionHistory'));
 const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
@@ -59,9 +57,6 @@ const Home = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
   const [previousView, setPreviousView] = useState('home');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false); // State Modal Produk
-  const [selectedModalProduct, setSelectedModalProduct] = useState(null); // Data Produk Modal
   const [products, setProducts] = useState([]); // Real Products State
   const [cartCount, setCartCount] = useState(0);
   const [currentOrder, setCurrentOrder] = useState(null);
@@ -556,17 +551,10 @@ const Home = () => {
   };
 
   const handleProductClick = (product) => {
-    // --- LOGIKA PEMISAH RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
-    if (window.innerWidth >= 768) {
-      setSelectedModalProduct(product);
-      setIsProductModalOpen(true);
-    } else {
-      startTransition(() => { 
-        setPreviousView(currentView); 
-        setSelectedProduct(product); 
-        setCurrentView('product-detail'); 
-      });
-    }
+    if (!product?.id) return;
+    navigate(`/product/${encodeURIComponent(product.id)}`, {
+      state: { from: location.pathname }
+    });
   };
 
   const handleCheckout = (orderId) => {
@@ -677,6 +665,43 @@ const Home = () => {
     if (!requireLogin()) return;
     startTransition(() => { setSelectedGame(game); });
   };
+
+  useEffect(() => {
+    const action = location.state?.productDetailAction;
+    if (!action || isLoading) return;
+
+    if ((action.type === 'cart' || action.type === 'chat') && !user?.uid) {
+      openLogin();
+      return;
+    }
+
+    if (action.type === 'cart') {
+      setCurrentView('cart');
+    } else if (action.type === 'store' && action.sellerId) {
+      setSelectedSellerId(action.sellerId);
+      setPreviousView('home');
+      setCurrentView('store-profile');
+    } else if (action.type === 'chat' && action.product?.id) {
+      const product = action.product;
+      setPendingProduct({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.mediaUrl || product.image || 'https://via.placeholder.com/150'
+      });
+      setChatSellerId(product.sellerId);
+      setChatTab('seller');
+      if (window.innerWidth >= 768) {
+        setIsDesktopChatOpen(true);
+      } else {
+        setCurrentView('chat');
+      }
+    } else {
+      return;
+    }
+
+    navigate('/', { replace: true, state: null });
+  }, [isLoading, location.state, navigate, openLogin, user?.uid]);
 
   // Handle Search Input & Auto-Suggestions
   const handleSearchInput = (e) => {
@@ -847,7 +872,7 @@ const Home = () => {
         event.preventDefault();
         
         // Logika mundur internal: Balik ke state sebelumnya atau paksa ke home
-        if (currentView === 'product-detail' || currentView === 'search-results') {
+        if (currentView === 'search-results') {
           startTransition(() => setCurrentView(previousView || 'home'));
         } else {
           startTransition(() => setCurrentView('home'));
@@ -938,18 +963,6 @@ const Home = () => {
       );
       case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
       case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} onViewInbox={() => startTransition(() => setCurrentView('seller-inbox'))} />;
-      case 'product-detail': return (
-        <ProductDetail
-          product={selectedProduct} 
-          onBack={() => startTransition(() => setCurrentView(previousView))} 
-          onGoToCart={openCart}
-          onRequireLogin={openLogin}
-          user={user} 
-          onChatWithProduct={handleChatWithProduct}
-          onChatClick={handleChatClick}
-          onVisitStore={handleVisitStore} 
-        />
-      );
       case 'search-page': return (
         <SearchPage 
           onBack={() => startTransition(() => setCurrentView('home'))} 
@@ -1922,19 +1935,6 @@ const Home = () => {
           onClose={() => setSelectedGame(null)} />
       )}
 
-      {/* Modal Detail Produk (Khusus Desktop) */}
-      <ProductDetailModal 
-        isOpen={isProductModalOpen} 
-        product={selectedModalProduct} 
-        onClose={() => setIsProductModalOpen(false)} 
-        user={user} 
-        onRequireLogin={openLogin}
-        onChatWithProduct={handleChatWithProduct}
-        onChatClick={handleChatClick}
-        onGoToCart={() => { setIsProductModalOpen(false); openCart(); }}
-        onVisitStore={handleVisitStore}
-      />
-
       {/* Customer Service Chat Widget */}
       {currentView !== 'chat' && !isDesktopChatOpen && (
         <DraggableChatWidget
@@ -2013,7 +2013,7 @@ const Home = () => {
       )}
 
       {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
-      {!['product-detail', 'cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
+      {!['cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
       <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="flex justify-around items-center h-16">
           <button onClick={() => startTransition(() => setCurrentView('home'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>

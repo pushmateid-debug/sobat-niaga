@@ -1,478 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Star, ShoppingCart, ShoppingBag, MessageCircle, Loader2, Forward, Store, ArrowLeft, Check, UserPlus, Home, Bell, User, Heart } from 'lucide-react';
-import { db, dbFirestore, auth } from '../config/firebase';
-import { ref, get, push, update, serverTimestamp } from 'firebase/database';
-import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import Swal from 'sweetalert2';
-import { useTheme } from '../context/ThemeContext';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { get, ref } from 'firebase/database';
+import { db } from '../config/firebase';
+import ProductDetail from './ProductDetail';
 
 const ProductDetailPage = () => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const { theme } = useTheme() || { theme: 'light' };
-  const isDarkMode = theme === 'dark';
-
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [activeImage, setActiveImage] = useState(null);
-  const [activeTab, setActiveTab] = useState('about');
-  const [isDescExpanded, setIsDescExpanded] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
-  const [sellerProfile, setSellerProfile] = useState(null);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [productError, setProductError] = useState('');
 
-  // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, []);
+    let active = true;
 
-  // 2. Logika Ambil Data Berdasarkan ID URL
-  useEffect(() => {
-    const getProductData = async () => {
-      if (!id) return;
+    const loadProduct = async () => {
       setLoading(true);
       setProductError('');
       try {
-        const productRef = ref(db, `products/${id}`);
-        const snapshot = await get(productRef);
-        
+        const snapshot = await get(ref(db, `products/${id}`));
+        if (!active) return;
+
         if (snapshot.exists()) {
-          const data = snapshot.val();
-          setProduct({ id, ...data });
-          setActiveImage(data.mediaUrl || data.image);
+          setProduct({ id, ...snapshot.val() });
         } else {
-          setProductError('Produk tidak ditemukan atau sudah tidak tersedia. Periksa kembali tautan atau kembali ke halaman utama.');
           setProduct(null);
+          setProductError('Produk tidak ditemukan atau sudah tidak tersedia.');
         }
       } catch (error) {
-        console.error("Gagal load produk:", error);
-        setProductError('Produk tidak dapat dimuat karena koneksi atau akses database bermasalah. Coba muat ulang halaman.');
+        if (!active) return;
+        console.error('Gagal memuat detail produk:', error);
         setProduct(null);
+        setProductError('Produk tidak dapat dimuat. Periksa koneksi atau coba lagi.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
-    getProductData();
-  }, [id, navigate]);
-
-  // 2.5 Fetch Data Seller untuk mendapatkan Foto Profil Gmail
-  useEffect(() => {
-    if (product?.sellerId) {
-      const sellerRef = ref(db, `users/${product.sellerId}`);
-      get(sellerRef).then((snapshot) => {
-        if (snapshot.exists()) {
-          setSellerProfile(snapshot.val());
-        }
-      }).catch((error) => {
-        console.warn('Profil penjual tidak dapat dimuat:', error?.message || error);
-        setSellerProfile(null);
-      });
-    }
-  }, [product?.sellerId]);
-
-  // 3. Fetch Follow Status (Firestore Sync)
-  useEffect(() => {
-    const sid = product?.sellerId;
-    if (!sid || !user?.uid) return;
-
-    const userFirestoreRef = doc(dbFirestore, 'users', sid);
-    const unsubFollow = onSnapshot(userFirestoreRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const isUserFollowing = user.uid && 
-                               Array.isArray(data.followersList) && 
-                               data.followersList.includes(user.uid);
-        setIsFollowing(Boolean(isUserFollowing));
-      } else {
-        setIsFollowing(false);
-      }
-    }, (error) => {
-      console.warn('Status follow tidak dapat dimuat:', error?.message || error);
-      setIsFollowing(false);
-    });
-
-    return () => unsubFollow();
-  }, [product?.sellerId, user?.uid]);
-
-  const handleCopyShareLink = () => {
-    const shareUrl = `${window.location.origin}/product/${product?.id}`;
-    navigator.clipboard.writeText(shareUrl)
-      .then(() => {
-        Swal.fire({
-          icon: 'success', title: 'Link Produk Disalin!', text: 'Siap di-share ke WhatsApp, Bro! 🚀',
-          toast: true, position: 'top', showConfirmButton: false, timer: 2500, timerProgressBar: true,
-        });
-      })
-      .catch(err => console.error("Gagal copy:", err));
-  };
-
-  const handleToggleFavorite = () => {
-    const nextState = !isFavorite;
-    setIsFavorite(nextState);
-    
-    Swal.fire({
-      icon: 'success',
-      title: nextState ? 'Masuk Favorit! ❤️' : 'Dihapus dari Favorit',
-      toast: true, position: 'top', showConfirmButton: false, timer: 1500
-    });
-  };
-
-  const handleShareWhatsApp = () => {
-    const shareUrl = `${window.location.origin}/product/${product?.id}`;
-    const message = `Halo! Cek produk keren ini di SobatNiaga: ${product?.name} 🚀\n\nKlik link di bawah:\n${shareUrl}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-  };
-
-  const handleShareOptions = () => {
-    Swal.fire({
-      title: 'Bagikan Produk',
-      html: `
-        <div class="flex flex-col gap-3">
-          <button id="btnShareWA" class="w-full py-3.5 bg-[#25D366] text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-green-200">
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.353-.883-.788-1.48-1.76-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.396.015 12.03c0 2.12.553 4.189 1.606 6.06L0 24l4.073-1.068a11.826 11.825 0 005.975 1.587h.005c6.637 0 12.032-5.396 12.035-12.031a11.764 11.764 0 00-3.614-8.508z"/></svg> Bagikan ke WhatsApp
-          </button>
-          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-sky-200">
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Salin Link Produk
-          </button>
-          <button id="btnReport" class="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-2xl flex items-center justify-center gap-3 border border-red-100">
-             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg> Laporkan Produk
-          </button>
-        </div>
-      `,
-      showConfirmButton: false,
-      showCloseButton: true,
-      customClass: {
-        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'}`,
-        title: 'text-lg font-bold mb-4'
-      },
-      didOpen: () => {
-        document.getElementById('btnShareWA').onclick = () => { handleShareWhatsApp(); Swal.close(); };
-        document.getElementById('btnCopyLink').onclick = () => { handleCopyShareLink(); Swal.close(); };
-        document.getElementById('btnReport').onclick = () => {
-            Swal.fire({
-              title: 'Laporkan Produk?',
-              text: 'Laporan kamu akan segera diproses oleh Admin.',
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonText: 'Kirim Laporan',
-              cancelButtonText: 'Batal',
-              buttonsStyling: false,
-              customClass: {
-                popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
-                confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all !opacity-100 mx-2 active:scale-95',
-                cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
-              }
-            }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
-          };
-      }
-    });
-  };
-
-  const handleFollow = async () => {
-    if (!user) return Swal.fire('Login Dulu', 'Silakan login untuk mengikuti penjual ini.', 'warning');
-    if (String(product.sellerId) === String(user.uid)) return;
-    if (followLoading) return;
-
-    setFollowLoading(true);
-    const batch = writeBatch(dbFirestore);
-    const targetStoreRef = doc(dbFirestore, 'users', product.sellerId);
-    const currentUserRef = doc(dbFirestore, 'users', user.uid);
-
-    try {
-      if (isFollowing) {
-        batch.update(targetStoreRef, { followersList: arrayRemove(user.uid), followersCount: increment(-1) });
-        batch.update(currentUserRef, { followingList: arrayRemove(product.sellerId), followingCount: increment(-1) });
-      } else {
-        batch.update(targetStoreRef, { followersList: arrayUnion(user.uid), followersCount: increment(1) });
-        batch.update(currentUserRef, { followingList: arrayUnion(product.sellerId), followingCount: increment(1) });
-      }
-      await batch.commit();
-    } catch (error) {
-      Swal.fire('Gagal', 'Terjadi kesalahan saat memproses permintaan.', 'error');
-    } finally {
-      setFollowLoading(false);
-    }
-  };
-
-  const handleAddToCart = async (redirect = false) => {
-    if (!user) {
-      navigate('/login?mode=login', { state: { from: `/product/${id}` } });
-      return;
+    if (id) {
+      loadProduct();
+    } else {
+      setProduct(null);
+      setProductError('Tautan produk tidak valid.');
+      setLoading(false);
     }
 
-    setIsAdding(true);
-    try {
-      const cartRef = ref(db, `users/${user.uid}/cart`);
-
-      // 🛡️ CEK PRODUK DUPLIKAT DI KERANJANG
-      const cartSnap = await get(cartRef);
-      if (cartSnap.exists()) {
-        const currentCart = cartSnap.val();
-        const existingItemKey = Object.keys(currentCart).find(key => currentCart[key].productId === product?.id);
-        if (existingItemKey) {
-          Swal.fire({
-            title: 'Sudah di Keranjang',
-            text: 'Produk ini sudah ada di keranjangmu, Bro!',
-            icon: 'info',
-            showCancelButton: true,
-            confirmButtonText: 'Ke Keranjang',
-            cancelButtonText: 'Nanti Saja',
-            buttonsStyling: false,
-            customClass: {
-              popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
-              confirmButton: 'px-8 py-3 rounded-xl text-sm font-black text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all !opacity-100 mx-2 active:scale-95',
-              cancelButton: `px-8 py-3 rounded-xl text-sm font-black !opacity-100 mx-2 transition-all ${isDarkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
-            }
-          }).then((res) => { if (res.isConfirmed) navigate('/'); });
-          setIsAdding(false);
-          return;
-        }
-      }
-
-      await push(cartRef, {
-        productId: product?.id || id, 
-        name: product?.name || 'Produk SobatNiaga', 
-        price: parseInt(product?.price) || 0,
-        image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150', 
-        quantity: 1, 
-        storeName: product?.storeName || 'Toko',
-        sellerId: product?.sellerId || '', 
-        selected: true, 
-        createdAt: new Date().toISOString()
-      });
-
-      if (redirect) navigate('/'); // Arahkan ke home agar SPA controller-nya aktif
-      else Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Masuk keranjang 🛒', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
-    } catch (error) {
-      console.error("Direct Link Cart Error:", error);
-      Swal.fire('Error', 'Gagal masuk keranjang.', 'error');
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleChatWithProduct = () => {
-    if (!user || !product) {
-      navigate('/login?mode=login', { state: { from: `/product/${id}` } });
-      return;
-    }
-    
-    // Siapkan data produk untuk context chat (Attached Product)
-    const attachedProduct = {
-      id: product?.id,
-      name: product?.name || "Produk",
-      price: product?.price,
-      image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150'
+    return () => {
+      active = false;
     };
-    navigate('/chat', { state: { attachedProduct, sellerId: product?.sellerId } });
+  }, [id]);
+
+  const returnToHome = (productDetailAction) => {
+    navigate('/', { state: { productDetailAction } });
   };
 
-  const galleryImages = Array.isArray(product?.gallery)
-    ? product.gallery
-    : product?.gallery && typeof product.gallery === 'object'
-      ? Object.values(product.gallery)
-      : [];
+  const handleBack = () => {
+    const from = location.state?.from;
+    const safeFrom = typeof from === 'string'
+      && from.startsWith('/')
+      && !from.startsWith('//')
+      && !from.includes('\\')
+      ? from
+      : '/';
+    navigate(safeFrom);
+  };
 
-  // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash Layar Biru Tua)
-  if (loading || !product) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
-        {loading ? (
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                 <ShoppingBag size={24} className="text-sky-500" />
-              </div>
-            </div>
-            <p className="text-sm font-bold animate-pulse text-sky-500">Membuka Produk SobatNiaga...</p>
-          </div>
-        ) : (
-          <div className="text-center px-6 max-w-md">
-            <p className="text-lg font-bold text-red-500 mb-2">Produk tidak dapat dibuka</p>
-            <p className="text-sm text-gray-500 mb-5">{productError || 'Produk tidak ditemukan atau tautannya tidak valid.'}</p>
-            <div className="flex justify-center gap-2">
-              <button onClick={() => navigate(-1)} className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-bold">Kembali</button>
-              <button onClick={() => navigate('/')} className="px-5 py-2.5 bg-sky-600 text-white rounded-xl font-bold">Ke Beranda</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  const handleRequireLogin = () => {
+    navigate('/login?mode=login', {
+      state: { from: `${location.pathname}${location.search}` }
+    });
+  };
 
   return (
-    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-[#F8FAFC] text-gray-900'}`}>
-      {/* Navbar Desktop & Mobile Style - Biar Gak Berasa Terisolasi */}
-      <nav className={`sticky top-0 z-[100] backdrop-blur-md border-b transition-all ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-gray-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/')} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}>
-              <ArrowLeft size={24} />
-            </button>
-            <h1 className="text-lg md:text-xl font-black text-sky-600 tracking-tighter cursor-pointer" onClick={() => navigate('/')}>
-              SobatNiaga
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-             <button onClick={handleToggleFavorite} className={`p-2 transition-all active:scale-125 ${isFavorite ? 'text-red-500' : 'text-gray-400'}`}><Heart size={24} className={isFavorite ? 'fill-red-500' : ''}/></button>
-             <button onClick={handleShareOptions} className="p-2 text-sky-600"><Forward size={24}/></button>
-             {!user && <button onClick={() => navigate('/')} className="text-xs font-bold bg-sky-600 text-white px-4 py-2 rounded-lg">Login</button>}
-          </div>
-        </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)]">
-        {/* Sisi Kiri: Foto Produk */}
-        <div className={`w-full md:w-1/2 p-4 md:p-10 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-[#1e293b]/50' : 'bg-gray-50'}`}>
-          <div className={`relative aspect-square w-full max-w-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 ${isDarkMode ? 'bg-[#0f172a] border-slate-800' : 'bg-white border-gray-100'}`}>
-            <img src={activeImage || product?.mediaUrl || product?.image} className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" alt={product?.name} />
-          </div>
-          <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-            {[...new Set([product?.mediaUrl || product?.image, ...galleryImages])].filter((img) => typeof img === 'string' && img.trim()).map((img, idx) => (
-              <button key={idx} onClick={() => setActiveImage(img)} className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}><img src={img} className="w-full h-full object-cover" alt="" /></button>
-            ))}
-          </div>
-        </div>
-
-        {/* Sisi Kanan: Detail & Info */}
-        <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
-          <div className="flex flex-col h-full">
-            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mb-3 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{product?.category} Official</span>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className={`text-lg md:text-2xl font-bold leading-snug ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product?.name}</h1>
-              <div className="hidden md:flex items-center gap-3">
-                <button onClick={handleToggleFavorite} className={`p-4 rounded-3xl border transition-all active:scale-125 ${isFavorite ? 'bg-red-50 border-red-100 text-red-500' : 'border-gray-100 text-gray-400 hover:bg-red-50'}`}><Heart size={24} className={isFavorite ? 'fill-red-500' : ''} /></button>
-                <button onClick={handleShareOptions} className="p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90"><Forward size={24} /></button>
-              </div>
-            </div>
-            <div className={`flex items-center gap-1 mb-8 text-xs md:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span className="text-[#FFD662]">★</span>
-              <span className={`font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{product?.rating || '4.8'}</span>
-              <span className="mx-1 opacity-50">|</span>
-              <span>{product?.sold || 0} Terjual</span>
-            </div>
-            <div className="mb-10">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Harga Terbaik</p>
-              <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
-                <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
-                <span className="text-3xl md:text-5xl tracking-tight">{parseInt(product?.price || 0).toLocaleString('id-ID')}</span>
-              </div>
-              {(product?.stock !== undefined || product?.quantity !== undefined) && (
-                <p className={`mt-3 text-sm font-bold ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
-                  Stok tersedia: {product?.stock ?? product?.quantity ?? 0}
-                </p>
-              )}
-            </div>
-
-            {/* Tabs */}
-            <div className={`flex border-b mb-6 transition-colors duration-300 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
-                {['about', 'review'].map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? (isDarkMode ? 'text-sky-400' : 'text-sky-600') : (isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-gray-400 hover:text-gray-600')}`}>
-                        {tab}{activeTab === tab && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-sky-600 rounded-t-full"></div>}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tab Content */}
-            <div className="flex-1">
-                {activeTab === 'about' && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {/* JANGAN LUPA GANTI YANG DI BAGIAN DESKTOP VIEW JUGA, BRO! */}
-                    <div className={`flex items-center justify-between p-4 rounded-2xl border mb-6 transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                      
-                      {/* SISI KIRI: Foto Profil Lingkaran Gmail & Nama Toko */}
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={sellerProfile?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"} 
-                          alt="Store Profile" 
-                          className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm"
-                        />
-                        <div className="min-w-0">
-                          <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {product?.storeName || "Nama Toko"}
-                          </h4>
-                          <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
-                        </div>
-                      </div>
-
-                      {/* SISI KANAN: Tombol Aksi Vertikal Pendek Tanpa Icon */}
-                      <div className="flex flex-col gap-1.5 min-w-[125px]">
-                        <button 
-                          onClick={handleChatWithProduct}
-                          className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                        >
-                          Chat Penjual
-                        </button>
-                        
-                        <button 
-                          onClick={() => navigate(`/store-profile/${product?.sellerId}`)}
-                          className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm"
-                        >
-                          Kunjungi Toko
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mb-10">
-                      <h4 className="text-xs font-black uppercase tracking-[0.2em] mb-4 opacity-50">Deskripsi Produk</h4>
-                      <div className={`text-sm leading-relaxed relative ${!isDescExpanded ? 'max-h-24 overflow-hidden' : ''} ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
-                        {product.description || 'Barang original kualitas bintang 5, Bro!'}
-                        {!isDescExpanded && <div className={`absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t ${isDarkMode ? 'from-[#0f172a]' : 'from-white'} to-transparent`}></div>}
-                      </div>
-                      <button onClick={() => setIsDescExpanded(!isDescExpanded)} className="mt-2 text-xs font-bold text-sky-600 hover:text-sky-500 uppercase tracking-widest">{isDescExpanded ? 'Sembunyikan' : 'Baca Selengkapnya'}</button>
-                    </div>
-                  </div>
-                )}
-                {activeTab === 'review' && (
-                  <div className="py-10 text-center opacity-30 animate-in fade-in duration-300"><Star size={48} className="mx-auto mb-2" /><p className="font-bold text-sm uppercase tracking-widest">Belum Ada Ulasan</p><p className="text-xs mt-1">Jadilah yang pertama memberikan ulasan, Bro!</p></div>
-                )}
-            </div>
-
-            {/* Footer Action - Desktop */}
-            <div className="hidden md:flex gap-4 mt-10">
-              <button 
-                onClick={() => handleAddToCart(false)} 
-                disabled={isAdding} 
-                className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-                  isDarkMode 
-                    ? 'bg-slate-800 text-gray-400 hover:bg-slate-700' 
-                    : 'bg-sky-50 text-sky-600 border border-sky-100 hover:bg-sky-100'
-                }`}
-              >
-                {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}
-              </button>
-              <button onClick={() => handleAddToCart(true)} disabled={isAdding} className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none transition-all">Pesan Sekarang</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Floating Action Bar */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 backdrop-blur-lg ${isDarkMode ? 'bg-[#0f172a]/90 border-slate-800' : 'bg-white/90 border-gray-100'}`}>
-        <button 
-          onClick={() => handleAddToCart(false)} 
-          disabled={isAdding} 
-          className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-            isDarkMode 
-              ? 'bg-slate-800 text-gray-400' 
-              : 'bg-sky-50 text-sky-600 border border-sky-100'
-          }`}
-        >
-          {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
-        </button>
-        <button onClick={() => handleAddToCart(true)} disabled={isAdding} className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg">Pesan Sekarang</button>
-      </div>
-    </div>
+    <ProductDetail
+      product={product}
+      isLoading={loading}
+      productError={productError}
+      onBack={handleBack}
+      onRequireLogin={handleRequireLogin}
+      onGoToCart={() => returnToHome({ type: 'cart' })}
+      onVisitStore={(sellerId) => returnToHome({ type: 'store', sellerId })}
+      onChatWithProduct={(selectedProduct) => returnToHome({ type: 'chat', product: selectedProduct })}
+    />
   );
 };
 
