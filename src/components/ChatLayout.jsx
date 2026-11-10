@@ -72,7 +72,8 @@ export const ChatLayout = ({
   onViewProfile,
   pendingProduct,
   setPendingProduct,
-  onOpenInstantMenu
+  onOpenInstantMenu,
+  onOpenProductDetail
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -103,6 +104,10 @@ export const ChatLayout = ({
   const getAIKey = () => localStorage.getItem(getAIStorageKey()) || '';
   const openProductDetail = (productId) => {
     if (!productId) return;
+    if (onOpenProductDetail) {
+      onOpenProductDetail(productId);
+      return;
+    }
     navigate(`/product/${encodeURIComponent(productId)}`);
   };
   const cleanAIText = (text) => String(text || '')

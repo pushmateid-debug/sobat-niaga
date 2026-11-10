@@ -8,11 +8,17 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, isLoading = false, productError = '', onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
+const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, isLoading = false, productError = '', onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
 
+  const [fetchedProduct, setFetchedProduct] = useState(null);
+  const [isFetchingProduct, setIsFetchingProduct] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+  const product = suppliedProduct && String(suppliedProduct.id) === String(productId)
+    ? suppliedProduct
+    : fetchedProduct?.id === productId ? fetchedProduct : null;
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(null);
@@ -41,6 +47,47 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!productId) {
+      setFetchedProduct(null);
+      setIsFetchingProduct(false);
+      setFetchError('');
+      return () => { active = false; };
+    }
+
+    if (suppliedProduct && String(suppliedProduct.id) === String(productId)) {
+      setFetchedProduct(suppliedProduct);
+      setIsFetchingProduct(false);
+      setFetchError('');
+      return () => { active = false; };
+    }
+
+    setFetchedProduct(null);
+    setIsFetchingProduct(true);
+    setFetchError('');
+    get(ref(db, `products/${productId}`))
+      .then((snapshot) => {
+        if (!active) return;
+        if (snapshot.exists()) {
+          setFetchedProduct({ id: productId, ...snapshot.val() });
+        } else {
+          setFetchError('Produk tidak ditemukan atau sudah tidak tersedia.');
+        }
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error('Gagal memuat detail produk:', error);
+        setFetchError('Produk tidak dapat dimuat. Periksa koneksi atau coba lagi.');
+      })
+      .finally(() => {
+        if (active) setIsFetchingProduct(false);
+      });
+
+    return () => { active = false; };
+  }, [productId, suppliedProduct]);
 
   // 2. Inisialisasi Gambar Utama
   useEffect(() => {
@@ -83,6 +130,20 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
 
     return () => unsubFollow();
   }, [product?.sellerId, user?.uid]);
+
+  useEffect(() => {
+    if (!isModal) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onBack?.();
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isModal, onBack]);
 
   // 4. Fungsi Salin Link Produk (Share)
   const handleCopyShareLink = () => {
@@ -221,10 +282,11 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
 
   // 6. Fungsi Chat Langsung Bawa Produk
   const handleInternalChat = () => {
-    if (!user || !product) {
-      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
+    if (!user) {
+      onRequireLogin?.();
       return;
     }
+    if (!product) return;
     // Panggil fungsi stabil dari props (Home.jsx)
     onChatWithProduct(product);
   };
@@ -287,11 +349,40 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
     });
   };
 
-  // 🛡️ 2. Loading Guard Super Ketat (Anti-Crash)
-  if (isLoading || !product) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
-        {isLoading ? (
+  const isProductLoading = isLoading || isFetchingProduct || (Boolean(productId) && !product && !fetchError);
+  const visibleProductError = productError || fetchError;
+  const modalOverlay = (children) => (
+    <div
+      className="fixed inset-0 z-[1500] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-md md:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onBack?.();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={product?.name || 'Detail produk'}
+        className={`relative w-full max-w-6xl overflow-hidden rounded-2xl shadow-2xl md:rounded-3xl ${isDarkMode ? 'bg-slate-950 text-white ring-1 ring-white/10' : 'bg-white text-gray-900 ring-1 ring-black/10'}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Tutup detail produk"
+          className={`absolute right-3 top-3 z-[120] rounded-full p-2 shadow-md transition-colors ${isDarkMode ? 'bg-slate-800/90 text-white hover:bg-slate-700' : 'bg-white/90 text-slate-700 hover:bg-gray-100'}`}
+        >
+          <X size={20} />
+        </button>
+        <div className="max-h-[92vh] overflow-y-auto">{children}</div>
+      </section>
+    </div>
+  );
+
+  // Loading and missing-product states use the same presentation as the detail.
+  if (isProductLoading || !product) {
+    const statusContent = (
+      <div className={`flex min-h-[320px] items-center justify-center p-8 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+        {isProductLoading ? (
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
               <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
@@ -303,17 +394,18 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
           </div>
         ) : (
           <div className="text-center px-6">
-            <p className="text-lg font-bold text-red-500 mb-4">{productError || 'Yah, Produk Gak Ditemukan, Bro! 😢'}</p>
+            <p className="text-lg font-bold text-red-500 mb-4">{visibleProductError || 'Yah, Produk Gak Ditemukan, Bro! 😢'}</p>
             <button onClick={onBack} className="px-6 py-2 bg-sky-600 text-white rounded-xl font-bold">Kembali</button>
           </div>
         )}
       </div>
     );
+    return isModal ? modalOverlay(statusContent) : statusContent;
   }
 
-  return (
-    <div className={`min-h-screen pb-32 transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}>
-      <header className={`sticky top-0 z-[100] border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-gray-200'}`}>
+  const productContent = (
+    <div className={`transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen pb-32 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}`}>
+      {!isModal && <header className={`sticky top-0 z-[100] border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-gray-200'}`}>
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <button type="button" onClick={onBack} aria-label="Kembali" className={`rounded-full p-2 ${isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}>
             <ArrowLeft size={22} />
@@ -322,12 +414,12 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
             SobatNiaga
           </button>
         </div>
-      </header>
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-64px)] relative">
+      </header>}
+      <div className={`mx-auto flex flex-col md:flex-row relative ${isModal ? 'max-w-none min-h-0' : 'max-w-7xl min-h-[calc(100vh-64px)]'}`}>
         {/* Sisi Kiri: Foto Produk (Mobile Full Screen, Desktop Half) */}
         <div className={`w-full md:w-1/2 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'} p-0 md:p-10`}>
           {/* Kontainer Foto Utama */}
-          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] max-w-[500px]`}>
+          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] max-w-[500px] ${isModal ? 'md:aspect-square md:max-h-[62vh]' : ''}`}>
             {/* Logic swipe horizontal / Carousell foto */}
             <div 
               className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none w-full"
@@ -335,10 +427,10 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {allImages.map((img, index) => (
-                <div key={index} className="w-full flex-shrink-0 snap-start">
+                <div key={index} className={`w-full flex-shrink-0 snap-start ${isModal ? 'h-full' : ''}`}>
                   <img 
                     src={img} 
-                    className="w-full h-auto object-cover rounded-none"
+                    className={`w-full rounded-none ${isModal ? 'h-full object-contain' : 'h-auto object-cover'}`}
                     alt={`${product?.name} ${index + 1}`}
                   />
                 </div>
@@ -521,6 +613,7 @@ const ProductDetail = ({ product, isLoading = false, productError = '', onBack, 
       </div>
     </div>
   );
+  return isModal ? modalOverlay(productContent) : productContent;
 };
 
 export default ProductDetail;

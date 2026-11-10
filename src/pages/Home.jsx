@@ -29,6 +29,7 @@ const Cart = React.lazy(() => import('./Cart'));
 const Profile = React.lazy(() => import('./Profile'));
 const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
 const Address = React.lazy(() => import('./Address'));
+const ProductDetail = React.lazy(() => import('./ProductDetail'));
 const Payment = React.lazy(() => import('./Payment'));
 const TransactionHistory = React.lazy(() => import('./TransactionHistory'));
 const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
@@ -57,6 +58,7 @@ const Home = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
   const [previousView, setPreviousView] = useState('home');
+  const [selectedProductId, setSelectedProductId] = useState(null);
   const [products, setProducts] = useState([]); // Real Products State
   const [cartCount, setCartCount] = useState(0);
   const [currentOrder, setCurrentOrder] = useState(null);
@@ -552,9 +554,7 @@ const Home = () => {
 
   const handleProductClick = (product) => {
     if (!product?.id) return;
-    navigate(`/product/${encodeURIComponent(product.id)}`, {
-      state: { from: location.pathname }
-    });
+    setSelectedProductId(String(product.id));
   };
 
   const handleCheckout = (orderId) => {
@@ -1038,6 +1038,7 @@ const Home = () => {
               pendingProduct={pendingProduct}
               setPendingProduct={setPendingProduct}
               onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
+              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
               />
 
               {/* Bottom Sheet Pesan Instan (Mobile) */}
@@ -1102,6 +1103,7 @@ const Home = () => {
                       setIsChatMenuOpen(false);
                     });
                   }}
+                  onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
               />
           </div>
         );
@@ -1927,6 +1929,30 @@ const Home = () => {
         </Suspense>
       </main>
 
+      {selectedProductId && (
+        <Suspense fallback={null}>
+          <ProductDetail
+            product={products.find((item) => String(item.id) === selectedProductId) || null}
+            productId={selectedProductId}
+            isModal
+            onBack={() => setSelectedProductId(null)}
+            onRequireLogin={openLogin}
+            onGoToCart={() => {
+              setSelectedProductId(null);
+              openCart();
+            }}
+            onVisitStore={(sellerId) => {
+              setSelectedProductId(null);
+              handleVisitStore(sellerId);
+            }}
+            onChatWithProduct={(product) => {
+              setSelectedProductId(null);
+              handleChatWithProduct(product);
+            }}
+          />
+        </Suspense>
+      )}
+
       {/* Modal Top Up Game (Global) */}
       {selectedGame && TopUpModal && (
         <TopUpModal 
@@ -1972,6 +1998,7 @@ const Home = () => {
               pendingProduct={pendingProduct}
               setPendingProduct={setPendingProduct}
               onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
+              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
             />
 
             {/* Desktop Quick Menu Overlay */}
