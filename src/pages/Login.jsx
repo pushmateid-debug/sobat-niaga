@@ -20,12 +20,15 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [coverMedia, setCoverMedia] = useState(null);
+  const [pageBackground, setPageBackground] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onValue(ref(db, 'admin/banners/login_cover_media'), (snapshot) => {
-      setCoverMedia(snapshot.val() || null);
+    const unsubscribe = onValue(ref(db, 'admin/banners'), (snapshot) => {
+      const banners = snapshot.val() || {};
+      setCoverMedia(banners.login_cover_media || null);
+      setPageBackground(banners.login_page_background || null);
     }, (error) => {
-      console.error('Gagal memuat media cover login:', error);
+      console.error('Gagal memuat background login:', error);
     });
     return () => unsubscribe();
   }, []);
@@ -33,6 +36,10 @@ const Login = () => {
   const coverMediaUrl = typeof coverMedia === 'string' ? coverMedia : coverMedia?.url;
   const coverMediaType = typeof coverMedia === 'object' && coverMedia !== null
     ? coverMedia.type
+    : 'image';
+  const pageBackgroundUrl = typeof pageBackground === 'string' ? pageBackground : pageBackground?.url;
+  const pageBackgroundType = typeof pageBackground === 'object' && pageBackground !== null
+    ? pageBackground.type
     : 'image';
 
   const handleGoogleLogin = async () => {
@@ -137,11 +144,32 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-4 overflow-hidden relative">
+        {pageBackgroundUrl && (
+          pageBackgroundType === 'video' ? (
+            <video
+              key={pageBackgroundUrl}
+              src={pageBackgroundUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+              aria-hidden="true"
+              className="absolute inset-0 z-0 h-full w-full object-cover"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 z-0 bg-cover bg-center"
+              style={{ backgroundImage: `url("${pageBackgroundUrl}")` }}
+            />
+          )
+        )}
+        {pageBackgroundUrl && <div className="absolute inset-0 z-0 bg-slate-950/55"></div>}
         {/* Background Elements - Electric Blue Theme */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-900/20 blur-[120px]"></div>
+        <div className="absolute top-[-10%] left-[-10%] z-[1] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] z-[1] w-[40%] h-[40%] rounded-full bg-blue-900/20 blur-[120px]"></div>
 
-        <div className={`relative bg-slate-900/60 backdrop-blur-xl rounded-[20px] shadow-2xl overflow-hidden w-full max-w-[900px] min-h-[600px] border border-slate-700`}>
+        <div className={`relative z-[2] bg-slate-900/60 backdrop-blur-xl rounded-[20px] shadow-2xl overflow-hidden w-full max-w-[900px] min-h-[600px] border border-slate-700`}>
             
             {/* Sign Up Form Container (Moves to Right) */}
             <div className={`absolute top-0 h-full transition-all duration-700 ease-in-out left-0 w-full md:w-1/2 ${isSignUp ? 'translate-x-full opacity-100 z-50' : 'opacity-0 z-10'}`}>

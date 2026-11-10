@@ -223,9 +223,13 @@ const AdminDashboard = ({ onBack, user }) => {
   // State Banners & Flash Deal
   const [banners, setBanners] = useState({}); // State tunggal untuk semua manajemen gambar/banner
   const [isUploadingLoginCover, setIsUploadingLoginCover] = useState(false);
+  const [isUploadingLoginBackground, setIsUploadingLoginBackground] = useState(false);
   const loginCover = banners.login_cover_media;
   const loginCoverUrl = typeof loginCover === 'string' ? loginCover : loginCover?.url;
   const loginCoverType = typeof loginCover === 'object' && loginCover !== null ? loginCover.type : 'image';
+  const loginBackground = banners.login_page_background;
+  const loginBackgroundUrl = typeof loginBackground === 'string' ? loginBackground : loginBackground?.url;
+  const loginBackgroundType = typeof loginBackground === 'object' && loginBackground !== null ? loginBackground.type : 'image';
   const faviconDraft = banners.favicon_draft;
   const faviconDraftUrl = typeof faviconDraft === 'object' && faviconDraft !== null ? faviconDraft.url : faviconDraft;
   const activeFavicon = banners.favicon;
@@ -1667,7 +1671,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     }
   };
 
-  const handleLoginCoverUpload = async (file) => {
+  const handleLoginMediaUpload = async (file, key, setUploading, label) => {
     if (!file) return;
     const isVideo = file.type.startsWith('video/');
     const allowedTypes = isVideo
@@ -1683,44 +1687,50 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
       return;
     }
 
-    setIsUploadingLoginCover(true);
-    Swal.fire({ title: 'Mengupload cover login...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    setUploading(true);
+    Swal.fire({ title: `Mengupload ${label}...`, didOpen: () => Swal.showLoading(), allowOutsideClick: false });
     try {
       const url = await uploadCloudinaryFile(file, 'sobatniaga/login');
       await update(ref(realDb, 'admin/banners'), {
-        login_cover_media: {
+        [key]: {
           url,
           type: isVideo ? 'video' : 'image',
           updatedAt: serverTimestamp()
         }
       });
-      Swal.fire('Berhasil', 'Cover kartu login berhasil diperbarui.', 'success');
+      Swal.fire('Berhasil', `${label} login berhasil diperbarui.`, 'success');
     } catch (error) {
-      console.error('Gagal mengupload cover login:', error);
-      Swal.fire('Upload gagal', error.message || 'Cover kartu login tidak dapat diunggah.', 'error');
+      console.error(`Gagal mengupload ${label} login:`, error);
+      Swal.fire('Upload gagal', error.message || `${label} login tidak dapat diunggah.`, 'error');
     } finally {
-      setIsUploadingLoginCover(false);
+      setUploading(false);
     }
   };
 
-  const handleRemoveLoginCover = async () => {
+  const handleLoginCoverUpload = (file) => handleLoginMediaUpload(file, 'login_cover_media', setIsUploadingLoginCover, 'cover kartu');
+  const handleLoginBackgroundUpload = (file) => handleLoginMediaUpload(file, 'login_page_background', setIsUploadingLoginBackground, 'background halaman');
+
+  const handleRemoveLoginMedia = async (key, label) => {
     const result = await Swal.fire({
-      title: 'Hapus cover login?',
-      text: 'Tampilan akan kembali menggunakan background gradasi.',
+      title: `Hapus ${label} login?`,
+      text: 'Tampilan akan kembali menggunakan background default.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Hapus cover',
+      confirmButtonText: 'Hapus',
       cancelButtonText: 'Batal'
     });
     if (!result.isConfirmed) return;
     try {
-      await update(ref(realDb, 'admin/banners'), { login_cover_media: null });
-      Swal.fire('Berhasil', 'Cover login kembali menggunakan gradasi.', 'success');
+      await update(ref(realDb, 'admin/banners'), { [key]: null });
+      Swal.fire('Berhasil', `${label} login kembali menggunakan background default.`, 'success');
     } catch (error) {
-      console.error('Gagal menghapus cover login:', error);
-      Swal.fire('Gagal menghapus cover', error.message || 'Cover login tidak dapat dihapus.', 'error');
+      console.error(`Gagal menghapus ${label} login:`, error);
+      Swal.fire('Gagal menghapus', error.message || `${label} login tidak dapat dihapus.`, 'error');
     }
   };
+
+  const handleRemoveLoginCover = () => handleRemoveLoginMedia('login_cover_media', 'Cover kartu');
+  const handleRemoveLoginBackground = () => handleRemoveLoginMedia('login_page_background', 'Background halaman');
 
   const handleApplyFavicon = async () => {
     const candidate = banners.favicon_draft || banners.favicon;
@@ -2250,6 +2260,58 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                         </p>
                       </div>
                     </div>
+              </section>
+
+              <section className={`rounded-2xl border p-5 ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                <div className="mb-4 flex items-center gap-2">
+                  <ImageIcon size={20} className="text-sky-500" />
+                  <div>
+                    <h3 className="font-bold text-lg">Background di Belakang Kartu Login</h3>
+                    <p className="text-xs text-gray-500">Atur foto atau video untuk latar halaman di luar kartu login.</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="relative flex aspect-video w-full max-w-sm items-center justify-center overflow-hidden rounded-xl bg-[#0f172a]">
+                    {loginBackgroundUrl && loginBackgroundType === 'video'
+                      ? <video src={loginBackgroundUrl} className="h-full w-full object-cover" controls muted playsInline />
+                      : loginBackgroundUrl
+                        ? <img src={loginBackgroundUrl} alt="Pratinjau background halaman login" className="h-full w-full object-cover" />
+                        : <p className="px-4 text-center text-sm font-medium text-white">Background warna default</p>}
+                    <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-slate-950/25 p-3">
+                      <span className="rounded-lg bg-slate-950/60 px-3 py-1 text-[10px] font-semibold text-white">Pratinjau latar di belakang kartu</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-start gap-3">
+                    <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white ${isUploadingLoginBackground ? 'pointer-events-none bg-gray-400' : 'bg-sky-600 hover:bg-sky-700'}`}>
+                      {isUploadingLoginBackground ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                      {isUploadingLoginBackground ? 'Mengupload...' : 'Upload background foto atau video'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                        className="hidden"
+                        disabled={isUploadingLoginBackground}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) handleLoginBackgroundUpload(file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {loginBackgroundUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLoginBackground}
+                        disabled={isUploadingLoginBackground}
+                        className="rounded-xl border border-red-200 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Hapus background halaman
+                      </button>
+                    )}
+                    <p className="max-w-md text-xs leading-5 text-gray-500">
+                      Foto JPG, PNG, WebP maksimal 5 MB. Video MP4 atau WebM maksimal 50 MB. Background ini tampil di seluruh halaman di belakang kartu login.
+                    </p>
+                  </div>
+                </div>
               </section>
               
               {/* 2. BRANDING (LOGO & FAVICON) */}
