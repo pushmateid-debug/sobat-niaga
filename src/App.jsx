@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import ProductDetailPage from './pages/ProductDetailPage';
 import PublicPreview from './pages/PublicPreview';
+import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
 import { db } from './config/firebase';
 import { ref, onValue } from 'firebase/database';
@@ -127,6 +128,7 @@ function App() {
         )}
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
           <Route path="/demo" element={<PublicPreview />} />
           <Route path="/demo/dashboard" element={<PublicPreview />} />

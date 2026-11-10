@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../config/firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
   GoogleAuthProvider, 
-  updateProfile 
+  updateProfile,
+  onAuthStateChanged
 } from 'firebase/auth';
 import { ref, set, get, onValue, serverTimestamp } from 'firebase/database';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const Login = () => {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const [isSignUp, setIsSignUp] = useState(searchParams.get('mode') === 'register');
   const [isLoading, setIsLoading] = useState(false);
   
   // Form States
@@ -32,6 +37,16 @@ const Login = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        const from = location.state?.from;
+        navigate(typeof from === 'string' && from.startsWith('/') ? from : '/', { replace: true });
+      }
+    });
+    return () => unsubscribe();
+  }, [location.state, navigate]);
 
   const coverMediaUrl = typeof coverMedia === 'string' ? coverMedia : coverMedia?.url;
   const coverMediaType = typeof coverMedia === 'object' && coverMedia !== null
@@ -63,6 +78,9 @@ const Login = () => {
           createdAt: serverTimestamp()
         });
       }
+
+      const from = location.state?.from;
+      navigate(typeof from === 'string' && from.startsWith('/') ? from : '/', { replace: true });
       
       Swal.fire({
         icon: 'success',
@@ -88,6 +106,8 @@ const Login = () => {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      const from = location.state?.from;
+      navigate(typeof from === 'string' && from.startsWith('/') ? from : '/', { replace: true });
       Swal.fire({
         icon: 'success',
         title: 'Login Berhasil',
@@ -124,8 +144,8 @@ const Login = () => {
 
       Swal.fire({
         icon: 'success',
-        title: 'Akun Dibuat!',
-        text: 'Silakan login dengan akun barumu.',
+        title: 'Akun Berhasil Dibuat!',
+        text: 'Selamat datang di SobatNiaga.',
         timer: 1500,
         showConfirmButton: false
       });
@@ -144,6 +164,13 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-4 overflow-hidden relative">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="absolute left-4 top-4 z-20 rounded-full border border-white/30 bg-slate-950/40 px-4 py-2 text-sm font-bold text-white backdrop-blur hover:bg-slate-900/70"
+        >
+          Kembali ke beranda
+        </button>
         {pageBackgroundUrl && (
           pageBackgroundType === 'video' ? (
             <video

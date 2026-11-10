@@ -27,7 +27,6 @@ const SkinCare = React.lazy(() => import('./SkinCare'));
 const Fashion = React.lazy(() => import('./Fashion'));
 const Jasa = React.lazy(() => import('./Jasa'));
 const Cart = React.lazy(() => import('./Cart'));
-const Login = React.lazy(() => import('./Login'));
 const Profile = React.lazy(() => import('./Profile'));
 const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
 const Address = React.lazy(() => import('./Address'));
@@ -101,7 +100,7 @@ const Home = () => {
   const [isInstantMenuOpen, setIsInstantMenuOpen] = useState(false);
 
   const handleChatBotClick = async (option) => {
-    if (!user?.uid) return;
+    if (!requireLogin()) return;
     const messagesRef = ref(db, `chats/${user.uid}/messages`);
     const chatRef = ref(db, `chats/${user.uid}`);
     
@@ -187,6 +186,18 @@ const Home = () => {
   const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
   const desktopChatRef = useRef(null);
   const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
+  const openLogin = useCallback((mode = 'login') => {
+    navigate(`/login?mode=${mode}`, { state: { from: location.pathname } });
+  }, [location.pathname, navigate]);
+  const requireLogin = useCallback(() => {
+    if (user?.uid) return true;
+    openLogin();
+    return false;
+  }, [openLogin, user?.uid]);
+  const openCart = useCallback(() => {
+    if (!requireLogin()) return;
+    startTransition(() => setCurrentView('cart'));
+  }, [requireLogin, startTransition]);
 
   // State Global Config dari DB
   const [globalNotifSound, setGlobalNotifSound] = useState('');
@@ -515,6 +526,18 @@ const Home = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const privateViews = new Set([
+      'cart', 'payment', 'topup', 'chat', 'seller-chat', 'seller-inbox',
+      'profile', 'history', 'address', 'dashboard-seller', 'admin-dashboard',
+      'niagago', 'sobat-berbagi', 'user-public-profile'
+    ]);
+    if (!isLoading && !user?.uid && privateViews.has(currentView)) {
+      setCurrentView('home');
+      openLogin();
+    }
+  }, [currentView, isLoading, openLogin, user?.uid]);
+
   // Protected View "Redirect"
   useEffect(() => {
     // Jika user mencoba mengakses halaman admin tanpa hak, tendang ke home.
@@ -547,6 +570,7 @@ const Home = () => {
   };
 
   const handleCheckout = (orderId) => {
+    if (!requireLogin()) return;
     startTransition(() => { setCurrentOrder({ id: orderId }); setCurrentView('payment'); });
   };
 
@@ -556,6 +580,7 @@ const Home = () => {
 
   // --- LOGIKA PEMISAH CHAT RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
   const handleChatClick = (sellerId, storeName = null, storePhoto = null, storeEmail = null) => {
+    if (!requireLogin()) return;
     setChatSellerId(sellerId);
     // Simpan info toko sementara untuk inisialisasi metadata chat
     if (storeName) {
@@ -591,10 +616,7 @@ const Home = () => {
 
   // --- LOGIKA CHAT BAWA PRODUK (ATTACH PRODUCT TO CHAT) ---
   const handleChatWithProduct = (productData) => {
-    if (!user) {
-      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
-      return;
-    }
+    if (!requireLogin()) return;
 
     const sellerId = productData.sellerId;
     
@@ -652,6 +674,7 @@ const Home = () => {
   };
 
   const handleGameSelect = (game) => {
+    if (!requireLogin()) return;
     startTransition(() => { setSelectedGame(game); });
   };
 
@@ -861,15 +884,6 @@ const Home = () => {
     );
   }
 
-  // Auth Check
-  if (!user) {
-    return (
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-sky-600" /></div>}>
-        <Login onLogin={(userData) => setUser(userData)} />
-      </Suspense>
-    );
-  }
-
   // Render Content Helper
   const renderContent = () => {
     switch (currentView) {
@@ -900,7 +914,7 @@ const Home = () => {
       case 'user-public-profile': return (
         <UserPublicProfile 
           userId={selectedUserProfileId} 
-          currentUserId={user.uid} 
+          currentUserId={user?.uid}
           onBack={() => startTransition(() => setCurrentView('niaga-video'))} 
           onVideoClick={() => startTransition(() => setCurrentView('niaga-video'))} 
           onProductClick={handleProductClick} 
@@ -928,7 +942,8 @@ const Home = () => {
         <ProductDetail
           product={selectedProduct} 
           onBack={() => startTransition(() => setCurrentView(previousView))} 
-          onGoToCart={() => startTransition(() => setCurrentView('cart'))} 
+          onGoToCart={openCart}
+          onRequireLogin={openLogin}
           user={user} 
           onChatWithProduct={handleChatWithProduct}
           onChatClick={handleChatClick}
@@ -950,7 +965,7 @@ const Home = () => {
           }}
         />
       );
-      case 'payment': return <Payment order={currentOrder} onBack={() => startTransition(() => setCurrentView('cart'))} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
+      case 'payment': return <Payment order={currentOrder} onBack={openCart} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
       case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} playCustomNotificationSound={playCustomNotificationSound} />;
       case 'admin-dashboard': return <AdminDashboard user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
       case 'store-profile': return (
@@ -1763,6 +1778,25 @@ const Home = () => {
 
           {/* Right: Icons */}
           <div className="flex items-center gap-1.5 md:gap-3 theme-text">
+            {!user ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => openLogin('register')}
+                  className="rounded-full border border-sky-500 px-2.5 py-1.5 text-[11px] font-bold text-sky-600 transition-colors hover:bg-sky-50 md:px-4 md:text-sm"
+                >
+                  Daftar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openLogin('login')}
+                  className="rounded-full bg-sky-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-sky-700 md:px-4 md:text-sm"
+                >
+                  Login
+                </button>
+              </div>
+            ) : (
+            <>
             {/* Notifikasi Dropdown */}
             <div className="relative">
               <button 
@@ -1827,7 +1861,7 @@ const Home = () => {
 
             {/* Cart Icon with Badge */}
             <button 
-              onClick={() => startTransition(() => setCurrentView('cart'))}
+              onClick={openCart}
               className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
             >
               <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
@@ -1867,6 +1901,8 @@ const Home = () => {
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         </div>
       </nav>
@@ -1892,17 +1928,22 @@ const Home = () => {
         product={selectedModalProduct} 
         onClose={() => setIsProductModalOpen(false)} 
         user={user} 
+        onRequireLogin={openLogin}
         onChatWithProduct={handleChatWithProduct}
         onChatClick={handleChatClick}
-        onGoToCart={() => startTransition(() => { setIsProductModalOpen(false); setCurrentView('cart'); })}
+        onGoToCart={() => { setIsProductModalOpen(false); openCart(); }}
         onVisitStore={handleVisitStore}
       />
 
       {/* Customer Service Chat Widget */}
       {currentView !== 'chat' && !isDesktopChatOpen && (
-        <DraggableChatWidget 
-            onClick={() => window.innerWidth >= 768 ? setIsDesktopChatOpen(true) : startTransition(() => setCurrentView('chat'))} 
-            icon={chatIcon} 
+        <DraggableChatWidget
+            onClick={() => {
+              if (!requireLogin()) return;
+              if (window.innerWidth >= 768) setIsDesktopChatOpen(true);
+              else startTransition(() => setCurrentView('chat'));
+            }}
+            icon={chatIcon}
         />
       )}
 
@@ -1985,21 +2026,24 @@ const Home = () => {
             <span className="text-[10px] font-medium">Video</span>
           </button>
           
-          <button 
-            onClick={() => startTransition(() => { 
-              setChatSellerId(null); // Reset room aktif pas klik dari bawah
-              setChatTab('admin'); 
-              setCurrentView('chat'); 
-            })} 
+          <button
+            onClick={() => {
+              if (!requireLogin()) return;
+              startTransition(() => {
+                setChatSellerId(null); // Reset room aktif pas klik dari bawah
+                setChatTab('admin');
+                setCurrentView('chat');
+              });
+            }}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}
           >
             <MessageCircle size={24} />
             <span className="text-[10px] font-medium">Chat</span>
           </button>
 
-          <button onClick={() => startTransition(() => setCurrentView('account-menu'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-            <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Profil</span>
+          <button onClick={() => user ? startTransition(() => setCurrentView('account-menu')) : openLogin('login')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            {user?.photoURL ? <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full object-cover" /> : <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />}
+            <span className="text-[10px] font-medium">{user ? 'Profil' : 'Login'}</span>
           </button>
         </div>
       </div>

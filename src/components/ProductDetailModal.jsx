@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisitStore, onChatClick, onChatWithProduct }) => {
+const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisitStore, onChatClick, onChatWithProduct, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
@@ -233,6 +233,10 @@ const ProductDetailModal = ({ product, isOpen, onClose, user, onGoToCart, onVisi
 
   const handleAddToCart = async (redirect = false) => {
     if (!user) {
+      if (onRequireLogin) {
+        onRequireLogin();
+        return;
+      }
       Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk belanja', confirmButtonColor: '#0284c7' });
       return;
     }

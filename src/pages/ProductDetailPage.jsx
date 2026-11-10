@@ -206,7 +206,7 @@ const ProductDetailPage = () => {
 
   const handleAddToCart = async (redirect = false) => {
     if (!user) {
-      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk belanja, Bro!', confirmButtonColor: '#0ea5e9' });
+      navigate('/login?mode=login', { state: { from: `/product/${id}` } });
       return;
     }
 
@@ -263,7 +263,7 @@ const ProductDetailPage = () => {
 
   const handleChatWithProduct = () => {
     if (!user || !product) {
-      Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk menghubungi penjual.', confirmButtonColor: '#0ea5e9' });
+      navigate('/login?mode=login', { state: { from: `/product/${id}` } });
       return;
     }
     

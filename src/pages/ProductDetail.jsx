@@ -8,7 +8,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 
-const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoToCart }) => {
+const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
   const isDarkMode = theme === 'dark';
@@ -158,6 +158,10 @@ const ProductDetail = ({ product, onBack, onChatWithProduct, onVisitStore, onGoT
 
   const handleAddToCart = async (redirect = false) => {
     if (!user) {
+      if (onRequireLogin) {
+        onRequireLogin();
+        return;
+      }
       Swal.fire({ icon: 'warning', title: 'Login Dulu', text: 'Silakan login untuk belanja, Bro!', confirmButtonColor: '#0ea5e9' });
       return;
     }
