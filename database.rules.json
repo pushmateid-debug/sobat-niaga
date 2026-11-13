@@ -9,7 +9,7 @@
     },
 
     "users": {
-      ".indexOn": ["email", "sellerInfo/isVerifiedSeller", "role", "sellerInfo/isCompetitor"],
+      ".indexOn": ["email", "phoneNumber", "sellerInfo/isVerifiedSeller", "role", "sellerInfo/isCompetitor"],
       ".read": "auth != null",
       "$uid": {
         ".read": "auth != null && ($uid == auth.uid || auth.token.email == 'pushmate.id@gmail.com')",

@@ -8,6 +8,15 @@ import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 
+const PHONE_REGEX = /^(08|\+628)[0-9]{8,11}$/;
+
+const normalizePhoneNumber = (value) => {
+  const cleanedNumber = value.trim().replace(/[^0-9+]/g, '');
+  if (cleanedNumber.startsWith('0062')) return `+${cleanedNumber.slice(2)}`;
+  if (cleanedNumber.startsWith('62')) return `+${cleanedNumber}`;
+  return cleanedNumber;
+};
+
 const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashboard }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [username, setUsername] = useState('');
@@ -20,6 +29,8 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
   const [sellerBalance, setSellerBalance] = useState(0);
   const { theme, toggleTheme } = useTheme() || { theme: 'light', toggleTheme: () => {} }; // 🛡️ Safety check context
   const isDarkMode = theme === 'dark'; // Helper variable biar kodingan lebih bersih
+  const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+  const isPhoneNumberValid = !normalizedPhoneNumber || PHONE_REGEX.test(normalizedPhoneNumber);
   // Load data tambahan dari Realtime Database (Real-time Sync)
   useEffect(() => {
     if (user?.uid) {
@@ -62,11 +73,9 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
   const handleSave = async (e) => {
     e.preventDefault();
 
-    // 1. Validasi Format (Regex)
-    // Mendukung 08... atau +628... dengan total digit (tanpa +) antara 10-13
-    const phoneRegex = /^(08|\+628)[0-9]{8,11}$/;
-    if (phoneNumber && !phoneRegex.test(phoneNumber)) {
-      Swal.fire('Format Salah', 'Nomor HP harus diawali 08/+628 dan terdiri dari 10-13 digit.', 'error');
+    const savedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    if (savedPhoneNumber && !PHONE_REGEX.test(savedPhoneNumber)) {
+      Swal.fire('Format Salah', 'Gunakan nomor HP Indonesia yang diawali 08 atau +628.', 'error');
       return;
     }
 
@@ -74,9 +83,9 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
       setIsLoading(true);
 
       // 2. Validasi Keunikan (Pengecekan di Database)
-      if (phoneNumber && phoneNumber !== (user?.phoneNumber || '')) {
+      if (savedPhoneNumber && savedPhoneNumber !== (user?.phoneNumber || '')) {
         const usersRef = dbRef(db, 'users');
-        const q = dbQuery(usersRef, orderByChild('phoneNumber'), equalTo(phoneNumber));
+        const q = dbQuery(usersRef, orderByChild('phoneNumber'), equalTo(savedPhoneNumber));
         const snapshot = await get(q);
         
         if (snapshot.exists()) {
@@ -115,7 +124,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
         email: user.email || '',
         photoURL: newPhotoURL || '',
         username: username || '',
-        phoneNumber: phoneNumber || '',
+        phoneNumber: savedPhoneNumber,
         updatedAt: new Date().toISOString()
       };
 
@@ -126,12 +135,14 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
         ...user,
         displayName,
         photoURL: newPhotoURL,
+        phoneNumber: savedPhoneNumber,
       };
       
       onUpdateUser(updatedUser);
       
       // 5. Update Local State (Visual Feedback & Reset)
       setPhotoURL(newPhotoURL);
+      setPhoneNumber(savedPhoneNumber);
       setImageFile(null); // Reset input file biar gak upload ulang kalau klik simpan lagi
       
       Swal.fire({
@@ -150,6 +161,8 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
       if (error.message.includes('API key')) {
         errorMsg = '⚠️ Kabel Cloudinary Putus, Bro! Cek API Key.';
         iconType = 'warning';
+      } else if (error.message) {
+        errorMsg = error.message;
       }
 
       Swal.fire({
@@ -325,9 +338,9 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
                 className={`w-full px-4 py-2.5 rounded-xl border outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-600 text-gray-100 focus:border-sky-400 focus:ring-2 focus:ring-sky-900/20' : 'bg-white border-gray-200 text-gray-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'}`} 
                 placeholder="08xx-xxxx-xxxx" 
               />
-              {phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber) && (
+              {phoneNumber && !isPhoneNumberValid && (
                 <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 animate-pulse">
-                  <AlertCircle size={12} /> Format nomor HP tidak valid! (08... / +628...)
+                  <AlertCircle size={12} /> Format tidak valid! Gunakan 08..., 62..., atau +62...
                 </p>
               )}
             </div>
@@ -335,8 +348,8 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
             <div className="pt-4">
               <button 
                 type="submit" 
-                disabled={isLoading || (phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber))} 
-                className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${(isLoading || (phoneNumber && !/^(08|\+628)[0-9]{8,11}$/.test(phoneNumber))) ? (isDarkMode ? 'bg-slate-700 cursor-not-allowed text-gray-500' : 'bg-gray-300 cursor-not-allowed text-gray-500') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}
+                disabled={isLoading || !isPhoneNumberValid}
+                className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${(isLoading || !isPhoneNumberValid) ? (isDarkMode ? 'bg-slate-700 cursor-not-allowed text-gray-500' : 'bg-gray-300 cursor-not-allowed text-gray-500') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}
               >
                 {isLoading ? <><Loader2 size={20} className="animate-spin" /> Menyimpan...</> : <><Save size={20} /> Simpan Perubahan</>}
               </button>
