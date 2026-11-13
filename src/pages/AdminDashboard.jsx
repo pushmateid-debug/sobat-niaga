@@ -384,8 +384,12 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     motorRate: 2500,
     carRate: 5000,
     appFee: 2000,
-    isMaintenance: false
+    isMaintenance: false,
+    autoExpireOjekOrders: true,
+    niagaGoOrderExpiryValue: 10,
+    niagaGoOrderExpiryUnit: 'minutes'
   });
+  const [adminSettingsLoaded, setAdminSettingsLoaded] = useState(false);
   const [settingsView, setSettingsView] = useState('menu'); // 'menu', 'flash_deal', 'rekber', 'niagago'
   
   // State Event Kompetisi
@@ -891,9 +895,72 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
       if (snapshot.exists()) {
         setAdminSettings(prev => ({ ...prev, ...snapshot.val() }));
       }
+      setAdminSettingsLoaded(true);
+    }, (error) => {
+      console.error('Gagal memuat pengaturan admin untuk auto-expire:', error);
+      setAdminSettingsLoaded(true);
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!adminSettingsLoaded || adminSettings.autoExpireOjekOrders === false) return undefined;
+
+    const value = Number(adminSettings.niagaGoOrderExpiryValue);
+    const unitMultiplier = adminSettings.niagaGoOrderExpiryUnit === 'seconds' ? 1000 : 60 * 1000;
+    const expiryMs = value * unitMultiplier;
+    if (!Number.isFinite(expiryMs) || expiryMs <= 0) return undefined;
+
+    const activeOrdersQuery = queryFirestore(
+      collection(dbFirestore, 'ojek_orders'),
+      where('status', 'in', ['pending', 'accepting', 'accepted', 'paid'])
+    );
+    let activeOrders = [];
+    const expiringOrderIds = new Set();
+    let hasListenerError = false;
+    const expireInactiveOrders = () => {
+      const now = Date.now();
+      activeOrders.forEach((order) => {
+        if (expiringOrderIds.has(order.id)) return;
+        const createdAt = order.createdAt?.toMillis
+          ? order.createdAt.toMillis()
+          : typeof order.createdAt === 'number'
+            ? order.createdAt
+            : new Date(order.createdAt).getTime();
+        if (!Number.isFinite(createdAt) || now - createdAt < expiryMs) return;
+
+        expiringOrderIds.add(order.id);
+        updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
+          status: 'expired',
+          expiredAt: now,
+          expirationReason: 'inactive_timeout'
+        }).catch((error) => {
+          expiringOrderIds.delete(order.id);
+          console.error(`Gagal meng-expire pesanan NiagaGo ${order.id}:`, error);
+        });
+      });
+    };
+    const unsubscribe = onSnapshot(activeOrdersQuery, (snapshot) => {
+      activeOrders = snapshot.docs.map((orderDoc) => ({ id: orderDoc.id, ...orderDoc.data() }));
+      expireInactiveOrders();
+    }, (error) => {
+      hasListenerError = true;
+      console.error('Gagal memantau pesanan NiagaGo untuk auto-expire:', error);
+    });
+    const timer = setInterval(() => {
+      if (!hasListenerError) expireInactiveOrders();
+    }, 10000);
+
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
+  }, [
+    adminSettings.autoExpireOjekOrders,
+    adminSettingsLoaded,
+    adminSettings.niagaGoOrderExpiryValue,
+    adminSettings.niagaGoOrderExpiryUnit
+  ]);
 
   // Fetch Flash Deal (Realtime DB)
   useEffect(() => {
@@ -1832,6 +1899,12 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     try {
+        const expiryValue = Number(adminSettings.niagaGoOrderExpiryValue);
+        const expiryMultiplier = adminSettings.niagaGoOrderExpiryUnit === 'seconds' ? 1 : 60;
+        const expirySeconds = expiryValue * expiryMultiplier;
+        if (!Number.isInteger(expiryValue) || !Number.isFinite(expirySeconds) || expirySeconds < 1 || expirySeconds > 7 * 24 * 60 * 60) {
+            throw new Error('Durasi auto-expire harus antara 1 detik dan 7 hari.');
+        }
         await update(ref(realDb, 'admin/settings'), adminSettings);
         // Sync ke paymentInfo agar kompatibel dengan halaman Payment user
         await update(ref(realDb, 'admin/paymentInfo'), {
@@ -3367,6 +3440,50 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                             <label className={labelClass}>Biaya Admin (Potongan per Order)</label>
                             <input type="number" value={adminSettings.appFee} onChange={e => setAdminSettings({...adminSettings, appFee: e.target.value})} className={inputClass} />
                             <p className="text-[10px] text-gray-400 mt-1">Nominal ini akan dipotong dari pendapatan driver setiap order selesai.</p>
+                        </div>
+                        <div className="space-y-3 rounded-xl border p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm font-bold">Auto-hapus pesanan tidak aktif</p>
+                                    <p className="text-[10px] text-gray-400">Pesanan yang belum memulai perjalanan akan diubah menjadi kedaluwarsa.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    aria-label="Aktifkan auto-expire pesanan NiagaGo"
+                                    aria-pressed={adminSettings.autoExpireOjekOrders !== false}
+                                    onClick={() => setAdminSettings({...adminSettings, autoExpireOjekOrders: adminSettings.autoExpireOjekOrders === false})}
+                                    className={`w-12 h-6 rounded-full transition-colors relative ${adminSettings.autoExpireOjekOrders !== false ? 'bg-green-500' : 'bg-gray-300'}`}
+                                >
+                                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${adminSettings.autoExpireOjekOrders !== false ? 'left-7' : 'left-1'}`}></div>
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelClass}>Kedaluwarsa setelah</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max={adminSettings.niagaGoOrderExpiryUnit === 'seconds' ? 604800 : 10080}
+                                        step="1"
+                                        value={adminSettings.niagaGoOrderExpiryValue}
+                                        onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryValue: e.target.value})}
+                                        className={inputClass}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Satuan waktu</label>
+                                    <select
+                                        value={adminSettings.niagaGoOrderExpiryUnit}
+                                        onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryUnit: e.target.value})}
+                                        className={inputClass}
+                                    >
+                                        <option value="seconds">Detik</option>
+                                        <option value="minutes">Menit</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-gray-400">Berlaku untuk pesanan yang belum memulai perjalanan. Maksimal 7 hari.</p>
                         </div>
                         <div className="flex items-center justify-between p-3 border rounded-xl">
                             <span className="text-sm font-bold">Mode Maintenance</span>

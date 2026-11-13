@@ -18,7 +18,7 @@ import L from 'leaflet';
 const OFFER_DURATION_MS = 60 * 1000;
 const INITIAL_SEARCH_DURATION_MS = 2 * 60 * 1000;
 const SEARCH_EXPANSION_STEP_MS = 60 * 1000;
-const SEARCH_EXPIRY_MS = 10 * 60 * 1000;
+const DEFAULT_SEARCH_EXPIRY_MS = 10 * 60 * 1000;
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
 const INITIAL_SEARCH_RADIUS_METERS = 2000;
 const MAX_SEARCH_RADIUS_METERS = 4000;
@@ -544,10 +544,37 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [showQrisModal, setShowQrisModal] = useState(false);
+  const [searchExpiryMs, setSearchExpiryMs] = useState(DEFAULT_SEARCH_EXPIRY_MS);
+  const [searchExpiryLoaded, setSearchExpiryLoaded] = useState(false);
+  const expiringOrderIdsRef = useRef(new Set());
 
   useEffect(() => {
     const timer = setInterval(() => setSearchClock(Date.now()), 5000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onValue(ref(realDb, 'admin/settings'), (snapshot) => {
+      const settings = snapshot.val() || {};
+      if (settings.autoExpireOjekOrders === false) {
+        setSearchExpiryMs(Infinity);
+        setSearchExpiryLoaded(true);
+        return;
+      }
+
+      const value = Number(settings.niagaGoOrderExpiryValue ?? 10);
+      const multiplier = settings.niagaGoOrderExpiryUnit === 'seconds' ? 1000 : 60 * 1000;
+      const configuredExpiry = value * multiplier;
+      setSearchExpiryMs(Number.isFinite(configuredExpiry) && configuredExpiry > 0
+        ? Math.min(configuredExpiry, 7 * 24 * 60 * 60 * 1000)
+        : DEFAULT_SEARCH_EXPIRY_MS);
+      setSearchExpiryLoaded(true);
+    }, (error) => {
+      console.error('Gagal memuat pengaturan masa aktif NiagaGo:', error);
+      setSearchExpiryMs(DEFAULT_SEARCH_EXPIRY_MS);
+      setSearchExpiryLoaded(true);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Prefill Form Pendaftaran saat User Profile dimuat
@@ -705,6 +732,33 @@ const NiagaGo = ({ onOpenProfile }) => {
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [isDriverMode, userProfile?.uid]);
 
+  useEffect(() => {
+    if (!searchExpiryLoaded || isDriverMode || !dbFirestore || !userProfile?.uid || !Number.isFinite(searchExpiryMs)) return undefined;
+
+    const expireOwnInactiveOrders = () => {
+      orders.forEach((order) => {
+        if (!['pending', 'accepting', 'accepted', 'paid'].includes(order.status)) return;
+        if (expiringOrderIdsRef.current.has(order.id)) return;
+        const createdAt = getTimestampMillis(order.createdAt);
+        if (!createdAt || Date.now() - createdAt < searchExpiryMs) return;
+
+        expiringOrderIdsRef.current.add(order.id);
+        updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
+          status: 'expired',
+          expiredAt: Date.now(),
+          expirationReason: 'inactive_timeout'
+        }).catch((error) => {
+          expiringOrderIdsRef.current.delete(order.id);
+          console.error(`Gagal meng-expire pesanan NiagaGo ${order.id}:`, error);
+        });
+      });
+    };
+
+    expireOwnInactiveOrders();
+    const timer = setInterval(expireOwnInactiveOrders, 10000);
+    return () => clearInterval(timer);
+  }, [isDriverMode, orders, searchExpiryLoaded, searchExpiryMs, userProfile?.uid]);
+
   // --- COMBINED ORDERS (OJEK + FOOD) ---
   // Gabungin orderan Ojek (Firestore) dan Food (Realtime DB) buat ditampilin di list
   const combinedOrders = useMemo(() => {
@@ -719,7 +773,9 @@ const NiagaGo = ({ onOpenProfile }) => {
           if (order.type === 'food') return true;
           if (order.driverId === userProfile?.uid && order.status !== 'pending') return true;
           if (driverService !== 'ojek' || order.status !== 'pending') return false;
-          if (order.searchExpiresAt && order.searchExpiresAt <= searchClock) return false;
+          const createdAt = getTimestampMillis(order.createdAt);
+          const expiresAt = createdAt ? createdAt + searchExpiryMs : order.searchExpiresAt;
+          if (Number.isFinite(searchExpiryMs) && expiresAt && expiresAt <= searchClock) return false;
           if (!hasFreshDriverLocation || order.vehicleType !== activeVehicle) return false;
           if (!order.pickupCoords) return true;
           const pickupDistance = L.latLng(driverLocation.lat, driverLocation.lng)
@@ -733,7 +789,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt).getTime();
         return timeB - timeA;
     });
-  }, [orders, activeFoodOrders, isDriverMode, driverService, activeVehicle, driversLocations, userProfile?.uid, searchClock]);
+  }, [orders, activeFoodOrders, isDriverMode, driverService, activeVehicle, driversLocations, userProfile?.uid, searchClock, searchExpiryMs]);
 
   // --- DRIVER GPS BROADCASTER (Kirim Lokasi ke DB) ---
   useEffect(() => {
@@ -1004,7 +1060,8 @@ const NiagaGo = ({ onOpenProfile }) => {
       const activeStatuses = ['pending', 'accepting', 'accepted', 'paid', 'verified', 'ongoing'];
       const hasActiveOrder = orders.some((order) =>
         activeStatuses.includes(order.status) &&
-        (!order.searchExpiresAt || order.searchExpiresAt > Date.now() || order.status !== 'pending')
+        (order.status !== 'pending' || !Number.isFinite(searchExpiryMs) ||
+          (getTimestampMillis(order.createdAt) ? getTimestampMillis(order.createdAt) + searchExpiryMs > Date.now() : !order.searchExpiresAt || order.searchExpiresAt > Date.now()))
       );
       if (hasActiveOrder) {
         await Swal.fire('Pesanan Masih Aktif', 'Selesaikan atau batalkan pesanan yang sedang berjalan sebelum membuat pesanan baru.', 'info');
@@ -1075,7 +1132,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         notes: notes.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),
-        searchExpiresAt: Date.now() + SEARCH_EXPIRY_MS,
+        searchExpiresAt: Number.isFinite(searchExpiryMs) ? Date.now() + searchExpiryMs : null,
         offers: [],
         driverId: null,
         paymentMethod: selectedPaymentMethod
@@ -2508,6 +2565,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                    order.status === 'ready_for_pickup' ? 'Driver OTW Resto' :
                    order.status === 'delivering' ? 'Diantar ke Kamu' :
                    order.status === 'ongoing' ? 'Dalam Perjalanan' :
+                   order.status === 'expired' ? 'Kedaluwarsa' :
                    'Selesai'}
                 </div>
 
@@ -2738,7 +2796,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                     <div className="flex justify-between items-center w-full mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-slate-700">
                         <span className={`text-xs font-bold flex items-center gap-1 ${order.status === 'completed' ? 'text-green-600' : 'text-red-500'}`}>
                           {order.status === 'completed' ? <Star size={12} fill="currentColor" /> : <X size={12} />} 
-                          {order.status === 'completed' ? 'Selesai' : (order.status === 'payment_rejected' ? 'Ditolak' : 'Dibatalkan')}
+                          {order.status === 'completed' ? 'Selesai' : (order.status === 'expired' ? 'Kedaluwarsa' : (order.status === 'payment_rejected' ? 'Ditolak' : 'Dibatalkan'))}
                         </span>
                         <button 
                             onClick={() => handleDeleteSingleHistory(order)}
