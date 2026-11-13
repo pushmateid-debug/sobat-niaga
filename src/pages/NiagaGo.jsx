@@ -2056,15 +2056,6 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
-  // Cek apakah ada order yang bisa dibersihkan untuk tombol "Bersihkan Selesai"
-  const hasClearableOrders = combinedOrders.some(o => {
-    const isFinished = ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(o.status);
-    const isCurrentParticipant = isDriverMode
-      ? o.driverId === userProfile?.uid
-      : (o.type === 'food' ? (o.buyerId || o.userId) === userProfile?.uid : o.userId === userProfile?.uid);
-    return isFinished && isCurrentParticipant && !o[isDriverMode ? 'hiddenForDriver' : 'hiddenForUser'];
-  });
-
   // --- RENDER REGISTRATION PAGE (FULL PAGE) ---
   if (viewMode === 'register') {
     return (
@@ -2392,11 +2383,12 @@ const NiagaGo = ({ onOpenProfile }) => {
             <h3 className={`font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {isDriverMode ? 'Antrian & Riwayat' : 'Riwayat Perjalanan'}
             </h3>
-            {hasClearableOrders && (
-              <button onClick={handleClearHistory} className="text-xs font-bold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors">
-                <Trash2 size={14}/> Hapus Riwayat {isDriverMode ? 'Driver' : 'Penumpang'}
-              </button>
-            )}
+            <button
+              onClick={handleClearHistory}
+              className="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 transition-colors"
+            >
+              <Trash2 size={14}/> Hapus Riwayat {isDriverMode ? 'Driver' : 'Penumpang'}
+            </button>
           </div>
 
           {/* --- TAMPILAN DRIVER: NIAGA FOOD DELIVERY POOL --- */}
