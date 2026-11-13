@@ -4,7 +4,7 @@ import {
   Image as ImageIcon, MessageCircle, Settings, Bike, Menu, X, 
   Send, Check, ShoppingBag, Zap, LayoutTemplate, Save, Shield, MoreVertical, Trash2,
   LogOut, TrendingUp, CreditCard, Loader2, ZoomIn, User, ArrowLeft, Search,
-  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, 
+  Info, FileText, Lock, HelpCircle, Trophy, Crown, Target, ChevronDown, ChevronRight, Clock,
   Eye, Mail, HeartHandshake, UtensilsCrossed, Music, Volume2, Upload, Film, Calendar as CalendarIcon, Brain, Bot, Database
 } from 'lucide-react';
 import { dbFirestore, db as realDb, auth, storage } from '../config/firebase';
@@ -3204,104 +3204,45 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
             <div className="space-y-6">
               {settingsView === 'menu' ? (
                 <>
-                  <h2 className="text-2xl font-bold mb-4">Menu Pengaturan</h2>
-                  <div className="grid grid-cols-3 gap-3 mb-8">
-                    <button 
-                      onClick={() => setSettingsView('flash_deal')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                  <h2 className="text-2xl font-bold mb-3">Menu Pengaturan</h2>
+                  {[
+                    { id: 'flash_deal', label: 'Flash Deal', Icon: Zap, color: 'text-yellow-500' },
+                    { id: 'rekber', label: 'Rekening Pusat', Icon: CreditCard, color: 'text-sky-500' },
+                    { id: 'niagago', label: 'Tarif NiagaGo', Icon: Bike, color: 'text-orange-500' },
+                    { id: 'order_expiry', label: 'Masa Aktif Pesanan NiagaGo', Icon: Clock, color: 'text-rose-500' },
+                    { id: 'competition', label: 'Event Juara', Icon: Trophy, color: 'text-indigo-500' },
+                    { id: 'audio_notif', label: 'Audio Notifikasi', Icon: Music, color: 'text-purple-500' }
+                  ].map(({ id, label, Icon, color }) => (
+                    <button
+                      key={id}
+                      onClick={() => setSettingsView(id)}
+                      className={`group flex w-full items-center gap-3 border-b px-2 py-3 text-left transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-800' : 'border-gray-100 hover:bg-gray-50'}`}
                     >
-                      <div className="p-4 bg-yellow-100 text-yellow-600 rounded-full dark:bg-yellow-900/30 dark:text-yellow-400">
-                        <Zap size={28} />
-                      </div>
-                      <span className="font-bold text-xs text-center">Flash Deal</span>
+                      <Icon size={20} className={color} />
+                      <span className="flex-1 text-sm font-semibold">{label}</span>
+                      <ChevronRight size={17} className="text-gray-400 transition-transform group-hover:translate-x-1" />
                     </button>
+                  ))}
 
-                    <button 
-                      onClick={() => setSettingsView('rekber')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-4 bg-sky-100 text-sky-600 rounded-full dark:bg-sky-900/30 dark:text-sky-400">
-                        <CreditCard size={28} />
-                      </div>
-                      <span className="font-bold text-xs text-center">Rekening Pusat</span>
-                    </button>
-
-                    <button 
-                      onClick={() => setSettingsView('niagago')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-4 bg-orange-100 text-orange-600 rounded-full dark:bg-orange-900/30 dark:text-orange-400">
-                        <Bike size={28} />
-                      </div>
-                      <span className="font-bold text-xs text-center">Tarif NiagaGo</span>
-                    </button>
-
-                    <button 
-                      onClick={() => setSettingsView('competition')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-4 bg-indigo-100 text-indigo-600 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400">
-                        <Trophy size={28} />
-                      </div>
-                      <span className="font-bold text-xs text-center">Event Juara</span>
-                    </button>
-
-                    <button 
-                      onClick={() => setSettingsView('audio_notif')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-3 transition-all hover:shadow-lg hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-4 bg-purple-100 text-purple-600 rounded-full dark:bg-purple-900/30 dark:text-purple-400">
-                        <Music size={28} />
-                      </div>
-                      <span className="font-bold text-xs text-center">Audio Notifikasi</span>
-                    </button>
-                  </div>
-
-                  {/* Grup Informasi & Legalitas */}
-                  <h3 className="text-sm font-bold mb-3 flex items-center gap-2 opacity-70 uppercase tracking-wider">
-                    <Info size={16}/> Informasi & Legalitas
+                  <h3 className="mb-1 mt-5 flex items-center gap-2 text-xs font-bold uppercase tracking-wider opacity-60">
+                    <Info size={15} /> Informasi & Legalitas
                   </h3>
-                  <div className="grid grid-cols-4 gap-3">
-                    <button 
-                      onClick={() => setSettingsView('about')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                  {[
+                    { id: 'about', label: 'Tentang Kami', Icon: Info, color: 'text-blue-500' },
+                    { id: 'terms', label: 'Syarat & Ketentuan', Icon: FileText, color: 'text-orange-500' },
+                    { id: 'privacy', label: 'Kebijakan Privasi', Icon: Lock, color: 'text-green-500' },
+                    { id: 'help', label: 'Pusat Bantuan', Icon: HelpCircle, color: 'text-purple-500' }
+                  ].map(({ id, label, Icon, color }) => (
+                    <button
+                      key={id}
+                      onClick={() => setSettingsView(id)}
+                      className={`group flex w-full items-center gap-3 border-b px-2 py-3 text-left transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-800' : 'border-gray-100 hover:bg-gray-50'}`}
                     >
-                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
-                        <Info size={20} />
-                      </div>
-                      <span className="font-bold text-[10px] text-center leading-tight">Tentang<br/>Kami</span>
+                      <Icon size={20} className={color} />
+                      <span className="flex-1 text-sm font-semibold">{label}</span>
+                      <ChevronRight size={17} className="text-gray-400 transition-transform group-hover:translate-x-1" />
                     </button>
-
-                    <button 
-                      onClick={() => setSettingsView('terms')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-2 bg-orange-50 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400">
-                        <FileText size={20} />
-                      </div>
-                      <span className="font-bold text-[10px] text-center leading-tight">Syarat &<br/>Ketentuan</span>
-                    </button>
-
-                    <button 
-                      onClick={() => setSettingsView('privacy')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-2 bg-green-50 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400">
-                        <Lock size={20} />
-                      </div>
-                      <span className="font-bold text-[10px] text-center leading-tight">Kebijakan<br/>Privasi</span>
-                    </button>
-
-                    <button 
-                      onClick={() => setSettingsView('help')} 
-                      className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md hover:-translate-y-1 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      <div className="p-2 bg-purple-50 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400">
-                        <HelpCircle size={20} />
-                      </div>
-                      <span className="font-bold text-[10px] text-center leading-tight">Pusat<br/>Bantuan</span>
-                    </button>
-                  </div>
+                  ))}
                 </>
               ) : (
                 <>
@@ -3441,50 +3382,6 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                             <input type="number" value={adminSettings.appFee} onChange={e => setAdminSettings({...adminSettings, appFee: e.target.value})} className={inputClass} />
                             <p className="text-[10px] text-gray-400 mt-1">Nominal ini akan dipotong dari pendapatan driver setiap order selesai.</p>
                         </div>
-                        <div className="space-y-3 rounded-xl border p-4">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-sm font-bold">Auto-hapus pesanan tidak aktif</p>
-                                    <p className="text-[10px] text-gray-400">Pesanan yang belum memulai perjalanan akan diubah menjadi kedaluwarsa.</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    aria-label="Aktifkan auto-expire pesanan NiagaGo"
-                                    aria-pressed={adminSettings.autoExpireOjekOrders !== false}
-                                    onClick={() => setAdminSettings({...adminSettings, autoExpireOjekOrders: adminSettings.autoExpireOjekOrders === false})}
-                                    className={`w-12 h-6 rounded-full transition-colors relative ${adminSettings.autoExpireOjekOrders !== false ? 'bg-green-500' : 'bg-gray-300'}`}
-                                >
-                                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${adminSettings.autoExpireOjekOrders !== false ? 'left-7' : 'left-1'}`}></div>
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className={labelClass}>Kedaluwarsa setelah</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max={adminSettings.niagaGoOrderExpiryUnit === 'seconds' ? 604800 : 10080}
-                                        step="1"
-                                        value={adminSettings.niagaGoOrderExpiryValue}
-                                        onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryValue: e.target.value})}
-                                        className={inputClass}
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Satuan waktu</label>
-                                    <select
-                                        value={adminSettings.niagaGoOrderExpiryUnit}
-                                        onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryUnit: e.target.value})}
-                                        className={inputClass}
-                                    >
-                                        <option value="seconds">Detik</option>
-                                        <option value="minutes">Menit</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <p className="text-[10px] text-gray-400">Berlaku untuk pesanan yang belum memulai perjalanan. Maksimal 7 hari.</p>
-                        </div>
                         <div className="flex items-center justify-between p-3 border rounded-xl">
                             <span className="text-sm font-bold">Mode Maintenance</span>
                             <button type="button" onClick={() => setAdminSettings({...adminSettings, isMaintenance: !adminSettings.isMaintenance})} className={`w-12 h-6 rounded-full transition-colors relative ${adminSettings.isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}>
@@ -3492,6 +3389,55 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                             </button>
                         </div>
                         <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors">Simpan Pengaturan Tarif</button>
+                    </form>
+                </div>
+                )}
+
+                {settingsView === 'order_expiry' && (
+                <div className={`p-5 rounded-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><Clock size={20} className="text-rose-500"/> Masa Aktif Pesanan NiagaGo</h3>
+                    <p className="mb-5 text-xs text-gray-500">Pesanan yang belum memulai perjalanan akan ditandai kedaluwarsa setelah waktu ini.</p>
+                    <form onSubmit={handleSaveSettings} className="space-y-4">
+                        <div className="flex items-center justify-between gap-3 border-b pb-4 dark:border-slate-700">
+                            <span className="text-sm font-semibold">Aktifkan hapus otomatis</span>
+                            <button
+                                type="button"
+                                aria-label="Aktifkan auto-expire pesanan NiagaGo"
+                                aria-pressed={adminSettings.autoExpireOjekOrders !== false}
+                                onClick={() => setAdminSettings({...adminSettings, autoExpireOjekOrders: adminSettings.autoExpireOjekOrders === false})}
+                                className={`w-12 h-6 rounded-full transition-colors relative ${adminSettings.autoExpireOjekOrders !== false ? 'bg-green-500' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${adminSettings.autoExpireOjekOrders !== false ? 'left-7' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={labelClass}>Kedaluwarsa setelah</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max={adminSettings.niagaGoOrderExpiryUnit === 'seconds' ? 604800 : 10080}
+                                    step="1"
+                                    value={adminSettings.niagaGoOrderExpiryValue}
+                                    onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryValue: e.target.value})}
+                                    className={inputClass}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Satuan waktu</label>
+                                <select
+                                    value={adminSettings.niagaGoOrderExpiryUnit}
+                                    onChange={e => setAdminSettings({...adminSettings, niagaGoOrderExpiryUnit: e.target.value})}
+                                    className={inputClass}
+                                >
+                                    <option value="seconds">Detik</option>
+                                    <option value="minutes">Menit</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400">Durasi maksimal 7 hari. Riwayat tidak dihapus permanen, hanya status pesanan yang berubah menjadi kedaluwarsa.</p>
+                        <button type="submit" className="w-full py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-colors">Simpan Masa Aktif Pesanan</button>
                     </form>
                 </div>
                 )}
