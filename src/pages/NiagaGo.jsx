@@ -8,7 +8,7 @@ import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
-import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, updateDoc, deleteDoc, getDoc, getDocs, writeBatch, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
@@ -1940,14 +1940,20 @@ const NiagaGo = ({ onOpenProfile }) => {
     return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   };
 
-  // 9. Hapus Riwayat (Soft Delete) - Satuan
+  // 9. Hapus Riwayat Selesai
   const handleDeleteSingleHistory = async (order) => {
+    const isFinished = ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(order.status);
+    if (!isFinished) {
+      Swal.fire('Belum Selesai', 'Pesanan aktif tidak dapat dihapus dari riwayat.', 'info');
+      return;
+    }
+
     const result = await Swal.fire({
-      title: 'Hapus Riwayat?',
-      text: "Riwayat ini akan disembunyikan dari daftar.",
+      title: 'Hapus Permanen?',
+      text: 'Riwayat pesanan ini akan dihapus permanen dan tidak dapat dipulihkan.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Ya, Hapus',
+      confirmButtonText: 'Ya, Hapus Permanen',
       confirmButtonColor: '#ef4444',
       cancelButtonText: 'Batal'
     });
@@ -1959,59 +1965,78 @@ const NiagaGo = ({ onOpenProfile }) => {
                 [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true
             });
         } else {
-            const updateData = isDriverMode ? { hiddenForDriver: true } : { hiddenForUser: true };
-            await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), updateData);
+            const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
+            const orderSnapshot = await getDoc(orderRef);
+            const ownedOrder = orderSnapshot.data();
+            if (!ownedOrder ||
+              ownedOrder[isDriverMode ? 'driverId' : 'userId'] !== userProfile.uid ||
+              !['completed', 'cancelled', 'payment_rejected', 'expired'].includes(ownedOrder.status)) {
+              throw new Error('Pesanan tidak ditemukan, bukan milik akun ini, atau belum selesai.');
+            }
+            await deleteDoc(orderRef);
         }
-        Swal.fire('Terhapus', 'Riwayat berhasil disembunyikan.', 'success');
+        Swal.fire('Terhapus', order.type === 'food' ? 'Riwayat makanan disembunyikan.' : 'Riwayat NiagaGo dihapus permanen.', 'success');
       } catch (error) {
-        console.error("Error deleting history:", error);
-        Swal.fire('Error', 'Gagal menghapus riwayat.', 'error');
+        console.error('Error deleting history:', error);
+        Swal.fire('Gagal Menghapus', error.message || 'Database menolak penghapusan riwayat.', 'error');
       }
     }
   };
 
-  // 10. Bersihkan Semua Riwayat Selesai (Bulk Soft Delete)
+  // 10. Hapus Permanen Semua Riwayat NiagaGo Selesai Milik Akun Ini
   const handleClearHistory = async () => {
-    const targetOrders = combinedOrders.filter(o => {
-      const isFinished = ['completed', 'cancelled', 'payment_rejected'].includes(o.status);
-      // Driver hanya bisa hapus history miliknya, bukan order pending di pool
-      return isFinished && (isDriverMode ? o.driverId === userProfile.uid : true);
-    });
+    if (!userProfile?.uid || !dbFirestore) {
+      Swal.fire('Tidak Dapat Menghapus', 'Akun atau koneksi database tidak tersedia.', 'error');
+      return;
+    }
 
-    if (targetOrders.length === 0) return;
+    try {
+      const ownerField = isDriverMode ? 'driverId' : 'userId';
+      const snapshot = await getDocs(query(
+        collection(dbFirestore, 'ojek_orders'),
+        where(ownerField, '==', userProfile.uid)
+      ));
+      const finishedOrders = snapshot.docs.filter((orderDoc) =>
+        ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(orderDoc.data().status)
+      );
+      if (finishedOrders.length === 0) {
+        Swal.fire('Tidak Ada Riwayat', 'Tidak ada riwayat NiagaGo selesai yang bisa dihapus.', 'info');
+        return;
+      }
 
-    const result = await Swal.fire({
-      title: 'Bersihkan Semua?',
-      text: `Yakin ingin menghapus ${targetOrders.length} riwayat yang sudah selesai/batal? Data di Admin tetap aman.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Ya, Bersihkan',
-      confirmButtonColor: '#ef4444'
-    });
-
-    if (result.isConfirmed) {
-      const updateData = isDriverMode ? { hiddenForDriver: true } : { hiddenForUser: true };
-      
-      const promises = targetOrders.map(o => {
-          if (o.type === 'food') {
-              return update(ref(realDb, `orders/${o.id}`), {
-                  [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true
-              });
-          } else {
-              return updateDoc(doc(dbFirestore, 'ojek_orders', o.id), updateData);
-          }
+      const result = await Swal.fire({
+        title: 'Hapus Riwayat Permanen?',
+        text: `${finishedOrders.length} riwayat selesai/batal milik akun ini akan dihapus permanen dari NiagaGo. Pesanan aktif dan riwayat pengguna lain tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan.`,
+        icon: 'warning',
+        input: 'checkbox',
+        inputValue: 0,
+        inputPlaceholder: 'Saya paham riwayat ini tidak dapat dipulihkan',
+        inputValidator: (value) => value ? undefined : 'Centang konfirmasi untuk melanjutkan.',
+        showCancelButton: true,
+        confirmButtonText: 'Hapus Permanen',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#dc2626'
       });
 
-      Promise.all(promises)
-        .then(() => Swal.fire('Bersih!', 'Riwayat perjalanan telah dibersihkan.', 'success'))
-        .catch(() => Swal.fire('Error', 'Gagal membersihkan riwayat.', 'error'));
+      if (!result.isConfirmed) return;
+
+      for (let offset = 0; offset < finishedOrders.length; offset += 450) {
+        const batch = writeBatch(dbFirestore);
+        finishedOrders.slice(offset, offset + 450).forEach((orderDoc) => batch.delete(orderDoc.ref));
+        await batch.commit();
+      }
+
+      await Swal.fire('Riwayat Dihapus', `${finishedOrders.length} riwayat NiagaGo selesai/batal telah dihapus permanen dari akun ini.`, 'success');
+    } catch (error) {
+      console.error('Error clearing NiagaGo history:', error);
+      Swal.fire('Gagal Menghapus', error.message || 'Periksa izin Firestore dan coba lagi.', 'error');
     }
   };
 
   // Cek apakah ada order yang bisa dibersihkan untuk tombol "Bersihkan Selesai"
   const hasClearableOrders = combinedOrders.some(o => {
-    const isFinished = ['completed', 'cancelled', 'payment_rejected'].includes(o.status);
-    return isFinished && (isDriverMode ? o.driverId === userProfile.uid : true);
+    const isFinished = ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(o.status);
+    return o.type !== 'food' && isFinished && (isDriverMode ? o.driverId === userProfile.uid : o.userId === userProfile?.uid);
   });
 
   // --- RENDER REGISTRATION PAGE (FULL PAGE) ---
@@ -2343,7 +2368,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             </h3>
             {hasClearableOrders && (
               <button onClick={handleClearHistory} className="text-xs font-bold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors">
-                <Trash2 size={14}/> Bersihkan Selesai
+                <Trash2 size={14}/> Hapus Riwayat Selesai
               </button>
             )}
           </div>
