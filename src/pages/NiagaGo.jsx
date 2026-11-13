@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X,
   Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils 
@@ -8,15 +8,51 @@ import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
-import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// --- KONSTANTA ZONA (RADIUS) ---
-const ZONE_RADIUS = 5000; // 5000 meter (5 KM). Ubah ke 50 jika ingin sangat dekat.
+const OFFER_DURATION_MS = 60 * 1000;
+const INITIAL_SEARCH_DURATION_MS = 2 * 60 * 1000;
+const SEARCH_EXPANSION_STEP_MS = 60 * 1000;
+const SEARCH_EXPIRY_MS = 10 * 60 * 1000;
+const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
+const INITIAL_SEARCH_RADIUS_METERS = 2000;
+const MAX_SEARCH_RADIUS_METERS = 4000;
+const ZONE_RADIUS = MAX_SEARCH_RADIUS_METERS;
+
+const getTimestampMillis = (value) => {
+  if (typeof value === 'number') return value;
+  if (value?.toMillis) return value.toMillis();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getOfferExpiry = (offer, order) => {
+  if (typeof offer.expiresAt === 'number') return offer.expiresAt;
+  const createdAt = getTimestampMillis(offer.createdAt) || getTimestampMillis(order.createdAt);
+  return createdAt ? createdAt + OFFER_DURATION_MS : 0;
+};
+
+const getActiveOffers = (order, now = Date.now()) => (
+  (Array.isArray(order.offers) ? order.offers : []).filter((offer) =>
+    offer.status !== 'rejected' && getOfferExpiry(offer, order) > now
+  )
+);
+
+const getSearchRadius = (order, now = Date.now()) => {
+  if (getActiveOffers(order, now).length > 0) return INITIAL_SEARCH_RADIUS_METERS;
+  const createdAt = getTimestampMillis(order.createdAt);
+  const elapsed = createdAt ? Math.max(0, now - createdAt) : 0;
+  if (elapsed < INITIAL_SEARCH_DURATION_MS) return INITIAL_SEARCH_RADIUS_METERS;
+  if (elapsed < INITIAL_SEARCH_DURATION_MS + SEARCH_EXPANSION_STEP_MS) return 3000;
+  if (elapsed < INITIAL_SEARCH_DURATION_MS + SEARCH_EXPANSION_STEP_MS * 2) return MAX_SEARCH_RADIUS_METERS;
+  return Infinity;
+};
 
 // --- KONFIGURASI PETA & ICON ---
 
@@ -380,33 +416,25 @@ const TrackingMap = ({ driverId, pickupCoords, status, driversLocations, passeng
 };
 
 // --- KOMPONEN KARTU PENAWARAN DRIVER (InDrive Style) ---
-const OfferCard = ({ offer, onAccept, onTimeout }) => {
-  const [progress, setProgress] = useState(0);
-  const [visible, setVisible] = useState(true);
+const OfferCard = ({ offer, expiresAt: offerExpiresAt, onAccept, onReject, onTimeout, isRetry = false }) => {
+  const [now, setNow] = useState(Date.now());
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
+  const createdAt = getTimestampMillis(offer.createdAt);
+  const expiresAt = offerExpiresAt || offer.expiresAt || (createdAt + OFFER_DURATION_MS);
+  const duration = Math.max(1, expiresAt - createdAt);
+  const progress = Math.min(100, Math.max(0, ((duration - Math.max(0, expiresAt - now)) / duration) * 100));
 
   useEffect(() => {
-    const duration = 15000; // 15 Detik
-    const interval = 100; // Update tiap 100ms biar smooth
-    const steps = duration / interval;
-    let currentStep = 0;
-
-    const timer = setInterval(() => {
-      currentStep++;
-      const pct = (currentStep / steps) * 100;
-      setProgress(pct);
-      if (pct >= 100) {
-        clearInterval(timer);
-        setVisible(false); // Hilangkan kartu jika waktu habis
-        if (onTimeout) onTimeout();
-      }
-    }, interval);
-
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [onTimeout]);
+  }, []);
 
-  if (!visible) return null;
+  useEffect(() => {
+    if (now >= expiresAt && onTimeout) onTimeout();
+  }, [expiresAt, now, onTimeout]);
+
+  if (now >= expiresAt && !isRetry) return null;
 
   return (
     <div className={`p-3 rounded-xl border shadow-sm mb-2 relative overflow-hidden animate-in slide-in-from-bottom-2 ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-gray-100'}`}>
@@ -417,16 +445,20 @@ const OfferCard = ({ offer, onAccept, onTimeout }) => {
         <div className="flex-1">
            <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{offer.driverName}</h4>
            <div className="flex items-center gap-1 text-xs text-yellow-500">
-              <Star size={10} fill="currentColor" /> 5.0 <span className="text-gray-400">• {offer.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</span>
+              <Star size={10} fill="currentColor" /> {offer.rating ? Number(offer.rating).toFixed(1) : 'Baru'} <span className="text-gray-400">• {offer.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</span>
            </div>
+           {offer.pickupDistance != null && <p className="text-[11px] text-gray-500">Jarak jemput {Number(offer.pickupDistance).toFixed(1)} km</p>}
+           {offer.vehiclePlate && <p className="text-[11px] text-gray-500">Plat terverifikasi: {offer.vehiclePlate}</p>}
         </div>
         <div className="text-right">
            <p className="font-bold text-sky-600">Rp {(offer.price || 0).toLocaleString('id-ID')}</p>
+           <p className="text-[11px] text-gray-500">Berlaku {Math.max(0, Math.ceil((expiresAt - now) / 1000))} dtk</p>
         </div>
       </div>
       
       <button 
         onClick={onAccept}
+        disabled={now >= expiresAt && !isRetry}
         className="mt-3 w-full relative h-9 bg-gray-100 dark:bg-slate-800 rounded-lg overflow-hidden group"
       >
         {/* Progress Bar Animation */}
@@ -434,8 +466,13 @@ const OfferCard = ({ offer, onAccept, onTimeout }) => {
             className="absolute top-0 left-0 h-full bg-sky-500/20 dark:bg-sky-500/40 transition-all ease-linear"
             style={{ width: `${progress}%`, transitionDuration: '100ms' }}
         ></div>
-        <span className="relative z-10 text-xs font-bold text-sky-600 dark:text-sky-400 group-hover:text-sky-700">Terima Tawaran</span>
+        <span className="relative z-10 text-xs font-bold text-sky-600 dark:text-sky-400 group-hover:text-sky-700">{isRetry ? 'Lanjutkan Persetujuan' : 'Terima Tawaran'}</span>
       </button>
+      {onReject && !isRetry && (
+        <button onClick={onReject} className="w-full mt-2 py-2 text-xs font-bold text-gray-500 hover:text-red-500">
+          Tolak Penawaran
+        </button>
+      )}
     </div>
   );
 };
@@ -458,6 +495,8 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [price, setPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const createOrderInProgressRef = useRef(false);
+  const [searchClock, setSearchClock] = useState(Date.now());
   const [isLocating, setIsLocating] = useState(false); // State loading GPS
   const [vehicleType, setVehicleType] = useState('motor'); // 'motor' | 'mobil'
   const [estDistance, setEstDistance] = useState(null);
@@ -505,6 +544,11 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [showQrisModal, setShowQrisModal] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSearchClock(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Prefill Form Pendaftaran saat User Profile dimuat
   useEffect(() => {
@@ -613,7 +657,7 @@ const NiagaGo = ({ onOpenProfile }) => {
       });
       return () => unsubscribe();
     }
-  }, [isDriverMode, userProfile?.uid]);
+  }, [isDriverMode, driverService, userProfile?.uid]);
 
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
@@ -622,64 +666,74 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
 
     const ordersRef = collection(dbFirestore, 'ojek_orders');
-    let q;
+    const subscriptions = [];
+    let pendingDriverOrders = [];
+    let assignedDriverOrders = [];
+    let hasShownListenerError = false;
+
+    const publishDriverOrders = () => {
+      const byId = new Map([...pendingDriverOrders, ...assignedDriverOrders].map((order) => [order.id, order]));
+      const visible = Array.from(byId.values()).filter((order) => !order.hiddenForDriver);
+      setOrders(visible);
+    };
+
+    const listenTo = (ordersQuery, onData) => subscriptions.push(onSnapshot(ordersQuery, (snapshot) => {
+      onData(snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() })));
+    }, (error) => {
+      console.error('Gagal ambil data order:', error);
+      if (!hasShownListenerError) {
+        hasShownListenerError = true;
+        Swal.fire('Gagal Memuat Pesanan', error.message || 'Periksa koneksi dan izin database.', 'error');
+      }
+    }));
 
     if (isDriverMode) {
-      // Driver melihat:
-      // Driver hanya boleh query orderan yang statusnya 'pending' untuk antrean, 
-      // atau gunakan query spesifik per-status agar tidak melanggar Security Rules.
-      q = query(ordersRef, where('status', '==', 'pending')); 
+      listenTo(query(ordersRef, where('status', '==', 'pending')), (data) => {
+        pendingDriverOrders = data;
+        publishDriverOrders();
+      });
+      listenTo(query(ordersRef, where('driverId', '==', userProfile.uid)), (data) => {
+        assignedDriverOrders = data;
+        publishDriverOrders();
+      });
     } else {
-      // User melihat orderan miliknya sendiri (history)
-      q = query(ordersRef, where('userId', '==', userProfile.uid));
+      listenTo(query(ordersRef, where('userId', '==', userProfile.uid)), (data) => {
+        setOrders(data.filter((order) => !order.hiddenForUser));
+      });
     }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Filter khusus Driver
-      let filteredData = isDriverMode 
-        ? data.filter(o => {
-            const isMyOjekOrder = o.driverId === userProfile.uid;
-            const isPendingOjek = driverService === 'ojek' && o.status === 'pending';
-            return isMyOjekOrder || isPendingOjek; // Tampilkan orderan sendiri ATAU orderan pending (kalau lagi mode ojek)
-        })
-        : data;
-
-      // Filter Soft Delete (Sembunyikan yang sudah dihapus user/driver)
-      if (isDriverMode) {
-        filteredData = filteredData.filter(o => !o.hiddenForDriver);
-      } else {
-        filteredData = filteredData.filter(o => !o.hiddenForUser);
-      }
-      
-      // SORTING MANUAL DI CLIENT (JAVASCRIPT)
-      // Mengurutkan dari yang terbaru ke terlama tanpa butuh Index Firestore
-      filteredData.sort((a, b) => {
-        const timeA = a.createdAt?.seconds || 0;
-        const timeB = b.createdAt?.seconds || 0;
-        return timeB - timeA;
-      });
-
-      setOrders(filteredData);
-    }, (error) => {
-      console.error("Gagal ambil data order:", error);
-    });
-
-    return () => unsubscribe();
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [isDriverMode, userProfile?.uid]);
 
   // --- COMBINED ORDERS (OJEK + FOOD) ---
   // Gabungin orderan Ojek (Firestore) dan Food (Realtime DB) buat ditampilin di list
   const combinedOrders = useMemo(() => {
     const normalizedOjek = orders.map(o => ({...o, type: 'ojek'}));
-    // Gabung dan sort berdasarkan waktu terbaru
-    return [...normalizedOjek, ...activeFoodOrders].sort((a, b) => {
+    const allOrders = [...normalizedOjek, ...activeFoodOrders];
+    const driverLocation = driversLocations[userProfile?.uid];
+    const hasFreshDriverLocation = driverLocation &&
+      driverLocation.status === 'standby' &&
+      searchClock - Number(driverLocation.updatedAt || 0) <= DRIVER_LOCATION_MAX_AGE_MS;
+    const visibleOrders = isDriverMode
+      ? allOrders.filter((order) => {
+          if (order.type === 'food') return true;
+          if (order.driverId === userProfile?.uid && order.status !== 'pending') return true;
+          if (driverService !== 'ojek' || order.status !== 'pending') return false;
+          if (order.searchExpiresAt && order.searchExpiresAt <= searchClock) return false;
+          if (!hasFreshDriverLocation || order.vehicleType !== activeVehicle) return false;
+          if (!order.pickupCoords) return true;
+          const pickupDistance = L.latLng(driverLocation.lat, driverLocation.lng)
+            .distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng));
+          return pickupDistance <= getSearchRadius(order, searchClock);
+        })
+      : allOrders;
+
+    return visibleOrders.sort((a, b) => {
         const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt).getTime();
         const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt).getTime();
         return timeB - timeA;
     });
-  }, [orders, activeFoodOrders]);
+  }, [orders, activeFoodOrders, isDriverMode, driverService, activeVehicle, driversLocations, userProfile?.uid, searchClock]);
 
   // --- DRIVER GPS BROADCASTER (Kirim Lokasi ke DB) ---
   useEffect(() => {
@@ -688,7 +742,7 @@ const NiagaGo = ({ onOpenProfile }) => {
       // Cek status driver (Busy jika ada order aktif)
       const activeOrder = orders.find(o => 
         o.driverId === userProfile.uid && 
-        ['verified', 'ongoing'].includes(o.status)
+        ['accepting', 'accepted', 'paid', 'verified', 'ongoing'].includes(o.status)
       );
       const isBusy = !!activeOrder;
 
@@ -938,124 +992,98 @@ const NiagaGo = ({ onOpenProfile }) => {
   // 1. User Membuat Order
   const handleCreateOrder = async (e) => {
     e.preventDefault();
-    if (!pickup || !destination || !price) {
+    if (createOrderInProgressRef.current) return;
+    if (!pickup.trim() || !destination.trim() || !Number.isInteger(Number(price)) || Number(price) <= 0) {
       Swal.fire('Data Kurang', 'Mohon isi lokasi jemput, tujuan, dan harga.', 'warning');
       return;
     }
 
-    if (!userProfile?.phoneNumber) {
-      Swal.fire({
-        title: 'Nomor HP Kosong',
-        text: 'Wajib isi nomor HP di Profil dulu biar driver bisa WhatsApp kamu.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Isi Profil Sekarang',
-        cancelButtonText: 'Nanti'
-      }).then((res) => {
-        if (res.isConfirmed) {
-            if (onOpenProfile) onOpenProfile();
-        }
-      });
-      return;
-    }
-
-    // Proteksi Order Jauh (Pesan buat orang lain)
-    if (pickupCoords && userLocation) {
-      const dist = L.latLng(userLocation.lat, userLocation.lng).distanceTo(L.latLng(pickupCoords.lat, pickupCoords.lng));
-      if (dist > 10000) { // > 10 KM
-        const confirm = await Swal.fire({
-          title: 'Pesan untuk Orang Lain?',
-          text: 'Lokasi jemput jauh dari posisimu (>10km). Pastikan titik jemput sudah sesuai dengan lokasi orang yang akan dijemput.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Ya, Lanjut',
-          cancelButtonText: 'Cek Lagi',
-          confirmButtonColor: '#0ea5e9'
-        });
-        if (!confirm.isConfirmed) return;
-      }
-    }
-
-    // --- NEW: Pilih Metode Pembayaran Sebelum Cari Driver ---
-    const { value: selectedPaymentMethod } = await Swal.fire({
-      title: 'Metode Pembayaran',
-      html: `<div class="text-left">
-              <p class="text-sm text-gray-600 mb-3">Total Tagihan: <b class="text-gray-800">Rp ${parseInt(price).toLocaleString('id-ID')}</b></p>
-             </div>`,
-      input: 'radio',
-      inputOptions: {
-        'saldo': `Saldo SobatNiaga (Sisa: Rp ${(userProfile?.balance || 0).toLocaleString('id-ID')})`,
-        'cash': 'Tunai / Cash (Bayar ke Driver)'
-      },
-      inputValue: 'saldo',
-      confirmButtonText: 'Lanjut Cari Driver',
-      confirmButtonColor: '#0ea5e9',
-      showCancelButton: true,
-      cancelButtonText: 'Batal',
-      buttonsStyling: false,
-      customClass: {
-        popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`, // Force White Mode
-        title: `text-lg font-bold text-gray-800`,
-        input: 'text-sm text-gray-600',
-        confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100 mt-4',
-        cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100 mt-4'
-      }
-    });
-
-    if (!selectedPaymentMethod) return;
-
-    // Cek Saldo (Hanya jika pilih Saldo)
-    if (selectedPaymentMethod === 'saldo' && (userProfile?.balance || 0) < parseInt(price)) {
-       Swal.fire({
-          title: 'Saldo Tidak Cukup',
-          text: `Saldo Anda kurang dari Rp ${parseInt(price).toLocaleString('id-ID')}.`,
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Isi Saldo Sekarang',
-          cancelButtonText: 'Nanti Saja',
-          buttonsStyling: false,
-          customClass: {
-              popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`,
-              title: `text-lg font-bold text-gray-800`,
-              htmlContainer: `text-sm text-gray-600`,
-              confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
-              cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
-          }
-       }).then((result) => {
-          if (result.isConfirmed && onOpenProfile) onOpenProfile();
-       });
-      return;
-    }
-
-    if (!dbFirestore) {
-      Swal.fire('System Error', 'Database belum terhubung. Cek console untuk detail.', 'error');
-      return;
-    }
-
+    createOrderInProgressRef.current = true;
     setIsLoading(true);
     try {
+      const activeStatuses = ['pending', 'accepting', 'accepted', 'paid', 'verified', 'ongoing'];
+      const hasActiveOrder = orders.some((order) =>
+        activeStatuses.includes(order.status) &&
+        (!order.searchExpiresAt || order.searchExpiresAt > Date.now() || order.status !== 'pending')
+      );
+      if (hasActiveOrder) {
+        await Swal.fire('Pesanan Masih Aktif', 'Selesaikan atau batalkan pesanan yang sedang berjalan sebelum membuat pesanan baru.', 'info');
+        return;
+      }
+
+      if (!userProfile?.phoneNumber) {
+        const result = await Swal.fire({
+          title: 'Nomor HP Kosong',
+          text: 'Isi nomor HP di Profil agar driver dapat menghubungi kamu setelah dipilih.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Isi Profil Sekarang',
+          cancelButtonText: 'Nanti'
+        });
+        if (result.isConfirmed && onOpenProfile) onOpenProfile();
+        return;
+      }
+
+      if (pickupCoords && userLocation) {
+        const distanceFromUser = L.latLng(userLocation.lat, userLocation.lng).distanceTo(L.latLng(pickupCoords.lat, pickupCoords.lng));
+        if (distanceFromUser > 10000) {
+          const confirm = await Swal.fire({
+            title: 'Pesan untuk Orang Lain?',
+            text: 'Lokasi jemput lebih dari 10 km dari posisimu. Pastikan titik jemput sudah benar.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Lanjut',
+            cancelButtonText: 'Cek Lagi',
+            confirmButtonColor: '#0ea5e9'
+          });
+          if (!confirm.isConfirmed) return;
+        }
+      }
+
+      const numericPrice = Number(price);
+      const { value: selectedPaymentMethod } = await Swal.fire({
+        title: 'Metode Pembayaran',
+        html: `<div class="text-left"><p class="text-sm text-gray-600 mb-3">Harga awal: <b class="text-gray-800">Rp ${numericPrice.toLocaleString('id-ID')}</b>. Harga akhir dikunci setelah kamu memilih penawaran driver.</p></div>`,
+        input: 'radio',
+        inputOptions: {
+          saldo: `Saldo SobatNiaga (Sisa: Rp ${(userProfile?.balance || 0).toLocaleString('id-ID')})`,
+          cash: 'Tunai / Cash (Bayar ke Driver)'
+        },
+        inputValue: 'saldo',
+        confirmButtonText: 'Lanjut Cari Driver',
+        confirmButtonColor: '#0ea5e9',
+        showCancelButton: true,
+        cancelButtonText: 'Batal'
+      });
+      if (!selectedPaymentMethod) return;
+
+      if (!dbFirestore) {
+        throw new Error('Database belum terhubung.');
+      }
+
       await addDoc(collection(dbFirestore, 'ojek_orders'), {
         userId: userProfile.uid,
         userName: userProfile.displayName || userProfile.username || 'Mahasiswa',
-        userPhone: userProfile.phoneNumber,
-        pickup,
-        destination,
-        pickupCoords: pickupCoords || null, // Kirim koordinat
-        destCoords: destCoords || null,     // Kirim koordinat
+        pickup: pickup.trim(),
+        destination: destination.trim(),
+        pickupCoords: pickupCoords || null,
+        destCoords: destCoords || null,
         vehicleType,
         distance: estDistance,
         duration: estDuration,
-        price: parseInt(price),
-        notes,
+        price: numericPrice,
+        notes: notes.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),
+        searchExpiresAt: Date.now() + SEARCH_EXPIRY_MS,
+        offers: [],
         driverId: null,
-        paymentMethod: selectedPaymentMethod // Simpan metode pembayaran
+        paymentMethod: selectedPaymentMethod
       });
       
       Swal.fire({
-        title: 'Order Terkirim!',
-        text: 'Tunggu driver mengambil pesananmu.',
+        title: 'Mencari Driver',
+        text: 'Pesananmu dibuat. Driver dapat mengirim penawaran selama pencarian aktif.',
         icon: 'success',
         confirmButtonText: 'Oke',
         buttonsStyling: false,
@@ -1076,51 +1104,91 @@ const NiagaGo = ({ onOpenProfile }) => {
       setEstDuration(null);
     } catch (error) {
       console.error(error);
-      Swal.fire('Error', 'Gagal membuat pesanan.', 'error');
+      Swal.fire('Error', error.message || 'Gagal membuat pesanan.', 'error');
     } finally {
+      createOrderInProgressRef.current = false;
       setIsLoading(false);
     }
   };
 
   // 2. Driver Mengirim Penawaran (Offer)
   const handleTakeOrder = async (order) => {
-    const result = await Swal.fire({
-      title: 'Tawarkan Jasa?',
-      text: `Kirim penawaran ke user untuk rute ini? Harga: Rp ${order.price.toLocaleString()}`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Gas, Tawarkan!',
-      cancelButtonText: 'Batal'
-    });
-
-    if (result.isConfirmed) {
-      try {
-        if (!dbFirestore) {
-          Swal.fire('System Error', 'Database belum terhubung.', 'error');
-          return;
-        }
-
-        // Tambahkan Driver ke List Penawaran (Offers)
-        const offerData = {
-            driverId: userProfile.uid,
-            driverName: userProfile.displayName || 'Driver NiagaGo',
-            driverPhone: userProfile.phoneNumber,
-            driverPhoto: userProfile.photoURL || null,
-            vehicleType: 'motor', // Bisa diambil dari profil driver nanti
-            price: order.price,
-            createdAt: Date.now()
-        };
-
-        const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
-        await updateDoc(orderRef, {
-          offers: arrayUnion(offerData)
-        });
-
-        Swal.fire('Terkirim!', 'Penawaran dikirim ke user. Tunggu konfirmasi ya!', 'success');
-
-      } catch (error) {
-        Swal.fire('Gagal', 'Terjadi kesalahan saat mengirim penawaran.', 'error');
+    if (takingOrderId) return;
+    setTakingOrderId(order.id);
+    try {
+      const location = driversLocations[userProfile?.uid];
+      const now = Date.now();
+      const locationAge = now - Number(location?.updatedAt || 0);
+      if (!location || location.status !== 'standby' || locationAge > DRIVER_LOCATION_MAX_AGE_MS) {
+        throw new Error('Lokasi GPS driver belum aktif atau sudah kedaluwarsa. Aktifkan lokasi lalu coba lagi.');
       }
+
+      const pickupDistance = order.pickupCoords
+        ? L.latLng(location.lat, location.lng).distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng))
+        : null;
+      if (pickupDistance != null && pickupDistance > getSearchRadius(order, now)) {
+        throw new Error('Pesanan ini belum masuk radius pencarian untuk lokasimu.');
+      }
+
+      const { value: offeredPrice } = await Swal.fire({
+        title: 'Kirim Penawaran Harga',
+        text: `Harga yang diajukan penumpang Rp ${(order.price || 0).toLocaleString('id-ID')}. Kamu dapat mengirim harga sendiri.`,
+        input: 'number',
+        inputValue: order.price || '',
+        inputAttributes: { min: '1', step: '1000', inputmode: 'numeric' },
+        inputValidator: (value) => {
+          if (!Number.isInteger(Number(value)) || Number(value) <= 0) return 'Masukkan harga yang valid.';
+          return undefined;
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Kirim Penawaran',
+        cancelButtonText: 'Batal'
+      });
+      if (!offeredPrice) return;
+
+      const priceValue = Number(offeredPrice);
+      const offerId = `${userProfile.uid}_${now}`;
+      const vehicle = latestReg?.status === 'approved'
+        ? latestReg.vehicles?.[activeVehicle]
+        : null;
+      const offerData = {
+        offerId,
+        driverId: userProfile.uid,
+        driverName: userProfile.displayName || 'Driver NiagaGo',
+        driverPhoto: userProfile.photoURL || null,
+        vehicleType: activeVehicle,
+        vehiclePlate: vehicle?.plate || '',
+        rating: Number(userProfile.rating) || null,
+        pickupDistance: pickupDistance == null ? null : Number((pickupDistance / 1000).toFixed(1)),
+        price: priceValue,
+        status: 'pending',
+        createdAt: now,
+        expiresAt: now + OFFER_DURATION_MS
+      };
+
+      const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists()) throw new Error('Pesanan sudah tidak tersedia.');
+        const currentOrder = orderSnapshot.data();
+        if (currentOrder.status !== 'pending') throw new Error('Pesanan sudah tidak mencari driver.');
+        if (currentOrder.searchExpiresAt && currentOrder.searchExpiresAt <= Date.now()) {
+          throw new Error('Waktu pencarian pesanan sudah habis.');
+        }
+        const existingOffer = getActiveOffers(currentOrder).some((offer) => offer.driverId === userProfile.uid);
+        if (existingOffer) throw new Error('Kamu sudah mengirim penawaran untuk pesanan ini.');
+        if ((currentOrder.rejectedOfferIds || []).includes(offerId)) {
+          throw new Error('Penawaran ini sudah ditutup.');
+        }
+        transaction.update(orderRef, { offers: arrayUnion(offerData) });
+      });
+
+      await Swal.fire('Terkirim!', 'Penawaran berlaku selama 60 detik dan menunggu persetujuan penumpang.', 'success');
+    } catch (error) {
+      console.error('Gagal mengirim penawaran NiagaGo:', error);
+      Swal.fire('Gagal', error.message || 'Terjadi kesalahan saat mengirim penawaran.', 'error');
+    } finally {
+      setTakingOrderId(null);
     }
   };
 
@@ -1327,93 +1395,236 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // 2.5 User Menerima Tawaran Driver
   const handleAcceptOffer = async (order, offer) => {
-      try {
-        const currentBalance = parseInt(userProfile?.balance || 0);
-        let useSaldo = false;
-        let paymentMethod = order.paymentMethod; // Ambil dari order yg dibuat
+    const agreedPrice = Number(offer.price);
+    if (!Number.isInteger(agreedPrice) || agreedPrice <= 0) {
+      Swal.fire('Penawaran Tidak Valid', 'Harga penawaran driver tidak valid.', 'error');
+      return;
+    }
 
-        // Fallback untuk order lama (Legacy)
-        if (!paymentMethod) {
-            const inputOptions = {};
-            if (currentBalance >= order.price) inputOptions.saldo = `Saldo (Rp ${currentBalance.toLocaleString('id-ID')})`;
-            inputOptions.manual = 'Transfer Manual';
-            
-            const { value: selected } = await Swal.fire({
-                title: 'Pilih Pembayaran',
-                input: 'radio',
-                inputOptions: inputOptions,
-                inputValue: currentBalance >= order.price ? 'saldo' : 'manual',
-                confirmButtonText: 'Lanjut',
-                showCancelButton: true
-            });
-            if (!selected) return;
-            paymentMethod = selected;
-        }
+    let paymentMethod = order.paymentMethod;
+    let claimed = false;
+    let balancePaymentRecorded = false;
+    let selectedDriverPhone = '';
+    const selectedOfferId = offer.offerId || `${offer.driverId}_${getTimestampMillis(offer.createdAt)}`;
+    const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
 
-        // Proses Pembayaran
-        if (paymentMethod === 'saldo') {
-            if (currentBalance < order.price) {
-                Swal.fire('Saldo Tidak Cukup', 'Silakan top up dulu.', 'error');
-                return;
-            }
-            useSaldo = true;
-            await update(ref(realDb, `users/${userProfile.uid}`), { balance: currentBalance - order.price });
-            
-            await push(ref(realDb, 'notifications'), {
-                userId: userProfile.uid,
-                title: 'Pembayaran Berhasil',
-                message: `Saldo terpotong Rp ${order.price.toLocaleString('id-ID')} untuk pembayaran NiagaGo.`,
-                type: 'success',
-                createdAt: new Date().toISOString()
-            });
-        } else if (paymentMethod === 'cash') {
-            useSaldo = false;
-            // Konfirmasi Cash
-            const confirm = await Swal.fire({
-                 title: 'Konfirmasi Driver',
-                 text: `Bayar Tunai Rp ${order.price.toLocaleString('id-ID')} ke Driver?`,
-                 icon: 'question',
-                 showCancelButton: true,
-                 confirmButtonText: 'Ya, Lanjut',
-                 cancelButtonText: 'Batal',
-                 buttonsStyling: false,
-                 customClass: {
-                    popup: `rounded-2xl w-auto max-w-sm p-6 bg-white`,
-                    title: `text-lg font-bold text-gray-800`,
-                    confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100',
-                    cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
-                 }
-            });
-            if (!confirm.isConfirmed) return;
-        }
-
-        // 2. Update Status Order
-        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
-            status: (useSaldo || paymentMethod === 'cash') ? 'verified' : 'accepted', // Cash & Saldo langsung Verified (Jalan)
-            driverId: offer.driverId,
-            driverName: offer.driverName,
-            driverPhone: offer.driverPhone,
-            isPaid: useSaldo, // Tandai sudah dibayar jika pakai saldo
-            paymentMethod: paymentMethod
+    try {
+      if (!paymentMethod) {
+        const currentBalance = Number(userProfile?.balance || 0);
+        const inputOptions = {};
+        if (currentBalance >= agreedPrice) inputOptions.saldo = `Saldo (Rp ${currentBalance.toLocaleString('id-ID')})`;
+        inputOptions.manual = 'Transfer Manual';
+        const { value: selected } = await Swal.fire({
+          title: 'Pilih Pembayaran',
+          input: 'radio',
+          inputOptions,
+          inputValue: currentBalance >= agreedPrice ? 'saldo' : 'manual',
+          confirmButtonText: 'Lanjut',
+          showCancelButton: true
         });
-        
-        Swal.fire({
-            title: (useSaldo || paymentMethod === 'cash') ? 'Driver Menuju Lokasi!' : 'Driver Dipilih!',
-            text: (useSaldo || paymentMethod === 'cash') ? `${offer.driverName} akan segera menjemputmu.` : 'Silakan selesaikan pembayaran.',
-            icon: 'success',
-            confirmButtonText: 'Oke',
-            buttonsStyling: false,
-            customClass: {
-                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
-                title: 'text-lg font-bold text-gray-800',
-                htmlContainer: 'text-sm text-gray-600',
-                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
-            }
-        });
-      } catch (error) {
-        console.error(error);
-        Swal.fire('Error', 'Gagal memilih driver.', 'error');
+        if (!selected) return;
+        paymentMethod = selected;
       }
+
+      if (paymentMethod === 'cash') {
+        const confirm = await Swal.fire({
+          title: 'Konfirmasi Harga',
+          text: `Setujui harga Rp ${agreedPrice.toLocaleString('id-ID')} dan pilih driver ${offer.driverName}?`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Setujui Penawaran',
+          cancelButtonText: 'Batal'
+        });
+        if (!confirm.isConfirmed) return;
+      }
+
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists()) throw new Error('Pesanan tidak ditemukan.');
+        const currentOrder = orderSnapshot.data();
+        if (currentOrder.userId !== userProfile.uid) throw new Error('Kamu tidak memiliki akses ke pesanan ini.');
+
+        const selectedOffer = (Array.isArray(currentOrder.offers) ? currentOrder.offers : []).find((item) =>
+          item.offerId
+            ? item.offerId === selectedOfferId
+            : item.driverId === offer.driverId && Number(item.price) === agreedPrice
+        );
+        const isRetry = currentOrder.status === 'accepting' &&
+          currentOrder.selectedOfferId === selectedOfferId &&
+          currentOrder.driverId === offer.driverId;
+        if (!selectedOffer || (!isRetry && getOfferExpiry(selectedOffer, currentOrder) <= Date.now())) {
+          throw new Error('Penawaran driver sudah kedaluwarsa. Minta penawaran baru.');
+        }
+        if (currentOrder.status !== 'pending' && !isRetry) {
+          throw new Error('Pesanan sudah dipilih atau tidak tersedia.');
+        }
+
+        transaction.update(orderRef, {
+          status: 'accepting',
+          selectedOfferId,
+          driverId: offer.driverId,
+          driverName: offer.driverName,
+          price: agreedPrice,
+          agreedPrice,
+          acceptingAt: Date.now(),
+          paymentMethod
+        });
+      });
+      claimed = true;
+
+      try {
+        const driverSnapshot = await get(ref(realDb, `users/${offer.driverId}`));
+        selectedDriverPhone = driverSnapshot.val()?.phoneNumber || '';
+      } catch (contactError) {
+        console.error('Nomor kontak driver tidak dapat dimuat setelah dipilih:', contactError);
+      }
+
+      if (paymentMethod === 'saldo') {
+        const paymentResult = await runTransaction(ref(realDb, `users/${userProfile.uid}`), (currentUser) => {
+          if (!currentUser) return;
+          const payments = currentUser.niagaGoPayments || {};
+          const existingPayment = payments[order.id];
+          if (existingPayment) {
+            if (existingPayment.offerId !== selectedOfferId || Number(existingPayment.amount) !== agreedPrice) return;
+            return {
+              ...currentUser,
+              niagaGoPayments: {
+                ...payments,
+                [order.id]: { ...existingPayment, lastConfirmedAt: Date.now() }
+              }
+            };
+          }
+
+          const balance = Number(currentUser.balance || 0);
+          if (!Number.isFinite(balance) || balance < agreedPrice) return;
+          return {
+            ...currentUser,
+            balance: balance - agreedPrice,
+            niagaGoPayments: {
+              ...payments,
+              [order.id]: {
+                offerId: selectedOfferId,
+                amount: agreedPrice,
+                paymentMethod: 'saldo',
+                paidAt: Date.now()
+              }
+            }
+          };
+        });
+        if (!paymentResult.committed) throw new Error('Saldo tidak cukup untuk harga penawaran. Pesanan dikembalikan ke pencarian.');
+        balancePaymentRecorded = true;
+      }
+
+      const shouldStartMatching = paymentMethod === 'saldo' || paymentMethod === 'cash';
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists()) throw new Error('Pesanan tidak ditemukan saat menyelesaikan persetujuan.');
+        const currentOrder = orderSnapshot.data();
+        if (currentOrder.status !== 'accepting' || currentOrder.selectedOfferId !== selectedOfferId) {
+          throw new Error('Persetujuan berubah sebelum dapat diselesaikan.');
+        }
+        transaction.update(orderRef, {
+          status: shouldStartMatching ? 'verified' : 'accepted',
+          isPaid: paymentMethod === 'saldo',
+          paymentStatus: paymentMethod === 'saldo' || paymentMethod === 'cash' ? 'paid' : 'pending',
+          acceptedAt: Date.now(),
+          driverPhone: selectedDriverPhone,
+          userPhone: userProfile.phoneNumber || ''
+        });
+      });
+
+      let notificationsDelivered = true;
+      try {
+        const notifications = [push(ref(realDb, 'notifications'), {
+          userId: offer.driverId,
+          title: 'Penawaran Diterima',
+          message: `Penumpang menyetujui harga Rp ${agreedPrice.toLocaleString('id-ID')}.`,
+          type: 'success',
+          createdAt: new Date().toISOString()
+        })];
+        if (paymentMethod === 'saldo') {
+          notifications.push(push(ref(realDb, 'notifications'), {
+            userId: userProfile.uid,
+            title: 'Pembayaran Berhasil',
+            message: `Saldo terpotong Rp ${agreedPrice.toLocaleString('id-ID')} untuk pembayaran NiagaGo.`,
+            type: 'success',
+            createdAt: new Date().toISOString()
+          }));
+        }
+        await Promise.all(notifications);
+      } catch (notificationError) {
+        notificationsDelivered = false;
+        console.error('Persetujuan tersimpan, tetapi notifikasi tidak terkirim:', notificationError);
+      }
+
+      await Swal.fire({
+        title: shouldStartMatching ? 'Driver Dipilih!' : 'Penawaran Disetujui!',
+        text: `${shouldStartMatching ? `${offer.driverName} menerima harga Rp ${agreedPrice.toLocaleString('id-ID')} dan dapat menuju lokasi.` : 'Silakan selesaikan pembayaran untuk melanjutkan.'}${notificationsDelivered ? '' : ' Pemberitahuan mungkin terlambat.'}`,
+        icon: notificationsDelivered ? 'success' : 'warning',
+        confirmButtonText: 'Oke'
+      });
+    } catch (error) {
+      console.error('Gagal menerima penawaran NiagaGo:', error);
+      if (claimed && !balancePaymentRecorded) {
+        try {
+          await runFirestoreTransaction(dbFirestore, async (transaction) => {
+            const orderSnapshot = await transaction.get(orderRef);
+            if (!orderSnapshot.exists()) return;
+            const currentOrder = orderSnapshot.data();
+            if (currentOrder.status === 'accepting' && currentOrder.selectedOfferId === selectedOfferId) {
+              transaction.update(orderRef, {
+                status: 'pending',
+                selectedOfferId: null,
+                driverId: null,
+                driverName: null,
+                driverPhone: null,
+                paymentStatus: 'pending'
+              });
+            }
+          });
+        } catch (releaseError) {
+          console.error('Gagal melepas kunci persetujuan pesanan:', releaseError);
+        }
+      }
+      Swal.fire('Gagal', error.message || 'Gagal memilih driver.', 'error');
+    }
+  };
+
+  const handleRejectOffer = async (order, offer) => {
+    const offerId = offer.offerId || `${offer.driverId}_${getTimestampMillis(offer.createdAt)}`;
+    try {
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists()) throw new Error('Pesanan tidak ditemukan.');
+        const currentOrder = orderSnapshot.data();
+        if (currentOrder.userId !== userProfile.uid || currentOrder.status !== 'pending') {
+          throw new Error('Penawaran ini sudah tidak dapat ditolak.');
+        }
+        const remainingOffers = (Array.isArray(currentOrder.offers) ? currentOrder.offers : [])
+          .filter((item) => (item.offerId || `${item.driverId}_${getTimestampMillis(item.createdAt)}`) !== offerId);
+        transaction.update(orderRef, {
+          offers: remainingOffers,
+          rejectedOfferIds: arrayUnion(offerId)
+        });
+      });
+
+      try {
+        await push(ref(realDb, 'notifications'), {
+          userId: offer.driverId,
+          title: 'Penawaran Ditolak',
+          message: 'Penumpang memilih untuk tidak melanjutkan penawaran ini.',
+          type: 'info',
+          createdAt: new Date().toISOString()
+        });
+      } catch (notificationError) {
+        console.error('Penawaran ditolak, tetapi notifikasi driver gagal dikirim:', notificationError);
+      }
+      await Swal.fire('Penawaran Ditolak', 'Penawaran sudah ditutup.', 'success');
+    } catch (error) {
+      console.error('Gagal menolak penawaran NiagaGo:', error);
+      Swal.fire('Gagal', error.message || 'Penawaran tidak dapat ditolak.', 'error');
+    }
   };
 
   // Handle Open Payment Modal
@@ -2199,6 +2410,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-xl ${
                   order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-600' : 
                   order.status === 'accepted' ? 'bg-blue-500/20 text-blue-600' :
+                  order.status === 'accepting' ? 'bg-blue-500/20 text-blue-600' :
                   order.status === 'paid' ? 'bg-purple-500/20 text-purple-600' :
                   order.status === 'verified' ? 'bg-indigo-500/20 text-indigo-600' :
                   order.status === 'ready_for_pickup' ? 'bg-teal-500/20 text-teal-600' :
@@ -2208,6 +2420,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                 }`}>
                   {order.status === 'pending' ? 'Mencari Driver...' : 
                    order.status === 'accepted' ? 'Menunggu Pembayaran' :
+                   order.status === 'accepting' ? 'Mengunci Penawaran...' :
                    order.status === 'paid' ? 'Verifikasi Admin' :
                    order.status === 'verified' ? (order.paymentMethod === 'saldo' ? 'Sudah Terbayar via Saldo' : 'Siap Jemput') :
                    order.status === 'ready_for_pickup' ? 'Driver OTW Resto' :
@@ -2239,6 +2452,21 @@ const NiagaGo = ({ onOpenProfile }) => {
                     <Navigation size={16} className="text-blue-500" />
                     <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{order.type === 'food' ? (order.deliveryAddress || 'Lokasi Pembeli') : order.destination}</span>
                   </div>
+                  {isDriverMode && order.status === 'pending' && order.type !== 'food' && (
+                    (() => {
+                      const location = driversLocations[userProfile?.uid];
+                      const pickupDistance = order.pickupCoords && location
+                        ? L.latLng(location.lat, location.lng).distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng)) / 1000
+                        : null;
+                      const pickupMinutes = pickupDistance == null ? null : Math.max(1, Math.ceil((pickupDistance / 20) * 60));
+                      return (
+                        <div className="text-xs text-gray-500 pl-6">
+                          Jemput: {pickupDistance == null ? 'jarak tidak tersedia' : `${pickupDistance.toFixed(1)} km · sekitar ${pickupMinutes} menit`}
+                          {order.distance != null && <span> · Rute penumpang: {order.distance} km</span>}
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-2 mb-3 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-slate-700 w-fit px-2 py-1 rounded-lg">
@@ -2247,33 +2475,42 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
 
                 {/* 0. STATUS PENDING: User Cari Driver */}
-                {!isDriverMode && order.status === 'pending' && order.type !== 'food' && (
+                {!isDriverMode && ['pending', 'accepting'].includes(order.status) && order.type !== 'food' && (
                     <div className="flex flex-col gap-3 w-full mb-3">
                         <TrackingMap driverId={null} pickupCoords={order.pickupCoords} status="pending" driversLocations={driversLocations} passengerVehicleType={order.vehicleType} />
-                        <p className="text-xs text-center text-gray-500 animate-pulse">Sedang mencari driver di sekitarmu...</p>
+                        {order.status === 'pending' ? (
+                          <p className="text-xs text-center text-gray-500 animate-pulse">
+                            {order.searchExpiresAt && order.searchExpiresAt <= searchClock
+                              ? 'Waktu pencarian habis. Batalkan pesanan lalu coba cari kembali.'
+                              : `Mencari driver${getSearchRadius(order, searchClock) === Infinity ? ' di semua jarak' : ` dalam radius ${getSearchRadius(order, searchClock) / 1000} km`}. Penawaran berlaku 60 detik.`}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-center text-sky-600">Menyelesaikan persetujuan harga dan pembayaran dengan aman...</p>
+                        )}
                     </div>
                 )}
 
                 {/* 0.5 STATUS PENDING: List Penawaran Driver (Fitur Killer) */}
                 {(() => {
-                  const filteredOffers = !isDriverMode && order.status === 'pending' && order.offers 
-                    ? order.offers.filter(offer => {
-                        const driverLoc = driversLocations[offer.driverId];
-                        if (!driverLoc) return false;
-                        const pickupLat = order.pickupCoords?.lat;
-                        const pickupLng = order.pickupCoords?.lng;
-                        if (!pickupLat || !pickupLng) return true;
-                        const dist = L.latLng(driverLoc.lat, driverLoc.lng).distanceTo(L.latLng(pickupLat, pickupLng));
-                        return dist <= ZONE_RADIUS;
-                      })
+                  const filteredOffers = !isDriverMode && ['pending', 'accepting'].includes(order.status)
+                    ? (order.status === 'accepting'
+                      ? (order.offers || []).filter((offer) => offer.offerId === order.selectedOfferId || offer.driverId === order.driverId)
+                      : getActiveOffers(order, searchClock))
                     : [];
 
                   return filteredOffers.length > 0 && (
                     <div className="mt-3 border-t pt-3 border-dashed border-gray-200 dark:border-slate-700">
-                      <p className="text-xs font-bold mb-2 text-sky-600 animate-pulse">⚡ {filteredOffers.length} Driver Menawarkan Jasa:</p>
+                      <p className="text-xs font-bold mb-2 text-sky-600">⚡ {filteredOffers.length} Penawaran Driver:</p>
                       <div className="space-y-2">
                         {filteredOffers.slice(0, 5).map((offer, idx) => (
-                          <OfferCard key={idx} offer={offer} onAccept={() => handleAcceptOffer(order, offer)} />
+                          <OfferCard
+                            key={offer.offerId || `${offer.driverId}-${idx}`}
+                            offer={offer}
+                            expiresAt={getOfferExpiry(offer, order)}
+                            isRetry={order.status === 'accepting'}
+                            onAccept={() => handleAcceptOffer(order, offer)}
+                            onReject={order.status === 'pending' ? () => handleRejectOffer(order, offer) : null}
+                          />
                         ))}
                       </div>
                     </div>
@@ -2300,9 +2537,10 @@ const NiagaGo = ({ onOpenProfile }) => {
                   {isDriverMode && order.status === 'pending' && (
                     <button 
                       onClick={() => handleTakeOrder(order)}
-                      className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                      disabled={takingOrderId === order.id}
+                      className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 disabled:cursor-wait text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
                     >
-                      <Bike size={16} /> Ambil
+                      {takingOrderId === order.id ? <Loader2 size={16} className="animate-spin" /> : <><Bike size={16} /> Kirim Penawaran</>}
                     </button>
                   )}
                   
