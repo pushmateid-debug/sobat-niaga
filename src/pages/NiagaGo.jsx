@@ -1294,7 +1294,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     if (newStatus === 'completed') {
         const result = await Swal.fire({
             title: 'Pesanan Sampai?',
-            text: "Konfirmasi pesanan telah diterima pembeli? Dana akan diteruskan.",
+            text: "Konfirmasi pesanan sudah diterima pembeli? Ongkos kirim akan dimasukkan ke saldo driver.",
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Ya, Selesai',
@@ -1304,62 +1304,101 @@ const NiagaGo = ({ onOpenProfile }) => {
         if (result.isConfirmed) {
             try {
                 const orderRef = ref(realDb, `orders/${orderId}`);
-                const snapshot = await get(orderRef);
-                if (!snapshot.exists()) throw new Error("Order tidak ditemukan");
-                
-                const orderData = snapshot.val();
-                const updates = {};
-                
-                // 1. Update Status
-                updates[`orders/${orderId}/status`] = 'completed';
-                updates[`orders/${orderId}/completedAt`] = new Date().toISOString();
-
-                // 2. Trigger Saldo Driver (Ongkir)
-                const driverId = userProfile.uid;
-                const deliveryFee = parseInt(orderData.deliveryFee || 3000);
-                
-                const driverRef = ref(realDb, `users/${driverId}`);
-                const driverSnap = await get(driverRef);
-                const currentDriverBalance = driverSnap.exists() ? (parseInt(driverSnap.val().balance) || 0) : 0;
-                updates[`users/${driverId}/balance`] = currentDriverBalance + deliveryFee;
-
-                // 3. Trigger Saldo Seller (Harga Makanan)
-                let sellerId = null;
-                let foodPrice = 0;
-                if (orderData.items) {
-                    const items = Array.isArray(orderData.items) ? orderData.items : Object.values(orderData.items);
-                    if (items.length > 0) {
-                        sellerId = items[0].sellerId;
-                        foodPrice = items.reduce((acc, item) => acc + (parseInt(item.price) * parseInt(item.quantity)), 0);
+                const claimResult = await runTransaction(orderRef, (currentOrder) => {
+                    if (!currentOrder || currentOrder.driverId !== userProfile.uid) return;
+                    if (currentOrder.status === 'delivering') {
+                        return {
+                            ...currentOrder,
+                            status: 'completing',
+                            completionStartedAt: new Date().toISOString()
+                        };
                     }
-                }
-
-                if (sellerId) {
-                    const sellerRef = ref(realDb, `users/${sellerId}`);
-                    const sellerSnap = await get(sellerRef);
-                    if (sellerSnap.exists()) {
-                        const currentSellerBalance = parseInt(sellerSnap.val().balance) || 0;
-                        updates[`users/${sellerId}/balance`] = currentSellerBalance + foodPrice;
-                    }
-                }
-
-                await update(ref(realDb), updates);
-
-                // Notifikasi Selesai
-                await push(ref(realDb, 'notifications'), {
-                    userId: orderData.buyerId,
-                    title: 'Pesanan Selesai',
-                    message: 'Selamat menikmati makanannya! Jangan lupa beri ulasan.',
-                    type: 'success',
-                    targetView: 'history',
-                    createdAt: new Date().toISOString(),
-                    isRead: false
+                    if (currentOrder.status === 'completing') return currentOrder;
+                    return;
                 });
 
-                Swal.fire('Selesai!', 'Pesanan selesai & Saldo cair.', 'success');
+                if (!claimResult.committed) {
+                    throw new Error('Pesanan tidak lagi dalam status pengantaran atau bukan milik driver ini.');
+                }
+
+                const orderData = claimResult.snapshot.val();
+                const driverId = userProfile.uid;
+                if (orderData.deliveryFee == null) {
+                    throw new Error('Data ongkos kirim tidak ditemukan pada pesanan.');
+                }
+                const deliveryFee = Number(orderData.deliveryFee);
+                if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
+                    throw new Error('Nominal ongkos kirim pada pesanan tidak valid.');
+                }
+
+                const driverRef = ref(realDb, `users/${driverId}`);
+                const payoutResult = await runTransaction(driverRef, (driverData) => {
+                    if (!driverData) return;
+                    const payouts = driverData.foodDeliveryPayouts || {};
+                    const existingPayout = payouts[orderId];
+                    if (existingPayout) {
+                        if (Number(existingPayout.amount) !== deliveryFee) return;
+                        return driverData;
+                    }
+
+                    const currentBalance = Number(driverData.balance || 0);
+                    if (!Number.isFinite(currentBalance)) return;
+                    return {
+                        ...driverData,
+                        balance: currentBalance + deliveryFee,
+                        foodDeliveryPayouts: {
+                            ...payouts,
+                            [orderId]: {
+                                amount: deliveryFee,
+                                paidAt: new Date().toISOString()
+                            }
+                        }
+                    };
+                });
+
+                if (!payoutResult.committed) {
+                    throw new Error('Saldo driver gagal diperbarui. Tekan lanjutkan penyelesaian untuk mencoba lagi.');
+                }
+
+                const recordedPayout = payoutResult.snapshot.val()?.foodDeliveryPayouts?.[orderId];
+                if (!recordedPayout || Number(recordedPayout.amount) !== deliveryFee) {
+                    throw new Error('Catatan pencairan ongkos kirim tidak cocok dengan pesanan.');
+                }
+
+                await update(orderRef, {
+                    status: 'completed',
+                    completedAt: new Date().toISOString(),
+                    driverPayoutStatus: 'paid',
+                    driverPayoutAmount: deliveryFee
+                });
+
+                let notificationSent = true;
+                try {
+                    await push(ref(realDb, 'notifications'), {
+                        recipientId: orderData.buyerId,
+                        title: 'Pesanan Selesai',
+                        message: 'Pesanan Niaga Food kamu sudah diantar.',
+                        type: 'success',
+                        targetView: 'history',
+                        orderId,
+                        createdAt: new Date().toISOString(),
+                        status: 'unread'
+                    });
+                } catch (notificationError) {
+                    notificationSent = false;
+                    console.error('Pesanan selesai, tetapi notifikasi pembeli gagal dikirim:', notificationError);
+                }
+
+                await Swal.fire(
+                    notificationSent ? 'Selesai!' : 'Pesanan Selesai',
+                    notificationSent
+                        ? `Pesanan selesai. Ongkir Rp ${deliveryFee.toLocaleString('id-ID')} masuk ke saldo driver.`
+                        : 'Pesanan selesai dan ongkir sudah dicatat, tetapi notifikasi pembeli gagal dikirim.',
+                    notificationSent ? 'success' : 'warning'
+                );
             } catch (error) {
                 console.error("Error finishing order:", error);
-                Swal.fire('Error', 'Gagal menyelesaikan pesanan.', 'error');
+                Swal.fire('Gagal Menyelesaikan', error.message || 'Periksa koneksi dan izin Firebase, lalu coba lagi.', 'error');
             }
         }
     } else {
@@ -2652,7 +2691,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   )}
 
                   {/* 4.5 STATUS PENGANTARAN MAKANAN (DRIVER) */}
-                  {isDriverMode && order.type === 'food' && ['ready_for_pickup', 'delivering'].includes(order.status) && (
+                  {isDriverMode && order.type === 'food' && ['ready_for_pickup', 'delivering', 'completing'].includes(order.status) && (
                     <div className="flex gap-2 justify-end">
                       <a href={`https://wa.me/${order.userPhone}`} target="_blank" rel="noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
                         <Phone size={16} /> WA Pembeli
@@ -2662,12 +2701,12 @@ const NiagaGo = ({ onOpenProfile }) => {
                           Mulai Antar
                         </button>
                       )}
-                      {order.status === 'delivering' && (
+                      {['delivering', 'completing'].includes(order.status) && (
                         <button 
                           onClick={() => handleUpdateFoodDeliveryStatus(order.id, 'completed')}
                           className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
                         >
-                          <CheckSquare size={16} /> Selesai
+                          <CheckSquare size={16} /> {order.status === 'completing' ? 'Lanjutkan Selesai' : 'Selesai'}
                         </button>
                       )}
                     </div>
