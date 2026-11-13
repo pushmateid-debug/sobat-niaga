@@ -8,7 +8,7 @@ import Swal from 'sweetalert2';
 import { auth, db as realDb, dbFirestore } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
-import { collection, addDoc, query, where, onSnapshot, updateDoc, deleteDoc, getDoc, getDocs, writeBatch, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, updateDoc, getDoc, getDocs, writeBatch, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
@@ -1940,7 +1940,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   };
 
-  // 9. Hapus Riwayat Selesai
+  // Hide completed history only from the current participant's history.
   const handleDeleteSingleHistory = async (order) => {
     const isFinished = ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(order.status);
     if (!isFinished) {
@@ -1949,11 +1949,11 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
 
     const result = await Swal.fire({
-      title: 'Hapus Permanen?',
-      text: 'Riwayat pesanan ini akan dihapus permanen dan tidak dapat dipulihkan.',
+      title: 'Hapus dari Riwayat?',
+      text: 'Riwayat ini disembunyikan hanya untuk akun dan mode yang sedang digunakan. Riwayat pihak lain dan catatan admin tetap aman.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Ya, Hapus Permanen',
+      confirmButtonText: 'Hapus dari Riwayat',
       confirmButtonColor: '#ef4444',
       cancelButtonText: 'Batal'
     });
@@ -1961,9 +1961,14 @@ const NiagaGo = ({ onOpenProfile }) => {
     if (result.isConfirmed) {
       try {
         if (order.type === 'food') {
-            await update(ref(realDb, `orders/${order.id}`), {
-                [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true
-            });
+          const foodOrderRef = ref(realDb, `orders/${order.id}`);
+          const foodOrderSnapshot = await get(foodOrderRef);
+          const foodOrder = foodOrderSnapshot.val();
+          const ownerId = isDriverMode ? foodOrder?.driverId : (foodOrder?.buyerId || foodOrder?.userId);
+          if (!foodOrder || ownerId !== userProfile.uid || !['completed', 'cancelled', 'payment_rejected', 'expired'].includes(foodOrder.status)) {
+            throw new Error('Pesanan tidak ditemukan, bukan milik akun ini, atau belum selesai.');
+          }
+          await update(foodOrderRef, { [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true });
         } else {
             const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
             const orderSnapshot = await getDoc(orderRef);
@@ -1973,9 +1978,9 @@ const NiagaGo = ({ onOpenProfile }) => {
               !['completed', 'cancelled', 'payment_rejected', 'expired'].includes(ownedOrder.status)) {
               throw new Error('Pesanan tidak ditemukan, bukan milik akun ini, atau belum selesai.');
             }
-            await deleteDoc(orderRef);
+            await updateDoc(orderRef, { [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true });
         }
-        Swal.fire('Terhapus', order.type === 'food' ? 'Riwayat makanan disembunyikan.' : 'Riwayat NiagaGo dihapus permanen.', 'success');
+        Swal.fire('Terhapus', 'Riwayat disembunyikan dari mode ini saja.', 'success');
       } catch (error) {
         console.error('Error deleting history:', error);
         Swal.fire('Gagal Menghapus', error.message || 'Database menolak penghapusan riwayat.', 'error');
@@ -1983,7 +1988,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
-  // 10. Hapus Permanen Semua Riwayat NiagaGo Selesai Milik Akun Ini
+  // Hide all completed history for the current participant without deleting shared order records.
   const handleClearHistory = async () => {
     if (!userProfile?.uid || !dbFirestore) {
       Swal.fire('Tidak Dapat Menghapus', 'Akun atau koneksi database tidak tersedia.', 'error');
@@ -1997,23 +2002,31 @@ const NiagaGo = ({ onOpenProfile }) => {
         where(ownerField, '==', userProfile.uid)
       ));
       const finishedOrders = snapshot.docs.filter((orderDoc) =>
-        ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(orderDoc.data().status)
+        ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(orderDoc.data().status) &&
+        !orderDoc.data()[isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']
       );
-      if (finishedOrders.length === 0) {
+      const finishedFoodOrders = combinedOrders.filter((order) =>
+        order.type === 'food' &&
+        ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(order.status) &&
+        !order[isDriverMode ? 'hiddenForDriver' : 'hiddenForUser'] &&
+        (isDriverMode ? order.driverId === userProfile.uid : (order.buyerId || order.userId) === userProfile.uid)
+      );
+      const totalFinishedOrders = finishedOrders.length + finishedFoodOrders.length;
+      if (totalFinishedOrders === 0) {
         Swal.fire('Tidak Ada Riwayat', 'Tidak ada riwayat NiagaGo selesai yang bisa dihapus.', 'info');
         return;
       }
 
       const result = await Swal.fire({
-        title: 'Hapus Riwayat Permanen?',
-        text: `${finishedOrders.length} riwayat selesai/batal milik akun ini akan dihapus permanen dari NiagaGo. Pesanan aktif dan riwayat pengguna lain tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan.`,
+        title: `Hapus Riwayat ${isDriverMode ? 'Driver' : 'Penumpang'}?`,
+        text: `${totalFinishedOrders} riwayat selesai/batal akan disembunyikan hanya dari mode ${isDriverMode ? 'driver' : 'penumpang'} akun ini. Pihak lain dan admin tetap dapat melihat catatannya.`,
         icon: 'warning',
         input: 'checkbox',
         inputValue: 0,
-        inputPlaceholder: 'Saya paham riwayat ini tidak dapat dipulihkan',
+        inputPlaceholder: 'Saya paham riwayat hanya dihapus dari tampilan saya',
         inputValidator: (value) => value ? undefined : 'Centang konfirmasi untuk melanjutkan.',
         showCancelButton: true,
-        confirmButtonText: 'Hapus Permanen',
+        confirmButtonText: 'Hapus dari Riwayat',
         cancelButtonText: 'Batal',
         confirmButtonColor: '#dc2626'
       });
@@ -2022,11 +2035,21 @@ const NiagaGo = ({ onOpenProfile }) => {
 
       for (let offset = 0; offset < finishedOrders.length; offset += 450) {
         const batch = writeBatch(dbFirestore);
-        finishedOrders.slice(offset, offset + 450).forEach((orderDoc) => batch.delete(orderDoc.ref));
+        finishedOrders.slice(offset, offset + 450).forEach((orderDoc) => {
+          batch.update(orderDoc.ref, { [isDriverMode ? 'hiddenForDriver' : 'hiddenForUser']: true });
+        });
         await batch.commit();
       }
 
-      await Swal.fire('Riwayat Dihapus', `${finishedOrders.length} riwayat NiagaGo selesai/batal telah dihapus permanen dari akun ini.`, 'success');
+      if (finishedFoodOrders.length > 0) {
+        const updates = {};
+        finishedFoodOrders.forEach((order) => {
+          updates[`orders/${order.id}/${isDriverMode ? 'hiddenForDriver' : 'hiddenForUser'}`] = true;
+        });
+        await update(ref(realDb), updates);
+      }
+
+      await Swal.fire('Riwayat Dibersihkan', `${totalFinishedOrders} riwayat selesai/batal disembunyikan dari mode ${isDriverMode ? 'driver' : 'penumpang'} ini.`, 'success');
     } catch (error) {
       console.error('Error clearing NiagaGo history:', error);
       Swal.fire('Gagal Menghapus', error.message || 'Periksa izin Firestore dan coba lagi.', 'error');
@@ -2036,7 +2059,10 @@ const NiagaGo = ({ onOpenProfile }) => {
   // Cek apakah ada order yang bisa dibersihkan untuk tombol "Bersihkan Selesai"
   const hasClearableOrders = combinedOrders.some(o => {
     const isFinished = ['completed', 'cancelled', 'payment_rejected', 'expired'].includes(o.status);
-    return o.type !== 'food' && isFinished && (isDriverMode ? o.driverId === userProfile.uid : o.userId === userProfile?.uid);
+    const isCurrentParticipant = isDriverMode
+      ? o.driverId === userProfile?.uid
+      : (o.type === 'food' ? (o.buyerId || o.userId) === userProfile?.uid : o.userId === userProfile?.uid);
+    return isFinished && isCurrentParticipant && !o[isDriverMode ? 'hiddenForDriver' : 'hiddenForUser'];
   });
 
   // --- RENDER REGISTRATION PAGE (FULL PAGE) ---
@@ -2368,7 +2394,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             </h3>
             {hasClearableOrders && (
               <button onClick={handleClearHistory} className="text-xs font-bold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors">
-                <Trash2 size={14}/> Hapus Riwayat Selesai
+                <Trash2 size={14}/> Hapus Riwayat {isDriverMode ? 'Driver' : 'Penumpang'}
               </button>
             )}
           </div>
@@ -2677,7 +2703,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   )}
 
                   {/* 6. STATUS COMPLETED */}
-                  {['completed', 'cancelled', 'payment_rejected'].includes(order.status) && (
+                  {['completed', 'cancelled', 'payment_rejected', 'expired'].includes(order.status) && (
                     <div className="flex justify-between items-center w-full mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-slate-700">
                         <span className={`text-xs font-bold flex items-center gap-1 ${order.status === 'completed' ? 'text-green-600' : 'text-red-500'}`}>
                           {order.status === 'completed' ? <Star size={12} fill="currentColor" /> : <X size={12} />} 
