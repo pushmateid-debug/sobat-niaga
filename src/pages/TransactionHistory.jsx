@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Package, Clock, CheckCircle, Truck, XCircle, ShoppingBag, Video, ShieldAlert, Trash2, Star, Upload, X, PlayCircle, MessageCircle, Wrench, AlertTriangle, Copy, ChefHat, Bike, Home, MapPin, Utensils } from 'lucide-react';
 import { db, functions } from '../config/firebase';
 import { ref, onValue, query, orderByChild, equalTo, update, get, push, set } from 'firebase/database';
@@ -28,6 +28,8 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '', videoFile: null, videoPreview: null });
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const pendingOrderCompletions = useRef(new Set());
+  const attemptedAutoCompletions = useRef(new Set());
   // Efek Pindah Tab Otomatis
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -171,24 +173,39 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
   // Logic Inti Penyelesaian Pesanan (Dipisah biar bisa dipanggil Auto-Update)
   const completeOrderTransaction = async (order, isAuto = false) => {
+      if (pendingOrderCompletions.current.has(order.id)) {
+        return {
+          success: false,
+          errorCode: 'already-in-progress',
+          errorMessage: 'Konfirmasi pesanan ini sedang diproses. Tunggu sebentar lalu periksa statusnya.'
+        };
+      }
+
+      pendingOrderCompletions.current.add(order.id);
       try {
           const completeOrder = httpsCallable(functions, 'completeOrderTransaction');
           const response = await completeOrder({ orderId: order.id });
           return {
+            success: true,
             notificationWarnings: response.data?.notificationWarnings || []
           };
       } catch (error) {
           console.error("Error completing order:", error);
-          if (!isAuto) {
-            const errorCode = String(error.code || '');
-            const message = errorCode === 'functions/internal'
-              ? `Server pencairan sedang mengalami kendala. Pesanan belum dapat dipastikan selesai. Coba sekali lagi; jika masih gagal, kirim ID pesanan ${order.id} ke Admin.`
-              : errorCode === 'functions/unavailable'
-                ? 'Layanan penyelesaian pesanan sementara tidak tersedia. Periksa koneksi lalu coba lagi.'
-                : error.message || 'Silakan coba lagi.';
-            Swal.showValidationMessage(message);
-          }
-          return false;
+          const errorCode = String(error.code || '');
+          const message = errorCode === 'functions/internal'
+            ? `Server pencairan mengalami kendala. Status pesanan belum dapat dipastikan. Periksa riwayat sebelum mencoba lagi. Jika masih gagal, hubungi Admin dengan ID pesanan ${order.id}.`
+            : errorCode === 'functions/unavailable'
+              ? 'Layanan penyelesaian pesanan sementara tidak tersedia. Periksa koneksi lalu coba lagi.'
+              : error.message || 'Silakan coba lagi.';
+          return {
+            success: false,
+            errorCode,
+            errorMessage: message,
+            orderId: order.id,
+            isAuto
+          };
+      } finally {
+          pendingOrderCompletions.current.delete(order.id);
       }
   };
 
@@ -210,6 +227,16 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
       allowOutsideClick: () => !Swal.isLoading()
     }).then((result) => {
       if (result.isConfirmed) {
+        if (!result.value?.success) {
+          Swal.fire({
+            title: result.value?.errorCode === 'already-in-progress' ? 'Sedang Diproses' : 'Belum Berhasil',
+            text: result.value?.errorMessage || 'Konfirmasi belum berhasil. Periksa status pesanan sebelum mencoba lagi.',
+            icon: 'error',
+            confirmButtonText: 'Mengerti'
+          });
+          return;
+        }
+
         const notificationWarnings = result.value?.notificationWarnings || [];
         const hasNotificationWarning = notificationWarnings.length > 0;
         Swal.fire({
@@ -241,7 +268,8 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                 // Durasi Auto-Close: Jasa (24 Jam), Fisik (3 Hari)
                 const autoCloseDuration = isJasa ? 24 * 60 * 60 * 1000 : 3 * 24 * 60 * 60 * 1000;
 
-                if (now > shippedTime + autoCloseDuration) {
+                if (now > shippedTime + autoCloseDuration && !attemptedAutoCompletions.current.has(order.id)) {
+                    attemptedAutoCompletions.current.add(order.id);
                     console.log(`Auto-completing order ${order.id}`);
                     completeOrderTransaction(order, true);
                 }
