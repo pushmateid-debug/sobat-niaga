@@ -24,6 +24,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     : fetchedProduct?.id === productId ? fetchedProduct : null;
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('about');
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -93,6 +94,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   useEffect(() => {
     if (product) {
       setCurrentImageIndex(0);
+      setQuantity(1);
     }
   }, [product]);
 
@@ -377,7 +379,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
         name: product?.name || 'Produk SobatNiaga',
         price: parseInt(product?.price) || 0,
         image: product?.mediaUrl || product?.image || 'https://via.placeholder.com/150',
-        quantity: 1,
+        quantity,
         storeName: product?.storeName || 'Toko',
         sellerId: product?.sellerId || '',
         selected: true,
@@ -429,6 +431,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     product?.isVerifiedSeller === true;
   const categoryLabel = product?.category || 'Produk';
   const categoryTrail = /niaga[\s-]*food/i.test(categoryLabel) ? ['GoFood', categoryLabel] : [categoryLabel];
+  const productHighlights = [product?.highlights, product?.advantages, product?.features].find(Array.isArray) || [];
+  const availableStock = Number(product?.stock);
   const modalOverlay = (children) => (
     <div
       className="fixed inset-0 z-[1500] flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-md sm:p-4"
@@ -474,7 +478,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   }
 
   const productContent = (
-    <div className={`transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen pb-32 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}`}>
+    <div className={`transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}`}>
       <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-200'}`}>
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => (isModal ? onBack?.() : navigate('/'))} className="flex shrink-0 items-center gap-2 text-lg font-black tracking-tight text-sky-500">
@@ -503,8 +507,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           </button>
         </div>
       </header>
-      <div className={`mx-auto flex flex-col gap-5 p-4 md:flex-row md:gap-8 md:p-7 ${isModal ? 'max-w-none' : 'max-w-7xl'}`}>
-        <div className="w-full shrink-0 md:w-[46%]">
+      <div className={`mx-auto grid grid-cols-1 gap-5 p-4 md:grid-cols-2 md:gap-x-8 md:gap-y-6 md:p-7 ${isModal ? 'max-w-none' : 'max-w-7xl'}`}>
+        <div className="min-w-0">
           <div className={`group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-slate-50'}`}>
             {selectedImage ? (
               <img src={selectedImage} className="h-full w-full object-contain" alt={product?.name || 'Foto produk'} />
@@ -545,7 +549,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="space-y-4">
             <div>
               <span className="inline-flex rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-500">{product?.category || 'Produk SobatNiaga'}</span>
@@ -600,169 +604,169 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
               </button>
             </div>
 
-            {/* Tabs Navigation (Pemisah Deskripsi & Review) */}
-            <div className={`flex border-b mb-6 mt-6 transition-colors duration-300 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
-                {['about', 'review'].map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? (isDarkMode ? 'text-sky-400' : 'text-sky-600') : (isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-gray-400 hover:text-gray-600')}`}>
-                        {tab === 'about' ? 'Tentang' : 'Ulasan'}
-                        {activeTab === tab && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-sky-600 rounded-t-full"></div>}
-                    </button>
-                ))}
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-slate-500">Jumlah</span>
+              <div className={`inline-flex items-center rounded-xl border ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+                <button
+                  type="button"
+                  aria-label="Kurangi jumlah produk"
+                  onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                  disabled={quantity <= 1}
+                  className="rounded-l-xl px-3 py-2 text-lg font-bold text-slate-400 transition hover:text-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >−</button>
+                <span aria-live="polite" className="min-w-10 text-center text-sm font-bold">{quantity}</span>
+                <button
+                  type="button"
+                  aria-label="Tambah jumlah produk"
+                  onClick={() => setQuantity((current) => current + 1)}
+                  disabled={availableStock > 0 && quantity >= availableStock}
+                  className="rounded-r-xl px-3 py-2 text-lg font-bold text-slate-400 transition hover:text-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >+</button>
+              </div>
+              {Number.isFinite(availableStock) && availableStock > 0 && <span className="text-xs text-slate-500">Stok {availableStock}</span>}
             </div>
 
-            {/* Content Berdasarkan Tab yang Dipilih */}
-            <div className="flex-1">
-                {activeTab === 'about' && (
-                  <div className="space-y-4 animate-in fade-in duration-300">
-                    <section>
-                      <h2 className="mb-2 text-base font-bold">Deskripsi Produk</h2>
-                      <p className={`whitespace-pre-line text-sm leading-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'} ${!isDescExpanded ? 'line-clamp-5' : ''}`}>
-                        {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
-                      </p>
-                      {(product?.description || '').length > 260 && (
-                        <button type="button" onClick={() => setIsDescExpanded(!isDescExpanded)} className="mt-2 text-sm font-bold text-sky-500">
-                          {isDescExpanded ? 'Lebih Sedikit' : 'Selengkapnya'}
-                        </button>
-                      )}
-                    </section>
-
-                    {(product?.brand || product?.condition || product?.stock !== undefined) && (
-                      <section className={`grid grid-cols-2 gap-3 rounded-xl p-3 text-sm ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                        {product?.brand && <div><span className="text-slate-500">Merek</span><p className="font-semibold">{product.brand}</p></div>}
-                        {product?.condition && <div><span className="text-slate-500">Kondisi</span><p className="font-semibold">{product.condition}</p></div>}
-                        {product?.stock !== undefined && <div><span className="text-slate-500">Stok</span><p className="font-semibold">{product.stock}</p></div>}
-                        {product?.category && <div><span className="text-slate-500">Kategori</span><p className="font-semibold">{product.category}</p></div>}
-                      </section>
-                    )}
-
-                    <section className={`rounded-2xl border p-4 ${isDarkMode ? 'border-slate-700 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
-                      <h2 className="mb-3 text-sm font-bold">Informasi Penjual</h2>
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          {sellerProfile?.photoURL || sellerProfile?.sellerInfo?.storeLogo || sellerProfile?.avatarURL || product?.storeLogo || product?.sellerPhoto ? (
-                            <img src={sellerProfile?.photoURL || sellerProfile?.sellerInfo?.storeLogo || sellerProfile?.avatarURL || product?.storeLogo || product?.sellerPhoto} alt="" className="h-14 w-14 rounded-full border border-slate-200 object-cover" />
-                          ) : (
-                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">
-                              {(product?.storeName || sellerProfile?.sellerInfo?.storeName || 'T').trim().slice(0, 1).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <h3 className="flex items-center gap-1 truncate font-bold">
-                              {product?.storeName || sellerProfile?.sellerInfo?.storeName || 'Toko SobatNiaga'}
-                              {sellerVerified && <BadgeCheck size={16} className="shrink-0 text-sky-500" aria-label="Penjual terverifikasi" />}
-                            </h3>
-                            {sellerRating > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Star size={13} fill="currentColor" className="text-amber-400" /> {sellerRating.toFixed(1)} Rating Toko</p>}
-                            {sellerVerified && <p className="mt-1 text-xs font-semibold text-emerald-500">Penjual Terverifikasi</p>}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 flex-col gap-2 sm:w-40">
-                          <button type="button" onClick={handleInternalChat} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-sky-700">
-                            <MessageCircle size={15} /> Chat Penjual
-                          </button>
-                          <button type="button" onClick={() => onVisitStore?.(product?.sellerId)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${isDarkMode ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}>
-                            Kunjungi Toko
-                          </button>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                )}
-                {activeTab === 'review' && (
-                  <div className="space-y-4 animate-in fade-in duration-300">
-                    {reviewError ? (
-                      <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{reviewError}</p>
-                    ) : (
-                      <>
-                        <section className={`flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                          <div className="min-w-32 text-center">
-                            <p className="text-3xl font-black">{reviewAverage > 0 ? reviewAverage.toFixed(1) : '—'}</p>
-                            <div className="my-1 flex justify-center text-amber-400">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(reviewAverage) ? 'currentColor' : 'none'} />)}</div>
-                            <p className="text-xs text-slate-500">{reviewCount.toLocaleString('id-ID')} ulasan</p>
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            {reviews.length > 0 && ratingDistribution.map(({ rating, count }) => (
-                              <div key={rating} className="flex items-center gap-2 text-xs">
-                                <span className="w-8 text-slate-500">{rating} ★</span>
-                                <div className={`h-2 flex-1 overflow-hidden rounded-full ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
-                                  <div className="h-full rounded-full bg-amber-400" style={{ width: `${reviews.length ? (count / reviews.length) * 100 : 0}%` }} />
-                                </div>
-                                <span className="w-6 text-right text-slate-500">{count}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                        {reviews.length ? reviews.map((review) => {
-                          const reviewImages = [
-                            review.imageUrl,
-                            review.photoUrl,
-                            review.image,
-                            ...(Array.isArray(review.images) ? review.images : []),
-                            ...(Array.isArray(review.photos) ? review.photos : [])
-                          ].filter(Boolean);
-                          return (
-                            <article key={review.id} className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                              <div className="flex items-center gap-3">
-                                {review.buyerPhoto ? <img src={review.buyerPhoto} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600"><User size={17} /></div>}
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold">{review.buyerName || 'Pembeli'}</p>
-                                  {review.createdAt && <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString('id-ID')}</p>}
-                                </div>
-                                <span className="flex items-center gap-1 text-sm font-bold text-amber-500"><Star size={14} fill="currentColor" /> {Number(review.rating || 0)}</span>
-                              </div>
-                              {review.comment && <p className="mt-3 whitespace-pre-line text-sm leading-5 text-slate-500">{review.comment}</p>}
-                              {reviewImages.length > 0 && <div className="mt-3 flex gap-2">{reviewImages.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt="Foto ulasan" className="h-16 w-16 rounded-lg object-cover" />)}</div>}
-                            </article>
-                          );
-                        }) : (
-                          <div className={`rounded-2xl border border-dashed p-6 text-center ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                            <Star size={30} className="mx-auto mb-2 text-amber-400" />
-                            <p className="text-sm font-semibold">Belum ada ulasan produk</p>
-                            <p className="mt-1 text-xs text-slate-500">Ulasan pembeli akan muncul di sini setelah tersedia.</p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-            </div>
-
-            {/* Footer Action - Desktop */}
-            <div className="hidden md:flex gap-4 mt-auto">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button 
                 onClick={() => handleAddToCart(false)}
                 disabled={isAdding}
-                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition ${isDarkMode ? 'border-slate-700 bg-slate-900 hover:bg-slate-800' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
               >
                 {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Tambah ke Keranjang</>}
               </button>
               <button 
                 onClick={() => handleAddToCart(true)}
                 disabled={isAdding}
-                className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none transition-all"
+                className="flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-3 text-sm font-black text-white transition hover:bg-sky-700"
               >
-                Beli Sekarang
+                Pesan Sekarang
               </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Mobile Floating Action Bar - Shopee Style */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 p-4 border-t z-[100] flex gap-3 backdrop-blur-lg ${isDarkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-gray-100'}`}>
-        <button 
-          onClick={() => handleAddToCart(false)}
-          disabled={isAdding}
-          className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
-        >
-          {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={19} /> Tambah ke Keranjang</>}
-        </button>
-        <button 
-          onClick={() => handleAddToCart(true)}
-          disabled={isAdding}
-          className="flex-[2] py-3 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg"
-        >
-          Beli Sekarang
-        </button>
+        <section className={`min-w-0 overflow-hidden rounded-2xl border ${isDarkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
+          <div className={`flex border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`} role="tablist" aria-label="Detail produk">
+            {['about', 'review'].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={`relative px-5 py-3 text-sm font-bold transition ${activeTab === tab ? 'text-sky-500' : 'text-slate-500 hover:text-sky-500'}`}
+              >
+                {tab === 'about' ? 'Tentang' : `Ulasan${reviewCount ? ` (${reviewCount.toLocaleString('id-ID')})` : ''}`}
+                {activeTab === tab && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-sky-500" />}
+              </button>
+            ))}
+          </div>
+          <div className="p-5">
+            {activeTab === 'about' ? (
+              <div className="space-y-4">
+                <section>
+                  <h2 className="mb-2 text-base font-bold">Deskripsi Produk</h2>
+                  <p className={`whitespace-pre-line text-sm leading-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'} ${!isDescExpanded ? 'line-clamp-5' : ''}`}>
+                    {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
+                  </p>
+                  {(product?.description || '').length > 260 && (
+                    <button type="button" onClick={() => setIsDescExpanded(!isDescExpanded)} className="mt-2 text-sm font-bold text-sky-500">
+                      {isDescExpanded ? 'Lebih Sedikit' : 'Selengkapnya'}
+                    </button>
+                  )}
+                </section>
+                {productHighlights.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 text-sm font-bold">Keunggulan Produk</h3>
+                    <ul className="space-y-2">
+                      {productHighlights.map((highlight, index) => (
+                        <li key={`${index}-${typeof highlight === 'string' ? highlight : highlight?.title || highlight?.label || ''}`} className={`flex gap-2 text-sm ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <Check size={16} className="mt-0.5 shrink-0 text-sky-500" />
+                          <span>{typeof highlight === 'string' ? highlight : highlight?.title || highlight?.label || highlight?.name || highlight?.description}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviewError ? (
+                  <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{reviewError}</p>
+                ) : (
+                  <>
+                    <section className={`flex flex-col gap-4 rounded-xl p-4 sm:flex-row sm:items-center ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
+                      <div className="min-w-32 text-center">
+                        <p className="text-3xl font-black">{reviewAverage > 0 ? reviewAverage.toFixed(1) : '—'}</p>
+                        <div className="my-1 flex justify-center text-amber-400">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(reviewAverage) ? 'currentColor' : 'none'} />)}</div>
+                        <p className="text-xs text-slate-500">{reviewCount.toLocaleString('id-ID')} ulasan</p>
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        {reviews.length > 0 && ratingDistribution.map(({ rating, count }) => (
+                          <div key={rating} className="flex items-center gap-2 text-xs">
+                            <span className="w-8 text-slate-500">{rating} ★</span>
+                            <div className={`h-2 flex-1 overflow-hidden rounded-full ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                              <div className="h-full rounded-full bg-amber-400" style={{ width: `${reviews.length ? (count / reviews.length) * 100 : 0}%` }} />
+                            </div>
+                            <span className="w-6 text-right text-slate-500">{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    {reviews.length ? reviews.map((review) => {
+                      const reviewImages = [
+                        review.imageUrl,
+                        review.photoUrl,
+                        review.image,
+                        ...(Array.isArray(review.images) ? review.images : []),
+                        ...(Array.isArray(review.photos) ? review.photos : [])
+                      ].filter(Boolean);
+                      return (
+                        <article key={review.id} className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                          <div className="flex items-center gap-3">
+                            {review.buyerPhoto ? <img src={review.buyerPhoto} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600"><User size={17} /></div>}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold">{review.buyerName || 'Pembeli'}</p>
+                              {review.createdAt && <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString('id-ID')}</p>}
+                            </div>
+                            <span className="flex items-center gap-1 text-sm font-bold text-amber-500"><Star size={14} fill="currentColor" /> {Number(review.rating || 0)}</span>
+                          </div>
+                          {review.comment && <p className="mt-3 whitespace-pre-line text-sm leading-5 text-slate-500">{review.comment}</p>}
+                          {reviewImages.length > 0 && <div className="mt-3 flex gap-2">{reviewImages.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt="Foto ulasan" className="h-16 w-16 rounded-lg object-cover" />)}</div>}
+                        </article>
+                      );
+                    }) : (
+                      <div className={`rounded-xl border border-dashed p-6 text-center ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                        <p className="text-sm font-semibold">Belum ada ulasan produk</p>
+                        <p className="mt-1 text-xs text-slate-500">Ulasan pembeli akan muncul di sini setelah tersedia.</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <aside className={`min-w-0 self-start rounded-2xl border p-5 ${isDarkMode ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+          <h2 className="text-base font-bold">Informasi Penjual</h2>
+          <div className="mt-3 min-w-0">
+            <h3 className="flex items-center gap-1 truncate font-bold">
+              {product?.storeName || sellerProfile?.sellerInfo?.storeName || 'Toko SobatNiaga'}
+              {sellerVerified && <BadgeCheck size={16} className="shrink-0 text-sky-500" aria-label="Penjual terverifikasi" />}
+            </h3>
+            {sellerRating > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Star size={13} fill="currentColor" className="text-amber-400" /> {sellerRating.toFixed(1)} Rating Toko</p>}
+            {sellerVerified && <p className="mt-1 text-xs font-semibold text-emerald-500">Penjual Terverifikasi</p>}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button type="button" onClick={handleInternalChat} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-sky-700">
+              <MessageCircle size={15} /> Chat Penjual
+            </button>
+            <button type="button" onClick={() => onVisitStore?.(product?.sellerId)} className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition ${isDarkMode ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}>
+              Kunjungi Toko
+            </button>
+          </div>
+        </aside>
       </div>
     </div>
   );
