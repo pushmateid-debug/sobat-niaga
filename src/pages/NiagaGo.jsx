@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X,
-  Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils 
+  Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils,
+  Share2
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
@@ -43,6 +44,22 @@ const getActiveOffers = (order, now = Date.now()) => (
   (Array.isArray(order.offers) ? order.offers : []).filter((offer) =>
     offer.status !== 'rejected' && getOfferExpiry(offer, order) > now
   )
+);
+
+const normalizeGpsCoordinates = (coordinates) => {
+  if (!coordinates || coordinates.lat == null || coordinates.lng == null ||
+      coordinates.lat === '' || coordinates.lng === '') return null;
+
+  const lat = Number(coordinates.lat);
+  const lng = Number(coordinates.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+      lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return { lat, lng };
+};
+
+const getGoogleMapsDirectionsUrl = (coordinates) => (
+  `https://www.google.com/maps/dir/?api=1&destination=${coordinates.lat},${coordinates.lng}&travelmode=two-wheeler&dir_action=navigate`
 );
 
 const getSearchRadius = (order, now = Date.now()) => {
@@ -548,6 +565,103 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [searchExpiryMs, setSearchExpiryMs] = useState(DEFAULT_SEARCH_EXPIRY_MS);
   const [searchExpiryLoaded, setSearchExpiryLoaded] = useState(false);
   const expiringOrderIdsRef = useRef(new Set());
+
+  const getAuthorizedDriverOrder = async (orderId, allowedStatuses) => {
+    if (!isDriverMode || !userProfile?.uid) {
+      throw new Error('Navigasi hanya tersedia dalam mode driver.');
+    }
+
+    const orderSnapshot = await getDoc(doc(dbFirestore, 'ojek_orders', orderId));
+    if (!orderSnapshot.exists()) throw new Error('Pesanan tidak ditemukan.');
+
+    const order = orderSnapshot.data();
+    if (order.driverId !== userProfile.uid) {
+      throw new Error('Anda tidak berwenang mengakses perjalanan ini.');
+    }
+    if (!allowedStatuses.includes(order.status)) {
+      throw new Error('Status pesanan tidak mengizinkan tindakan ini.');
+    }
+
+    return order;
+  };
+
+  const handleOpenDriverNavigation = async (order, target) => {
+    try {
+      if (order.driverId !== userProfile?.uid) {
+        throw new Error('Navigasi hanya tersedia untuk pesanan milik Anda.');
+      }
+
+      const currentOrder = await getAuthorizedDriverOrder(
+        order.id,
+        target === 'pickup'
+          ? ['verified', 'ongoing']
+          : ['ongoing']
+      );
+      const coordinates = normalizeGpsCoordinates(
+        target === 'pickup' ? currentOrder.pickupCoords : currentOrder.destCoords
+      );
+      if (!coordinates) {
+        throw new Error(target === 'pickup'
+          ? 'Koordinat penjemputan tidak tersedia pada pesanan ini.'
+          : 'Koordinat tujuan tidak tersedia pada pesanan ini.');
+      }
+
+      window.location.assign(getGoogleMapsDirectionsUrl(coordinates));
+    } catch (error) {
+      console.error('Gagal membuka navigasi NiagaGo:', error);
+      Swal.fire('Navigasi Tidak Tersedia', error.message || 'Gagal membuka navigasi.', 'error');
+    }
+  };
+
+  const handleSharePickupLocation = async (order) => {
+    try {
+      if (order.driverId !== userProfile?.uid) {
+        throw new Error('Lokasi hanya dapat dibagikan oleh driver pemilik pesanan.');
+      }
+
+      const currentOrder = await getAuthorizedDriverOrder(order.id, ['verified', 'ongoing']);
+      const coordinates = normalizeGpsCoordinates(currentOrder.pickupCoords);
+      if (!coordinates) throw new Error('Koordinat penjemputan tidak tersedia pada pesanan ini.');
+
+      const mapsUrl = getGoogleMapsDirectionsUrl(coordinates);
+      const pickupLabel = currentOrder.pickup || 'Lokasi penjemputan';
+      const shareText = [
+        'NiagaGo - lokasi penjemputan',
+        pickupLabel,
+        `Koordinat GPS: ${coordinates.lat}, ${coordinates.lng}`,
+        `Google Maps: ${mapsUrl}`
+      ].join('\n');
+
+      if (typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Lokasi Penjemputan NiagaGo',
+          text: shareText,
+          url: mapsUrl
+        });
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(mapsUrl);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = mapsUrl;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        const copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!copied) throw new Error('Browser tidak dapat menyalin tautan.');
+      }
+      await Swal.fire('Tautan Disalin', 'Tautan lokasi penjemputan siap dibagikan.', 'success');
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      console.error('Gagal membagikan lokasi penjemputan NiagaGo:', error);
+      Swal.fire('Gagal Membagikan Lokasi', error.message || 'Periksa izin berbagi atau clipboard browser.', 'error');
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setSearchClock(Date.now()), 5000);
@@ -1697,9 +1811,26 @@ const NiagaGo = ({ onOpenProfile }) => {
 
   // 4. Driver Mulai Perjalanan
   const handleStartTrip = async (orderId) => {
-    await updateDoc(doc(dbFirestore, 'ojek_orders', orderId), {
-      status: 'ongoing'
-    });
+    try {
+      if (!isDriverMode || !userProfile?.uid) {
+        throw new Error('Hanya driver yang dapat memulai perjalanan.');
+      }
+
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderRef = doc(dbFirestore, 'ojek_orders', orderId);
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists()) throw new Error('Pesanan tidak ditemukan.');
+
+        const order = orderSnapshot.data();
+        if (order.driverId !== userProfile.uid || order.status !== 'verified') {
+          throw new Error('Pesanan ini tidak dapat dimulai oleh akun Anda.');
+        }
+        transaction.update(orderRef, { status: 'ongoing' });
+      });
+    } catch (error) {
+      console.error('Gagal memulai perjalanan NiagaGo:', error);
+      Swal.fire('Tidak Dapat Memulai', error.message || 'Gagal memperbarui status perjalanan.', 'error');
+    }
   };
 
   // 5. User Konfirmasi Selesai (Dana Cair ke Driver)
@@ -2527,6 +2658,54 @@ const NiagaGo = ({ onOpenProfile }) => {
                     })()
                   )}
                 </div>
+
+                {isDriverMode && order.type !== 'food' &&
+                  order.driverId === userProfile?.uid &&
+                  ['verified', 'ongoing'].includes(order.status) && (
+                    <div className="mb-4 space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {order.status === 'ongoing' ? (
+                          <>
+                            <button
+                              onClick={() => handleOpenDriverNavigation(order, 'destination')}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                              <Navigation size={16} /> Navigasi ke Tujuan
+                            </button>
+                            <button
+                              onClick={() => handleOpenDriverNavigation(order, 'pickup')}
+                              className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                              <MapPin size={16} /> Navigasi ke Penjemputan
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleOpenDriverNavigation(order, 'pickup')}
+                              className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                              <MapPin size={16} /> Navigasi ke Penjemputan
+                            </button>
+                            <button
+                              type="button"
+                              disabled
+                              title="Navigasi ke tujuan tersedia setelah perjalanan dimulai."
+                              className="bg-gray-200 dark:bg-slate-700 text-gray-500 px-3 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 cursor-not-allowed"
+                            >
+                              <Navigation size={16} /> Navigasi ke Tujuan
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleSharePickupLocation(order)}
+                        className="w-full border border-sky-500 text-sky-600 hover:bg-sky-50 dark:hover:bg-slate-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                      >
+                        <Share2 size={16} /> Bagikan Lokasi Penjemputan
+                      </button>
+                    </div>
+                  )}
                 
                 <div className="flex items-center gap-2 mb-3 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-slate-700 w-fit px-2 py-1 rounded-lg">
                   <Shield size={12} className="text-green-500" /> Rekber Aman (Admin)
