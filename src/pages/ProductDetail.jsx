@@ -11,6 +11,39 @@ import { useTheme } from '../context/ThemeContext';
 
 const PRODUCT_SHARE_ORIGIN = 'https://sobat-niaga.vercel.app';
 
+const socialPlatformIcons = {
+  WhatsApp: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="currentColor">
+      <path d="M12.04 2a9.92 9.92 0 0 0-8.48 15.07L2 22l5.1-1.34A9.93 9.93 0 1 0 12.04 2Zm0 18.06a8.1 8.1 0 0 1-4.13-1.13l-.3-.18-3.03.8.81-2.95-.2-.31a8.12 8.12 0 1 1 6.85 3.77Zm4.45-6.08c-.24-.12-1.43-.7-1.65-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.21-1.44-1.35-1.68-.14-.24-.02-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.4-.54-.41h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.38.51.58.18 1.1.15 1.51.09.46-.07 1.43-.58 1.63-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28Z" />
+    </svg>
+  ),
+  Instagram: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  TikTok: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.4v13.67a2.9 2.9 0 0 1-2.9 2.9 2.9 2.9 0 0 1-2.9-2.9 2.9 2.9 0 0 1 2.9-2.9c.3 0 .6.05.88.14V9.44a6.3 6.3 0 0 0-.88-.06 6.3 6.3 0 0 0-6.3 6.3A6.3 6.3 0 0 0 9.6 21.98a6.3 6.3 0 0 0 6.3-6.3V8.7a8.2 8.2 0 0 0 4.8 1.54V6.85a4.8 4.8 0 0 1-1.11-.16Z" />
+    </svg>
+  ),
+  Facebook: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="currentColor">
+      <path d="M13.5 21v-8.2h2.76l.41-3.2H13.5V7.56c0-.93.26-1.56 1.59-1.56h1.7V3.14c-.3-.04-1.34-.14-2.55-.14-2.53 0-4.26 1.54-4.26 4.37V9.6H7.12v3.2h2.86V21h3.52Z" />
+    </svg>
+  ),
+  Gmail: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 18V6l9 7 9-7v12" stroke="#4285F4" />
+      <path d="M3 6l9 7 9-7" stroke="#EA4335" />
+      <path d="M3 6v12" stroke="#34A853" />
+      <path d="M21 6v12" stroke="#FBBC04" />
+    </svg>
+  )
+};
+
 const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, isLoading = false, productError = '', onBack, onChatWithProduct, onVisitStore, onGoToCart, onRequireLogin }) => {
   const navigate = useNavigate();
   const { theme } = useTheme() || { theme: 'light' };
@@ -813,14 +846,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           <h3 className="mb-3 text-base font-bold sm:text-lg">Bagikan ke Media Sosial</h3>
           <div className="grid grid-cols-5 gap-2 sm:gap-3">
             {[
-              { name: 'WhatsApp', symbol: <MessageCircle size={25} />, color: 'bg-[#25D366] text-white' },
-              { name: 'Instagram', symbol: <span className="text-xl font-black">◎</span>, color: 'bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 text-white' },
-              { name: 'TikTok', symbol: <span className="text-xl font-black">♪</span>, color: 'bg-black text-white' },
-              { name: 'Facebook', symbol: <span className="text-2xl font-black">f</span>, color: 'bg-[#1877F2] text-white' },
-              { name: 'Gmail', symbol: <span className="text-xl font-black text-[#EA4335]">M</span>, color: 'bg-white text-slate-700 border border-slate-200' }
-            ].map(({ name, symbol, color }) => (
+              { name: 'WhatsApp', color: 'bg-[#25D366] text-white' },
+              { name: 'Instagram', color: 'bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 text-white' },
+              { name: 'TikTok', color: 'bg-black text-white' },
+              { name: 'Facebook', color: 'bg-[#1877F2] text-white' },
+              { name: 'Gmail', color: 'bg-white text-slate-700 border border-slate-200' }
+            ].map(({ name, color }) => (
               <button key={name} type="button" onClick={() => handleSocialShare(name)} className="flex min-w-0 flex-col items-center gap-2 rounded-xl border border-slate-100 p-2 transition hover:border-slate-300 hover:bg-slate-50 sm:p-3">
-                <span className={`flex h-10 w-10 items-center justify-center rounded-full ${color}`}>{symbol}</span>
+                <span className={`flex h-10 w-10 items-center justify-center rounded-full ${color}`}>{socialPlatformIcons[name]}</span>
                 <span className="text-center text-[10px] font-medium text-slate-600 sm:text-xs">{name}</span>
               </button>
             ))}
