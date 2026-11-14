@@ -11,6 +11,17 @@ import { useTheme } from '../context/ThemeContext';
 
 const PRODUCT_SHARE_ORIGIN = 'https://sobat-niaga.vercel.app';
 
+const formatReviewCount = (value) => new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1
+}).format(value);
+
+const formatSoldCount = (value) => {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}jt+`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}rb+`;
+  return value.toLocaleString('id-ID');
+};
+
 const socialPlatformIcons = {
   WhatsApp: (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="currentColor">
@@ -73,6 +84,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   const [copySuccess, setCopySuccess] = useState(false);
   const allImages = [...new Set([product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean))];
   const selectedImage = allImages[currentImageIndex] || allImages[0] || '';
+  const sellerPhoto = sellerProfile?.photoURL ||
+    sellerProfile?.sellerInfo?.storeLogo ||
+    sellerProfile?.sellerInfo?.photoURL ||
+    product?.sellerPhoto ||
+    product?.sellerInfo?.storeLogo ||
+    product?.sellerInfo?.photoURL ||
+    product?.storeLogo ||
+    '';
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -462,6 +481,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     sellerProfile?.isVerifiedSeller === true ||
     product?.sellerInfo?.isVerifiedSeller === true ||
     product?.isVerifiedSeller === true;
+  const soldCount = Number(product?.sold ?? product?.soldCount ?? product?.totalSold ?? 0);
+  const hasProductRating = Number(product?.rating) > 0 || reviews.length > 0;
   const categoryLabel = product?.category || 'Produk';
   const categoryTrail = /niaga[\s-]*food/i.test(categoryLabel) ? ['GoFood', categoryLabel] : [categoryLabel];
   const productHighlights = [product?.highlights, product?.advantages, product?.features].find(Array.isArray) || [];
@@ -515,7 +536,6 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
       <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-200'}`}>
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => (isModal ? onBack?.() : navigate('/'))} className="flex shrink-0 items-center gap-2 text-lg font-black tracking-tight text-sky-500">
-            <img src="/favicon.png" alt="" className="h-7 w-7 rounded-full" />
             <span>SobatNiaga</span>
           </button>
           <nav aria-label="Breadcrumb produk" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs">
@@ -542,30 +562,9 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
       </header>
       <div className={`mx-auto grid grid-cols-1 gap-5 p-4 md:grid-cols-2 md:gap-x-8 md:gap-y-6 md:p-7 ${isModal ? 'max-w-none' : 'max-w-7xl'}`}>
         <div className="min-w-0">
-          <div className={`group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-slate-50'}`}>
-            {selectedImage ? (
-              <img src={selectedImage} className="h-full w-full object-contain" alt={product?.name || 'Foto produk'} />
-            ) : (
-              <div className="text-sm text-slate-400">Foto produk belum tersedia</div>
-            )}
-            {selectedImage && (
-              <button
-                type="button"
-                onClick={() => setIsZoomOpen(true)}
-                aria-label="Perbesar foto produk"
-                className="absolute bottom-3 left-3 rounded-full bg-slate-950/75 p-2 text-white transition hover:bg-sky-600"
-              >
-                <ZoomIn size={19} />
-              </button>
-            )}
-            {allImages.length > 1 && (
-              <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/75 px-3 py-1 text-xs font-semibold text-white">
-                {currentImageIndex + 1} / {allImages.length}
-              </span>
-            )}
-          </div>
-          {allImages.length > 1 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          <div className="flex flex-col gap-3 md:flex-row">
+            {allImages.length > 0 && (
+              <div className="order-2 flex gap-2 overflow-x-auto pb-1 md:order-1 md:flex-col md:overflow-y-auto md:overflow-x-hidden md:pb-0">
               {allImages.map((imageUrl, index) => (
                 <button
                   type="button"
@@ -573,13 +572,36 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                   onClick={() => setCurrentImageIndex(index)}
                   aria-label={`Tampilkan foto ${index + 1}`}
                   aria-pressed={currentImageIndex === index}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-20 sm:w-20 ${currentImageIndex === index ? 'border-sky-500' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-20 sm:w-20 md:h-[4.5rem] md:w-[4.5rem] ${currentImageIndex === index ? 'border-sky-500' : 'border-transparent opacity-70 hover:opacity-100'}`}
                 >
                   <img src={imageUrl} className="h-full w-full object-cover" alt="" />
                 </button>
               ))}
+              </div>
+            )}
+            <div className="group relative order-1 flex aspect-square min-w-0 flex-1 items-center justify-center overflow-hidden md:order-2">
+              {selectedImage ? (
+                <img src={selectedImage} className="h-full w-full rounded-2xl object-contain" alt={product?.name || 'Foto produk'} />
+              ) : (
+                <div className="text-sm text-slate-400">Foto produk belum tersedia</div>
+              )}
+              {selectedImage && (
+                <button
+                  type="button"
+                  onClick={() => setIsZoomOpen(true)}
+                  aria-label="Perbesar foto produk"
+                  className="absolute bottom-3 left-3 rounded-full bg-slate-950/75 p-2 text-white transition hover:bg-sky-600"
+                >
+                  <ZoomIn size={19} />
+                </button>
+              )}
+              {allImages.length > 1 && (
+                <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/75 px-3 py-1 text-xs font-semibold text-white">
+                  {currentImageIndex + 1} / {allImages.length}
+                </span>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         <div className="min-w-0">
@@ -587,16 +609,20 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
             <div>
               <span className="inline-flex rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-500">{product?.category || 'Produk SobatNiaga'}</span>
               <h1 className={`mt-3 text-2xl font-bold leading-tight md:text-3xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{product?.name || 'Nama Produk'}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
-                {(Number(product?.rating) > 0 || reviews.length > 0) && (
-                  <span className="flex items-center gap-1 font-semibold text-amber-500">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
+                {hasProductRating && (
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-500">
                     <Star size={16} fill="currentColor" />
-                    {Number(product?.rating || (reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length)).toFixed(1)}
-                    <span className="font-normal text-slate-500">({Number(product?.reviewCount || reviews.length).toLocaleString('id-ID')} ulasan)</span>
+                    <span>{Number(product?.rating || (reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length)).toFixed(1)}</span>
+                    <span className="font-normal text-slate-500">({formatReviewCount(reviewCount)} Ulasan)</span>
                   </span>
                 )}
-                {Number(product?.sold ?? product?.soldCount ?? product?.totalSold) > 0 && (
-                  <span>{Number(product.sold ?? product.soldCount ?? product.totalSold).toLocaleString('id-ID')} terjual</span>
+                {hasProductRating && soldCount > 0 && <span aria-hidden="true" className="h-4 border-l border-slate-600" />}
+                {soldCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShoppingCart size={15} className="text-slate-400" />
+                    Terjual {formatSoldCount(soldCount)}
+                  </span>
                 )}
               </div>
             </div>
@@ -638,22 +664,22 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-slate-500">Jumlah</span>
-              <div className={`inline-flex items-center rounded-xl border ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+              <span className="text-sm font-semibold text-slate-400">Jumlah</span>
+              <div className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900 p-1">
                 <button
                   type="button"
                   aria-label="Kurangi jumlah produk"
                   onClick={() => setQuantity((current) => Math.max(1, current - 1))}
                   disabled={quantity <= 1}
-                  className="rounded-l-xl px-3 py-2 text-lg font-bold text-slate-400 transition hover:text-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 text-lg font-bold text-white transition hover:bg-slate-700 hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >−</button>
-                <span aria-live="polite" className="min-w-10 text-center text-sm font-bold">{quantity}</span>
+                <span aria-live="polite" className="min-w-12 text-center text-sm font-bold text-white">{quantity}</span>
                 <button
                   type="button"
                   aria-label="Tambah jumlah produk"
                   onClick={() => setQuantity((current) => current + 1)}
                   disabled={availableStock > 0 && quantity >= availableStock}
-                  className="rounded-r-xl px-3 py-2 text-lg font-bold text-slate-400 transition hover:text-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 text-lg font-bold text-white transition hover:bg-slate-700 hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >+</button>
               </div>
               {Number.isFinite(availableStock) && availableStock > 0 && <span className="text-xs text-slate-500">Stok {availableStock}</span>}
@@ -678,7 +704,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           </div>
         </div>
 
-        <section className={`min-w-0 overflow-hidden rounded-2xl border ${isDarkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
+        <section className={`min-w-0 overflow-hidden rounded-2xl border md:col-span-2 ${isDarkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
           <div className={`flex border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`} role="tablist" aria-label="Detail produk">
             {['about', 'review'].map((tab) => (
               <button
@@ -689,12 +715,13 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                 onClick={() => setActiveTab(tab)}
                 className={`relative px-5 py-3 text-sm font-bold transition ${activeTab === tab ? 'text-sky-500' : 'text-slate-500 hover:text-sky-500'}`}
               >
-                {tab === 'about' ? 'Tentang' : `Ulasan${reviewCount ? ` (${reviewCount.toLocaleString('id-ID')})` : ''}`}
+                {tab === 'about' ? 'Tentang' : `Ulasan${reviewCount ? ` (${formatReviewCount(reviewCount)})` : ''}`}
                 {activeTab === tab && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-sky-500" />}
               </button>
             ))}
           </div>
-          <div className="p-5">
+          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+            <div className="min-w-0">
             {activeTab === 'about' ? (
               <div className="space-y-4">
                 <section>
@@ -778,28 +805,45 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                 )}
               </div>
             )}
+            </div>
+            <section className={`min-w-0 self-start rounded-2xl border p-4 ${isDarkMode ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'}`}>
+              <h2 className="text-base font-bold">Informasi Penjual</h2>
+              <div className="mt-3 flex min-w-0 items-center gap-3">
+                {sellerPhoto && (
+                  <img
+                    src={sellerPhoto}
+                    alt={`Foto ${product?.storeName || sellerProfile?.sellerInfo?.storeName || 'penjual'}`}
+                    className="h-14 w-14 shrink-0 rounded-full object-cover"
+                  />
+                )}
+                <div className="min-w-0">
+                  <h3 className="flex items-center gap-1 truncate font-bold">
+                    {product?.storeName || sellerProfile?.sellerInfo?.storeName || 'Toko SobatNiaga'}
+                    {sellerVerified && <BadgeCheck size={16} className="shrink-0 text-sky-500" aria-label="Penjual terverifikasi" />}
+                  </h3>
+                  {sellerRating > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><Star size={13} fill="currentColor" className="text-amber-400" /> {sellerRating.toFixed(1)} Rating Toko</p>}
+                  {sellerVerified && <p className="mt-1 text-xs font-semibold text-emerald-500">Penjual Terverifikasi</p>}
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleInternalChat}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500 bg-slate-900 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+                >
+                  <MessageCircle size={15} className="text-sky-400" /> Chat Penjual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onVisitStore?.(product?.sellerId)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500 bg-slate-900 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+                >
+                  <Store size={15} className="text-sky-400" /> Kunjungi Toko
+                </button>
+              </div>
+            </section>
           </div>
         </section>
-
-        <aside className={`min-w-0 self-start rounded-2xl border p-5 ${isDarkMode ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
-          <h2 className="text-base font-bold">Informasi Penjual</h2>
-          <div className="mt-3 min-w-0">
-            <h3 className="flex items-center gap-1 truncate font-bold">
-              {product?.storeName || sellerProfile?.sellerInfo?.storeName || 'Toko SobatNiaga'}
-              {sellerVerified && <BadgeCheck size={16} className="shrink-0 text-sky-500" aria-label="Penjual terverifikasi" />}
-            </h3>
-            {sellerRating > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Star size={13} fill="currentColor" className="text-amber-400" /> {sellerRating.toFixed(1)} Rating Toko</p>}
-            {sellerVerified && <p className="mt-1 text-xs font-semibold text-emerald-500">Penjual Terverifikasi</p>}
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button type="button" onClick={handleInternalChat} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-sky-700">
-              <MessageCircle size={15} /> Chat Penjual
-            </button>
-            <button type="button" onClick={() => onVisitStore?.(product?.sellerId)} className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition ${isDarkMode ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}>
-              Kunjungi Toko
-            </button>
-          </div>
-        </aside>
       </div>
     </div>
   );
