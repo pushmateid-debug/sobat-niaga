@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Upload, Plus, Edit, Trash2, Package, DollarSign, Award, TrendingUp, Image as ImageIcon, Video, Loader2, MoreHorizontal, Users, Calendar, Tag, Sparkles, Lock, CheckCircle, CreditCard, X, Trophy, Timer, Save, Info, Gamepad2, Menu, ChevronDown, ChevronUp, Settings, HelpCircle, Megaphone, Eye, ListOrdered, Wallet, BarChart2, Grid, PlusSquare, RotateCcw, ShoppingBag, Store, ChevronRight, XCircle, QrCode, HeartHandshake, Radio, Check, MessageCircle, LayoutDashboard, Send } from 'lucide-react';
-import { db, dbFirestore } from '../config/firebase';
+import { db, dbFirestore, functions } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp as firestoreTimestamp } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useTheme } from '../context/ThemeContext';
 import { ref, get, set, push, remove, onValue, query as realQuery, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
@@ -1022,11 +1023,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             const currentOrder = sellerOrders.find(o => o.id === orderId);
             const finalResi = isJasa ? 'JASA-INTERNAL' : (currentOrder?.resi || generateResi());
 
-            await update(ref(db, `orders/${orderId}`), {
-              status: 'shipped',
-              resi: finalResi,
-              shippedAt: new Date().toISOString()
-            });
+            const updateOrderStatus = httpsCallable(functions, 'updateSellerOrderStatus');
+            await updateOrderStatus({ orderId, status: 'shipped', resi: finalResi });
 
             const order = sellerOrders.find(o => o.id === orderId);
             if (order) {
@@ -1236,9 +1234,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
         try {
           const promises = ids.map(async (orderId) => {
             // Update status order di Firebase
-            await update(ref(db, `orders/${orderId}`), {
-              status: 'being_prepared'
-            });
+            const updateOrderStatus = httpsCallable(functions, 'updateSellerOrderStatus');
+            await updateOrderStatus({ orderId, status: 'being_prepared' });
 
             const order = sellerOrders.find(o => o.id === orderId);
 

@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 
 import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
@@ -17,7 +18,8 @@ const firebaseConfig = {
   measurementId: "G-B3DMR942QC"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
+export const functions = getFunctions(app, "asia-southeast1");
 export const auth = getAuth(app);
 
 // Pastikan Auth Persistence diatur ke LOCAL (Tahan Refresh)

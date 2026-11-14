@@ -353,12 +353,17 @@ const Cart = ({ onBack, user, onCheckout, onGoToAddress }) => {
       return;
     }
 
+    const involvedSellerIds = Array.from(new Set(selectedItems.map(item => item.sellerId).filter(Boolean)));
     const orderData = {
         // NEW: Collect all unique seller IDs involved in this order
         // Ini penting agar rules Realtime Database bisa mengecek seller yang terlibat
-        involvedSellerIds: Array.from(new Set(selectedItems.map(item => item.sellerId))),
+        involvedSellerIds,
+        sellerAccess: selectedItems.reduce((access, item) => {
+          if (item.sellerId) access[item.sellerId] = true;
+          return access;
+        }, {}),
         // Jika order hanya dari satu seller, bisa juga tambahkan sellerId di root untuk kemudahan
-        sellerId: selectedItems.length === 1 ? selectedItems[0].sellerId : null,
+        sellerId: involvedSellerIds.length === 1 ? involvedSellerIds[0] : null,
         buyerId: user.uid,
         buyerName: user.displayName,
         items: selectedItems,

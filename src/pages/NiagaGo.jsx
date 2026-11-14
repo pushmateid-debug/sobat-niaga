@@ -5,10 +5,11 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
-import { auth, db as realDb, dbFirestore } from '../config/firebase';
+import { auth, db as realDb, dbFirestore, functions } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, getDoc, getDocs, writeBatch, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
@@ -1360,98 +1361,16 @@ const NiagaGo = ({ onOpenProfile }) => {
 
         if (result.isConfirmed) {
             try {
-                const orderRef = ref(realDb, `orders/${orderId}`);
-                const claimResult = await runTransaction(orderRef, (currentOrder) => {
-                    if (!currentOrder || currentOrder.driverId !== userProfile.uid) return;
-                    if (currentOrder.status === 'delivering') {
-                        return {
-                            ...currentOrder,
-                            status: 'completing',
-                            completionStartedAt: new Date().toISOString()
-                        };
-                    }
-                    if (currentOrder.status === 'completing') return currentOrder;
-                    return;
-                });
-
-                if (!claimResult.committed) {
-                    throw new Error('Pesanan tidak lagi dalam status pengantaran atau bukan milik driver ini.');
-                }
-
-                const orderData = claimResult.snapshot.val();
-                const driverId = userProfile.uid;
-                if (orderData.deliveryFee == null) {
-                    throw new Error('Data ongkos kirim tidak ditemukan pada pesanan.');
-                }
-                const deliveryFee = Number(orderData.deliveryFee);
-                if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
-                    throw new Error('Nominal ongkos kirim pada pesanan tidak valid.');
-                }
-
-                const driverRef = ref(realDb, `users/${driverId}`);
-                const payoutResult = await runTransaction(driverRef, (driverData) => {
-                    if (!driverData) return;
-                    const payouts = driverData.foodDeliveryPayouts || {};
-                    const existingPayout = payouts[orderId];
-                    if (existingPayout) {
-                        if (Number(existingPayout.amount) !== deliveryFee) return;
-                        return driverData;
-                    }
-
-                    const currentBalance = Number(driverData.balance || 0);
-                    if (!Number.isFinite(currentBalance)) return;
-                    return {
-                        ...driverData,
-                        balance: currentBalance + deliveryFee,
-                        foodDeliveryPayouts: {
-                            ...payouts,
-                            [orderId]: {
-                                amount: deliveryFee,
-                                paidAt: new Date().toISOString()
-                            }
-                        }
-                    };
-                });
-
-                if (!payoutResult.committed) {
-                    throw new Error('Saldo driver gagal diperbarui. Tekan lanjutkan penyelesaian untuk mencoba lagi.');
-                }
-
-                const recordedPayout = payoutResult.snapshot.val()?.foodDeliveryPayouts?.[orderId];
-                if (!recordedPayout || Number(recordedPayout.amount) !== deliveryFee) {
-                    throw new Error('Catatan pencairan ongkos kirim tidak cocok dengan pesanan.');
-                }
-
-                await update(orderRef, {
-                    status: 'completed',
-                    completedAt: new Date().toISOString(),
-                    driverPayoutStatus: 'paid',
-                    driverPayoutAmount: deliveryFee
-                });
-
-                let notificationSent = true;
-                try {
-                    await push(ref(realDb, 'notifications'), {
-                        recipientId: orderData.buyerId,
-                        title: 'Pesanan Selesai',
-                        message: 'Pesanan Niaga Food kamu sudah diantar.',
-                        type: 'success',
-                        targetView: 'history',
-                        orderId,
-                        createdAt: new Date().toISOString(),
-                        status: 'unread'
-                    });
-                } catch (notificationError) {
-                    notificationSent = false;
-                    console.error('Pesanan selesai, tetapi notifikasi pembeli gagal dikirim:', notificationError);
-                }
-
+                const completeDelivery = httpsCallable(functions, 'completeFoodDelivery');
+                const response = await completeDelivery({ orderId });
+                const deliveryFee = Number(response.data?.deliveryFee || 0);
+                const notificationWarning = response.data?.notificationWarnings?.length > 0;
                 await Swal.fire(
-                    notificationSent ? 'Selesai!' : 'Pesanan Selesai',
-                    notificationSent
-                        ? `Pesanan selesai. Ongkir Rp ${deliveryFee.toLocaleString('id-ID')} masuk ke saldo driver.`
-                        : 'Pesanan selesai dan ongkir sudah dicatat, tetapi notifikasi pembeli gagal dikirim.',
-                    notificationSent ? 'success' : 'warning'
+                    notificationWarning ? 'Pesanan Selesai' : 'Selesai!',
+                    notificationWarning
+                        ? `Ongkir Rp ${deliveryFee.toLocaleString('id-ID')} sudah masuk ke saldo, tetapi notifikasi pembeli gagal dikirim.`
+                        : `Pesanan selesai. Ongkir Rp ${deliveryFee.toLocaleString('id-ID')} masuk ke saldo driver.`,
+                    notificationWarning ? 'warning' : 'success'
                 );
             } catch (error) {
                 console.error("Error finishing order:", error);

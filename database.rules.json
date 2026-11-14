@@ -16,7 +16,16 @@
         ".write": "auth != null && ($uid == auth.uid || auth.token.email == 'pushmate.id@gmail.com')",
         
         "sellerInfo": {
-          ".validate": "auth.token.email == 'pushmate.id@gmail.com' || ( (!newData.hasChild('balance') || newData.child('balance').val() == data.child('balance').val()) && (!newData.hasChild('points_event') || newData.child('points_event').val() == data.child('points_event').val()) )"
+          ".validate": "auth.token.email == 'pushmate.id@gmail.com' || ( (!newData.hasChild('balance') || newData.child('balance').val() == data.child('balance').val()) && (!newData.hasChild('points_event') || newData.child('points_event').val() == data.child('points_event').val()) )",
+          "settledOrders": {
+            ".validate": "auth.token.email == 'pushmate.id@gmail.com' || newData.val() == data.val()"
+          }
+        },
+        "settledDeliveryOrders": {
+          ".validate": "auth.token.email == 'pushmate.id@gmail.com' || newData.val() == data.val()"
+        },
+        "foodDeliveryPayouts": {
+          ".validate": "auth.token.email == 'pushmate.id@gmail.com' || newData.val() == data.val()"
         }
       }
     },
@@ -26,7 +35,10 @@
       ".read": true,
       "$productId": {
         ".write": "auth != null",
-        ".validate": "newData.hasChildren(['name', 'price'])"
+        ".validate": "newData.hasChildren(['name', 'price'])",
+        "soldOrders": {
+          ".validate": "auth.token.email == 'pushmate.id@gmail.com' || newData.val() == data.val()"
+        }
       }
     },
 
@@ -34,8 +46,8 @@
       ".indexOn": ["buyerId", "driverId"],
       ".read": "auth != null", 
       "$orderId": {
-        ".write": "auth != null",
-        ".validate": "newData.hasChildren(['buyerId', 'totalPrice'])"
+        ".write": "auth != null && newData.exists() && (auth.token.email == 'pushmate.id@gmail.com' || (!data.exists() && newData.child('buyerId').val() == auth.uid && newData.child('status').val() == 'waiting_payment') || (data.exists() && (data.child('buyerId').val() == auth.uid || data.child('driverId').val() == auth.uid || (data.child('status').val() == 'being_prepared' && root.child('users').child(auth.uid).child('role').val() == 'driver')) && newData.child('buyerId').val() == data.child('buyerId').val() && newData.child('items').val() == data.child('items').val() && newData.child('sellerAccess').val() == data.child('sellerAccess').val() && newData.child('sellerId').val() == data.child('sellerId').val() && newData.child('involvedSellerIds').val() == data.child('involvedSellerIds').val() && newData.child('totalPrice').val() == data.child('totalPrice').val() && newData.child('deliveryFee').val() == data.child('deliveryFee').val() && (newData.child('driverId').val() == data.child('driverId').val() || (data.child('status').val() == 'being_prepared' && newData.child('status').val() == 'ready_for_pickup' && newData.child('driverId').val() == auth.uid && root.child('users').child(auth.uid).child('role').val() == 'driver')) && newData.child('fundsReleased').val() == data.child('fundsReleased').val() && newData.child('settlementStatus').val() == data.child('settlementStatus').val() && newData.child('completedAt').val() == data.child('completedAt').val() && newData.child('driverPayoutStatus').val() == data.child('driverPayoutStatus').val() && newData.child('driverPayoutAmount').val() == data.child('driverPayoutAmount').val() && (newData.child('status').val() == data.child('status').val() || (data.child('status').val() == 'waiting_payment' && newData.child('status').val() == 'waiting_verification' && data.child('buyerId').val() == auth.uid) || (data.child('status').val() == 'payment_rejected' && newData.child('status').val() == 'waiting_verification' && data.child('buyerId').val() == auth.uid) || (data.child('status').val() == 'waiting_payment' && newData.child('status').val() == 'processed' && data.child('buyerId').val() == auth.uid && newData.child('paymentMethod').val() == 'saldo') || (data.child('status').val() == 'being_prepared' && newData.child('status').val() == 'ready_for_pickup' && newData.child('driverId').val() == auth.uid && root.child('users').child(auth.uid).child('role').val() == 'driver') || (data.child('status').val() == 'ready_for_pickup' && newData.child('status').val() == 'delivering' && data.child('driverId').val() == auth.uid) || (data.child('status').val() == 'delivering' && newData.child('status').val() == 'completing' && data.child('driverId').val() == auth.uid))))",
+        ".validate": "newData.hasChildren(['buyerId', 'totalPrice']) && (auth.token.email == 'pushmate.id@gmail.com' || (!data.exists() && newData.child('buyerId').val() == auth.uid && newData.child('status').val() == 'waiting_payment') || (data.exists() && newData.child('buyerId').val() == data.child('buyerId').val() && newData.child('items').val() == data.child('items').val() && newData.child('sellerAccess').val() == data.child('sellerAccess').val() && newData.child('sellerId').val() == data.child('sellerId').val() && newData.child('involvedSellerIds').val() == data.child('involvedSellerIds').val() && newData.child('totalPrice').val() == data.child('totalPrice').val() && newData.child('deliveryFee').val() == data.child('deliveryFee').val() && (newData.child('driverId').val() == data.child('driverId').val() || (data.child('status').val() == 'being_prepared' && newData.child('status').val() == 'ready_for_pickup' && newData.child('driverId').val() == auth.uid && root.child('users').child(auth.uid).child('role').val() == 'driver')) && newData.child('fundsReleased').val() == data.child('fundsReleased').val() && newData.child('settlementStatus').val() == data.child('settlementStatus').val() && newData.child('completedAt').val() == data.child('completedAt').val() && newData.child('driverPayoutStatus').val() == data.child('driverPayoutStatus').val() && newData.child('driverPayoutAmount').val() == data.child('driverPayoutAmount').val() && (newData.child('status').val() == data.child('status').val() || (data.child('status').val() == 'waiting_payment' && newData.child('status').val() == 'waiting_verification' && data.child('buyerId').val() == auth.uid) || (data.child('status').val() == 'payment_rejected' && newData.child('status').val() == 'waiting_verification' && data.child('buyerId').val() == auth.uid) || (data.child('status').val() == 'waiting_payment' && newData.child('status').val() == 'processed' && data.child('buyerId').val() == auth.uid && newData.child('paymentMethod').val() == 'saldo') || (data.child('status').val() == 'being_prepared' && newData.child('status').val() == 'ready_for_pickup' && newData.child('driverId').val() == auth.uid && root.child('users').child(auth.uid).child('role').val() == 'driver') || (data.child('status').val() == 'ready_for_pickup' && newData.child('status').val() == 'delivering' && data.child('driverId').val() == auth.uid) || (data.child('status').val() == 'delivering' && newData.child('status').val() == 'completing' && data.child('driverId').val() == auth.uid))))"
       }
     },
 

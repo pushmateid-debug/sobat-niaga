@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Package, Clock, CheckCircle, Truck, XCircle, ShoppingBag, Video, ShieldAlert, Trash2, Star, Upload, X, PlayCircle, MessageCircle, Wrench, AlertTriangle, Copy, ChefHat, Bike, Home, MapPin, Utensils } from 'lucide-react';
-import { db } from '../config/firebase';
+import { db, functions } from '../config/firebase';
 import { ref, onValue, query, orderByChild, equalTo, update, get, push, set } from 'firebase/database';
+import { httpsCallable } from 'firebase/functions';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
@@ -22,20 +23,11 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
   const [activeTab, setActiveTab] = useState(initialTab || 'waiting_payment');
   const [mainTab, setMainTab] = useState('products'); // 'products' | 'food'
   const [flashingOrderId, setFlashingOrderId] = useState(null);
-  const [compSettings, setCompSettings] = useState({ isActive: false, startDate: '', endDate: '' });
-  
   // State Review Modal
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '', videoFile: null, videoPreview: null });
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  // Fetch Competition Settings
-  useEffect(() => {
-    const compRef = ref(db, 'admin/competitionSettings');
-    onValue(compRef, (snap) => {
-      if(snap.exists()) setCompSettings(snap.val());
-    });
-  }, []);
   // Efek Pindah Tab Otomatis
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -179,134 +171,19 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
 
   // Logic Inti Penyelesaian Pesanan (Dipisah biar bisa dipanggil Auto-Update)
   const completeOrderTransaction = async (order, isAuto = false) => {
-      console.log("Processing Order Completion:", order.id); // Debug Log
       try {
-          // 1. Update Status Order
-          await update(ref(db, `orders/${order.id}`), { 
-            status: 'completed',
-            fundsReleased: true, // Tandai dana sudah cair
-            completedAt: new Date().toISOString() 
-          });
-
-          // 2. Distribusi Dana & Poin ke Penjual (Otomatis)
-          const sellerRevenue = {};
-          const sellerQty = {}; // Tracker Qty per Seller
-
-          if (order.items) {
-            const itemsArray = Array.isArray(order.items) ? order.items : Object.values(order.items);
-            itemsArray.forEach(item => {
-              if(item && item.sellerId) {
-                const qty = parseInt(item.quantity) || 1; // Ensure Integer
-                const price = parseInt(item.price) || 0;
-                
-                sellerRevenue[item.sellerId] = (sellerRevenue[item.sellerId] || 0) + (price * qty);
-                sellerQty[item.sellerId] = (sellerQty[item.sellerId] || 0) + qty;
-
-                // UPDATE SOLD COUNT PRODUK (Real-time Sync)
-                const targetProductId = item.productId || item.id;
-                if (targetProductId) {
-                    const productRef = ref(db, `products/${targetProductId}`);
-                    get(productRef).then((snap) => {
-                        if (snap.exists()) {
-                            const currentSold = parseInt(snap.val().sold) || 0;
-                            update(productRef, { sold: currentSold + qty });
-                        }
-                    }).catch(err => console.error("Error updating product sold count:", err));
-                }
-              }
-            });
-          }
-
-          for (const [sellerId, amount] of Object.entries(sellerRevenue)) {
-            const sellerRef = ref(db, `users/${sellerId}/sellerInfo`);
-            const snap = await get(sellerRef);
-            if(snap.exists()) {
-              const data = snap.val();
-              const currentBalance = parseInt(data.balance) || 0;
-
-              // Hitung Potongan Admin
-              const adminFee = calculateAdminFee(amount);
-              const netIncome = amount - adminFee;
-
-              // Cek Kompetisi Aktif untuk Poin
-              const now = new Date();
-              let isCompActive = false;
-              if (compSettings?.isActive && compSettings?.startDate && compSettings?.endDate) {
-                  const start = new Date(compSettings.startDate);
-                  const end = new Date(compSettings.endDate);
-                  // Set hours to cover full day
-                  start.setHours(0,0,0,0);
-                  end.setHours(23,59,59,999);
-                  isCompActive = now >= start && now <= end;
-              }
-              
-              // RUMUS BARU: (Omzet / 10.000) + (Qty * 5)
-              const qtySold = sellerQty[sellerId] || 0;
-              const eventPointsToAdd = isCompActive ? Math.floor((amount / 10000) + (qtySold * 5)) : 0;
-              const loyaltyPointsToAdd = 10; // Flat 10 Poin per Transaksi Selesai
-              
-              const updates = { 
-                  balance: currentBalance + netIncome, 
-                  points_loyalty: (parseInt(data.points_loyalty) || 0) + loyaltyPointsToAdd,
-                  points_event: (parseInt(data.points_event) || 0) + eventPointsToAdd,
-                  competitionRevenue: (parseInt(data.competitionRevenue) || 0) + amount,
-                  competitionQty: (parseInt(data.competitionQty) || 0) + qtySold
-              };
-              
-              await update(sellerRef, updates);
-
-              // Kirim Notifikasi ke Seller
-              await push(ref(db, 'notifications'), {
-                  userId: sellerId,
-                  title: 'Saldo Masuk',
-                  message: `Saldo Rp ${netIncome.toLocaleString('id-ID')} masuk! (+${loyaltyPointsToAdd} Poin Seller)`,
-                  type: 'success',
-                  targetView: 'dashboard-seller',
-                  createdAt: new Date().toISOString(),
-                  isRead: false
-              });
-            }
-          }
-
-          // 2.5 Distribusi Dana ke Driver (Jika ini orderan Niaga Food)
-          if (order.deliveryFee && order.driverId) {
-            const driverRef = ref(db, `users/${order.driverId}`);
-            const driverSnap = await get(driverRef);
-            if (driverSnap.exists()) {
-                const driverData = driverSnap.val();
-                const currentDriverSaldo = parseInt(driverData.saldo || 0);
-                const ongkir = parseInt(order.deliveryFee || 0);
-                
-                await update(driverRef, {
-                    saldo: currentDriverSaldo + ongkir
-                });
-
-                await push(ref(db, 'notifications'), {
-                    userId: order.driverId,
-                    title: 'Ongkir Masuk',
-                    message: `Ongkir sebesar Rp ${ongkir.toLocaleString('id-ID')} dari order #${order.id.slice(-6)} telah masuk ke saldo.`,
-                    type: 'success',
-                    createdAt: new Date().toISOString(),
-                    isRead: false
-                });
-            }
-          }
-
-          if (!isAuto) {
-            // 3. Notifikasi Sukses & Opsi Rating (Hanya jika manual klik)
-            Swal.fire({
-                title: 'Selesai!',
-                text: 'Transaksi berhasil. Dana & Poin telah diteruskan ke penjual.',
-                icon: 'success',
-                timer: 2000,
-                showConfirmButton: false
-            }).then(() => {
-                handleOpenReviewModal(order); // Buka Modal Review Custom
-            });
-          }
+          const completeOrder = httpsCallable(functions, 'completeOrderTransaction');
+          const response = await completeOrder({ orderId: order.id });
+          return {
+            notificationWarnings: response.data?.notificationWarnings || []
+          };
       } catch (error) {
           console.error("Error completing order:", error);
-          if (!isAuto) Swal.fire('Error', `Gagal memproses data: ${error.message}`, 'error');
+          if (!isAuto) {
+            const message = error.message || 'Silakan coba lagi.';
+            Swal.showValidationMessage(message);
+          }
+          return false;
       }
   };
 
@@ -326,6 +203,22 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
         return await completeOrderTransaction(order, false);
       },
       allowOutsideClick: () => !Swal.isLoading()
+    }).then((result) => {
+      if (result.isConfirmed) {
+        const notificationWarnings = result.value?.notificationWarnings || [];
+        const hasNotificationWarning = notificationWarnings.length > 0;
+        Swal.fire({
+          title: hasNotificationWarning ? 'Pesanan Selesai' : 'Selesai!',
+          text: hasNotificationWarning
+            ? 'Pesanan diterima dan pencairan berhasil. Namun sebagian notifikasi gagal dikirim.'
+            : 'Pesanan diterima dan pencairan dana berhasil diproses.',
+          icon: hasNotificationWarning ? 'warning' : 'success',
+          timer: 2000,
+          showConfirmButton: false
+        }).then(() => {
+          if (!hasNotificationWarning) handleOpenReviewModal(order);
+        });
+      }
     });
   };
 
@@ -478,7 +371,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
     }
   };
 
-  const getStatusBadge = (status, isFood = false) => {
+  const getStatusBadge = (status, isFood = false, settlementStatus) => {
     if (isFood) {
         switch (status) {
             case 'waiting_payment': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700'}`}><Clock size={12} /> Belum Bayar</span>;
@@ -487,7 +380,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
             case 'being_prepared': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><ChefHat size={12} /> Dimasak</span>;
             case 'ready_for_pickup': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700'}`}><Bike size={12} /> Ambil</span>;
             case 'delivering': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-sky-900/50 text-sky-300' : 'bg-sky-100 text-sky-700'}`}><Package size={12} /> Antar</span>;
-            case 'completed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}><Home size={12} /> Selesai</span>;
+            case 'completed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}><Home size={12} /> {settlementStatus === 'pending' ? 'Menunggu Konfirmasi' : 'Selesai'}</span>;
             default: return <span className={`px-2 py-1 rounded-lg text-xs font-bold ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>{status}</span>;
         }
     }
@@ -499,7 +392,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
       case 'waiting_verification': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}><Clock size={12} /> Menunggu Verifikasi Admin</span>;
       case 'processed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Package size={12} /> Dikemas</span>;
       case 'shipped': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'}`}><Truck size={12} /> Dikirim</span>;
-      case 'completed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}><CheckCircle size={12} /> Selesai</span>;
+      case 'completed': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'}`}><CheckCircle size={12} /> {settlementStatus === 'pending' ? 'Menunggu Konfirmasi' : 'Selesai'}</span>;
       case 'cancelled': return <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'}`}><XCircle size={12} /> Dibatalkan</span>;
       default: return <span className={`px-2 py-1 rounded-lg text-xs font-bold ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>{status}</span>;
     }
@@ -668,7 +561,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isJasa && order.status === 'processed' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Wrench size={12} /> Jasa Sedang Dikerjakan</span> : (isJasa && order.status === 'shipped' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'}`}><CheckCircle size={12} /> Menunggu Konfirmasi</span> : getStatusBadge(order.status, isNiagaFoodOrder))}
+                  {isJasa && order.status === 'processed' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}><Wrench size={12} /> Jasa Sedang Dikerjakan</span> : (isJasa && order.status === 'shipped' ? <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'}`}><CheckCircle size={12} /> Menunggu Konfirmasi</span> : getStatusBadge(order.status, isNiagaFoodOrder, order.settlementStatus))}
                   {['completed', 'cancelled'].includes(order.status) && (
                     <button 
                       onClick={() => handleDeleteHistory(order.id)}
@@ -680,6 +573,25 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                   )}
                 </div>
               </div>
+
+              {order.status === 'completed' && order.fundsReleased && !order.settlementStatus && (
+                <div className={`mb-3 rounded-xl border p-3 ${isDarkMode ? 'border-amber-700 bg-amber-900/20 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                  <p className="flex items-center gap-2 text-xs font-bold"><AlertTriangle size={15} /> Perlu Verifikasi Pencairan</p>
+                  <p className="mt-1 text-xs">
+                    Pesanan ini selesai sebelum pencatatan pencairan otomatis tersedia. Status dana penjual belum dapat diverifikasi. Hubungi Admin dan sertakan ID pesanan #{order.id.slice(-6).toUpperCase()}.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const message = `Halo Admin, mohon verifikasi status pencairan untuk pesanan #${order.id}.`;
+                      window.open(`https://wa.me/6289517587498?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+                    }}
+                    className="mt-2 text-xs font-bold underline"
+                  >
+                    Hubungi Admin
+                  </button>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {(Array.isArray(order.items) ? order.items : Object.values(order.items || {})).map((item, idx) => (
@@ -793,7 +705,7 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                     </button>
                 )}
 
-                {order.status === 'completed' && !order.isReviewed && (
+                {order.status === 'completed' && order.settlementStatus === 'completed' && !order.isReviewed && (
                     <button onClick={() => handleOpenReviewModal(order)} className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${isDarkMode ? 'bg-yellow-600 hover:bg-yellow-700 shadow-none' : 'bg-yellow-500 hover:bg-yellow-600 shadow-sm shadow-yellow-200'}`}>
                         <Star size={14} /> Beri Ulasan
                     </button>
@@ -813,7 +725,9 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
                     </button>
                 )}
 
-                {((order.status && order.status.toLowerCase() === 'shipped') || (isNiagaFoodOrder && order.status === 'delivering')) && (
+                {((order.status && order.status.toLowerCase() === 'shipped') ||
+                  (isNiagaFoodOrder && order.status === 'delivering') ||
+                  (order.status === 'completed' && order.settlementStatus === 'pending')) && (
                     <button onClick={() => handleOrderReceived(order)} className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-colors ${isDarkMode ? 'bg-green-500 hover:bg-green-600 shadow-none' : 'bg-green-600 hover:bg-green-700 shadow-sm shadow-green-200'}`}>
                         {isJasa ? 'Konfirmasi Selesai' : 'Pesanan Diterima'}
                     </button>
