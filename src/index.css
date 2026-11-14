@@ -35,6 +35,47 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+.swal2-container {
+  z-index: 4000 !important;
+}
+
+.app-bootstrap {
+  min-height: 100vh;
+  padding: 1rem max(1rem, calc((100vw - 1200px) / 2));
+  background: #f8fafc;
+}
+
+[data-theme='dark'] .app-bootstrap {
+  background: #0f172a;
+}
+
+.app-bootstrap__bar,
+.app-bootstrap__block {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: app-bootstrap-shimmer 1.4s ease-in-out infinite;
+}
+
+[data-theme='dark'] .app-bootstrap__bar,
+[data-theme='dark'] .app-bootstrap__block {
+  background: linear-gradient(90deg, #1e293b 25%, #27364a 50%, #1e293b 75%);
+  background-size: 200% 100%;
+}
+
+.app-bootstrap__bar {
+  height: 3.5rem;
+  border-radius: 1rem;
+}
+
+.app-bootstrap__block {
+  height: 12rem;
+  border-radius: 1rem;
+}
+
+@keyframes app-bootstrap-shimmer {
+  to { background-position: -200% 0; }
+}
+
 /* Utility Classes buat dipake di Component React */
 .theme-card {
   background-color: var(--card-bg);

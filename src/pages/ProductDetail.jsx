@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Forward, Tag, Store, User, ArrowLeft, ShoppingBag, UserPlus, Check, Heart } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Store, User, ShoppingBag, Check, Heart, Bookmark, Copy, Flag, ZoomIn, Send, ChevronRight, BadgeCheck } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
-import { ref, get, push } from 'firebase/database';
+import { ref, get, push, set, remove } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
@@ -23,7 +24,6 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     : fetchedProduct?.id === productId ? fetchedProduct : null;
   const [user, setUser] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [activeImage, setActiveImage] = useState(null);
   const [activeTab, setActiveTab] = useState('about');
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -31,16 +31,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   const [sellerProfile, setSellerProfile] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
-  const allImages = [product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean);
-
-  const handleScroll = (e) => {
-    const scrollLeft = e.target.scrollLeft;
-    const width = e.target.clientWidth;
-    if (width > 0) {
-      setCurrentImageIndex(Math.round(scrollLeft / width));
-    }
-  };
+  const [isSaved, setIsSaved] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewError, setReviewError] = useState('');
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const allImages = [...new Set([product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean))];
+  const selectedImage = allImages[currentImageIndex] || allImages[0] || '';
 
   // 1. Auth Listener (Biar fitur belanja jalan meskipun masuk via Link Langsung)
   useEffect(() => {
@@ -94,21 +92,72 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   // 2. Inisialisasi Gambar Utama
   useEffect(() => {
     if (product) {
-      setActiveImage(product.mediaUrl || product.image);
+      setCurrentImageIndex(0);
     }
   }, [product]);
 
   // 2.5 Fetch Data Seller untuk mendapatkan Foto Profil Gmail
   useEffect(() => {
-    if (product?.sellerId) {
-      const sellerRef = ref(db, `users/${product.sellerId}`);
-      get(sellerRef).then((snapshot) => {
-        if (snapshot.exists()) {
-          setSellerProfile(snapshot.val());
-        }
-      });
+    let active = true;
+    if (!product?.sellerId || !user?.uid) {
+      setSellerProfile(null);
+      return () => { active = false; };
     }
-  }, [product?.sellerId]);
+
+    get(ref(db, `users/${product.sellerId}`)).then((snapshot) => {
+      if (active && snapshot.exists()) setSellerProfile(snapshot.val());
+    }).catch((error) => console.error('Gagal memuat profil penjual:', error));
+    return () => { active = false; };
+  }, [product?.sellerId, user?.uid]);
+
+  useEffect(() => {
+    let active = true;
+    if (!product?.id) {
+      setReviews([]);
+      setReviewError('');
+      return () => { active = false; };
+    }
+
+    get(ref(db, 'reviews')).then((snapshot) => {
+      if (!active) return;
+      const data = snapshot.val() || {};
+      const productReviews = Object.entries(data)
+        .map(([id, review]) => ({ id, ...review }))
+        .filter((review) => String(review.productId) === String(product.id))
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setReviews(productReviews);
+      setReviewError('');
+    }).catch((error) => {
+      if (!active) return;
+      console.error('Gagal memuat ulasan produk:', error);
+      setReviews([]);
+      setReviewError('Ulasan belum dapat dimuat. Silakan coba lagi nanti.');
+    });
+
+    return () => { active = false; };
+  }, [product?.id]);
+
+  useEffect(() => {
+    let active = true;
+    if (!product?.id || !user?.uid) {
+      setIsFavorite(false);
+      setIsSaved(false);
+      return () => { active = false; };
+    }
+
+    Promise.all([
+      get(ref(db, `users/${user.uid}/likedProducts/${product.id}`)),
+      get(ref(db, `users/${user.uid}/savedProducts/${product.id}`))
+    ]).then(([likedSnapshot, savedSnapshot]) => {
+      if (!active) return;
+      setIsFavorite(likedSnapshot.exists());
+      setIsSaved(savedSnapshot.exists());
+    }).catch((error) => {
+      console.error('Gagal memuat status suka/simpan produk:', error);
+    });
+
+    return () => { active = false; };
+  }, [product?.id, user?.uid]);
 
   // 3. Fetch Follow Status (Firestore)
   useEffect(() => {
@@ -134,10 +183,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   }, [product?.sellerId, user?.uid]);
 
   useEffect(() => {
-    if (!isModal) return undefined;
+    if (!isModal && !isShareOpen && !isZoomOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onBack?.();
+      if (event.key === 'Escape') {
+        if (isZoomOpen) setIsZoomOpen(false);
+        else if (isShareOpen) setIsShareOpen(false);
+        else onBack?.();
+      }
     };
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
@@ -145,7 +198,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isModal, onBack]);
+  }, [isModal, isShareOpen, isZoomOpen, onBack]);
 
   const getProductShareUrl = () => {
     if (!product?.id) return '';
@@ -155,7 +208,6 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   const handleCopyShareLink = async () => {
     const shareUrl = getProductShareUrl();
     if (!shareUrl) return;
-
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
@@ -171,16 +223,15 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
         input.remove();
         if (!copied) throw new Error('Clipboard tidak mengizinkan penyalinan.');
       }
-
+      setCopySuccess(true);
+      window.setTimeout(() => setCopySuccess(false), 2500);
       Swal.fire({
         icon: 'success',
-        title: 'Link Produk Disalin!',
-        text: 'Link siap dibagikan.',
+        title: 'Link berhasil disalin',
         toast: true,
         position: 'top',
         showConfirmButton: false,
-        timer: 2500,
-        timerProgressBar: true,
+        timer: 1800
       });
     } catch (error) {
       console.error('Gagal menyalin link produk:', error);
@@ -188,28 +239,71 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     }
   };
 
-  // Fungsi Toggle Favorite
-  const handleToggleFavorite = () => {
-    const nextState = !isFavorite;
-    setIsFavorite(nextState);
-    
-    Swal.fire({
-      icon: 'success',
-      title: nextState ? 'Masuk Favorit! ❤️' : 'Dihapus dari Favorit',
-      toast: true, position: 'top', showConfirmButton: false, timer: 1500
-    });
+  const handleToggleProductCollection = async (collectionName, isActive, updateState, label) => {
+    if (!user?.uid) {
+      onRequireLogin?.();
+      return;
+    }
+    if (!product?.id) return;
+
+    const itemRef = ref(db, `users/${user.uid}/${collectionName}/${product.id}`);
+    try {
+      if (isActive) await remove(itemRef);
+      else await set(itemRef, { productId: product.id, updatedAt: Date.now() });
+      updateState(!isActive);
+      Swal.fire({
+        icon: 'success',
+        title: isActive ? `${label} dihapus` : `${label} tersimpan`,
+        toast: true,
+        position: 'top',
+        showConfirmButton: false,
+        timer: 1500
+      });
+    } catch (error) {
+      console.error(`Gagal memperbarui ${label.toLowerCase()} produk:`, error);
+      Swal.fire('Gagal', `Tidak dapat memperbarui ${label.toLowerCase()} produk.`, 'error');
+    }
   };
 
-  // Fungsi Bagikan ke WhatsApp
-  const handleShareWhatsApp = () => {
+  const handleSocialShare = async (platform) => {
     const shareUrl = getProductShareUrl();
     if (!shareUrl) return;
-    const message = `Lihat produk ini di Sobat Niaga!\n\n${product?.name || 'Produk SobatNiaga'}\n\n${shareUrl}`;
-    
-    // Encode URL agar aman dikirim lewat chat
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    
-    window.open(waUrl, '_blank');
+    const shareText = `Lihat ${product?.name || 'produk ini'} di SobatNiaga`;
+    const encodedUrl = encodeURIComponent(shareUrl);
+    const targets = {
+      WhatsApp: `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`,
+      Facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      Gmail: `mailto:?subject=${encodeURIComponent(product?.name || 'Produk SobatNiaga')}&body=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`,
+      Instagram: 'https://www.instagram.com/',
+      TikTok: 'https://www.tiktok.com/'
+    };
+
+    if (platform === 'Instagram' || platform === 'TikTok') {
+      window.open(targets[platform], '_blank', 'noopener,noreferrer');
+      await handleCopyShareLink();
+      return;
+    }
+    if (platform === 'Gmail') {
+      window.location.href = targets.Gmail;
+      return;
+    }
+    window.open(targets[platform], '_blank', 'noopener,noreferrer');
+  };
+
+  const handleReportProduct = () => {
+    setIsShareOpen(false);
+    Swal.fire({
+      title: 'Laporkan Produk?',
+      text: 'Laporan kamu akan segera diproses oleh Admin.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Kirim Laporan',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280'
+    }).then((result) => {
+      if (result.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success');
+    });
   };
 
   // 5. Fungsi Follow Seller
@@ -314,69 +408,30 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     onChatWithProduct(product);
   };
 
-  // 7. Fungsi Menu Share & Laporkan (Pop-up)
-  const handleShareOptions = () => {
-    Swal.fire({
-      title: 'Bagikan Produk',
-      html: `
-        <div class="flex flex-col gap-3">
-          <button id="btnShareWA" class="w-full py-3.5 bg-[#25D366] text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-green-200">
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.353-.883-.788-1.48-1.76-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.396.015 12.03c0 2.12.553 4.189 1.606 6.06L0 24l4.073-1.068a11.826 11.825 0 005.975 1.587h.005c6.637 0 12.032-5.396 12.035-12.031a11.764 11.764 0 00-3.614-8.508z"/></svg> Bagikan ke WhatsApp
-          </button>
-          <button id="btnCopyLink" class="w-full py-3.5 bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-sky-200">
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Salin Link Produk
-          </button>
-          <button id="btnReport" class="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-2xl flex items-center justify-center gap-3 border border-red-100">
-             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg> Laporkan Produk
-          </button>
-        </div>
-      `,
-      showConfirmButton: false,
-      showCloseButton: true,
-      customClass: {
-        popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'}`,
-        title: 'text-lg font-bold mb-4'
-      },
-      didOpen: () => {
-        const waBtn = document.getElementById('btnShareWA');
-        const copyBtn = document.getElementById('btnCopyLink');
-        const reportBtn = document.getElementById('btnReport');
-        
-        if (waBtn) {
-          waBtn.onclick = () => {
-            handleShareWhatsApp();
-            Swal.close();
-          };
-        }
-        if (copyBtn) {
-          copyBtn.onclick = () => {
-            handleCopyShareLink();
-            Swal.close();
-          };
-        }
-        if (reportBtn) {
-          reportBtn.onclick = () => {
-            Swal.fire({
-              title: 'Laporkan Produk?',
-              text: 'Laporan kamu akan segera diproses oleh Admin.',
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonText: 'Kirim Laporan',
-              cancelButtonText: 'Batal',
-              confirmButtonColor: '#ef4444',
-              cancelButtonColor: '#6b7280',
-            }).then((res) => { if (res.isConfirmed) Swal.fire('Berhasil', 'Terima kasih atas laporannya!', 'success'); });
-          };
-        }
-      }
-    });
-  };
+  const handleShareOptions = () => setIsShareOpen(true);
 
   const isProductLoading = isLoading || isFetchingProduct || (Boolean(productId) && !product && !fetchError);
   const visibleProductError = productError || fetchError;
+  const reviewCount = Number(product?.reviewCount || reviews.length);
+  const reviewAverage = Number(product?.rating) > 0
+    ? Number(product.rating)
+    : reviews.length
+      ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length
+      : 0;
+  const ratingDistribution = [5, 4, 3, 2, 1].map((rating) => ({
+    rating,
+    count: reviews.filter((review) => Number(review.rating) === rating).length
+  }));
+  const sellerRating = Number(sellerProfile?.sellerInfo?.rating || sellerProfile?.storeRating || sellerProfile?.rating || product?.sellerRating || 0);
+  const sellerVerified = sellerProfile?.sellerInfo?.isVerifiedSeller === true ||
+    sellerProfile?.isVerifiedSeller === true ||
+    product?.sellerInfo?.isVerifiedSeller === true ||
+    product?.isVerifiedSeller === true;
+  const categoryLabel = product?.category || 'Produk';
+  const categoryTrail = /niaga[\s-]*food/i.test(categoryLabel) ? ['GoFood', categoryLabel] : [categoryLabel];
   const modalOverlay = (children) => (
     <div
-      className="fixed inset-0 z-[1500] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-md md:p-6"
+      className="fixed inset-0 z-[1500] flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-md sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onBack?.();
       }}
@@ -385,18 +440,10 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
         role="dialog"
         aria-modal="true"
         aria-label={product?.name || 'Detail produk'}
-        className={`relative w-full max-w-6xl overflow-hidden rounded-2xl shadow-2xl md:rounded-3xl ${isDarkMode ? 'bg-slate-950 text-white ring-1 ring-white/10' : 'bg-white text-gray-900 ring-1 ring-black/10'}`}
+        className={`relative w-full max-w-7xl overflow-hidden rounded-2xl shadow-2xl md:rounded-3xl ${isDarkMode ? 'bg-slate-950 text-white ring-1 ring-white/10' : 'bg-white text-gray-900 ring-1 ring-black/10'}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Tutup detail produk"
-          className={`absolute right-3 top-3 z-[120] rounded-full p-2 shadow-md transition-colors ${isDarkMode ? 'bg-slate-800/90 text-white hover:bg-slate-700' : 'bg-white/90 text-slate-700 hover:bg-gray-100'}`}
-        >
-          <X size={20} />
-        </button>
-        <div className="max-h-[92vh] overflow-y-auto">{children}</div>
+        <div className="max-h-[95vh] overflow-y-auto">{children}</div>
       </section>
     </div>
   );
@@ -423,136 +470,135 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
         )}
       </div>
     );
-    return isModal ? modalOverlay(statusContent) : statusContent;
+    return isModal ? createPortal(modalOverlay(statusContent), document.body) : statusContent;
   }
 
   const productContent = (
     <div className={`transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen pb-32 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}`}>
-      {!isModal && <header className={`sticky top-0 z-[100] border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-gray-200'}`}>
+      <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-200'}`}>
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-          <button type="button" onClick={onBack} aria-label="Kembali" className={`rounded-full p-2 ${isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}>
-            <ArrowLeft size={22} />
+          <button type="button" onClick={() => (isModal ? onBack?.() : navigate('/'))} className="flex shrink-0 items-center gap-2 text-lg font-black tracking-tight text-sky-500">
+            <img src="/favicon.png" alt="" className="h-7 w-7 rounded-full" />
+            <span>SobatNiaga</span>
           </button>
-          <button type="button" onClick={() => navigate('/')} className="text-lg font-black tracking-tight text-sky-600">
-            SobatNiaga
+          <nav aria-label="Breadcrumb produk" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs">
+            <button type="button" onClick={() => (isModal ? onBack?.() : navigate('/'))} className="shrink-0 text-slate-400 hover:text-sky-500">Home</button>
+            <ChevronRight size={14} className="shrink-0 text-slate-500" />
+            {categoryTrail.map((category, index) => (
+              <React.Fragment key={`${category}-${index}`}>
+                {index > 0 && <ChevronRight size={14} className="shrink-0 text-slate-500" />}
+                <button type="button" onClick={() => navigate('/all-categories')} className={`shrink-0 truncate ${index === categoryTrail.length - 1 ? 'font-semibold text-sky-500' : 'text-slate-400 hover:text-sky-500'}`}>{category}</button>
+              </React.Fragment>
+            ))}
+            <ChevronRight size={14} className="shrink-0 text-slate-500" />
+            <span className="truncate text-slate-400">{product?.name}</span>
+          </nav>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Tutup detail produk"
+            className={`shrink-0 rounded-full p-2 transition-colors ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-gray-100 hover:bg-gray-200'}`}
+          >
+            <X size={20} />
           </button>
         </div>
-      </header>}
-      <div className={`mx-auto flex flex-col md:flex-row relative ${isModal ? 'max-w-none min-h-0' : 'max-w-7xl min-h-[calc(100vh-64px)]'}`}>
-        {/* Sisi Kiri: Foto Produk (Mobile Full Screen, Desktop Half) */}
-        <div className={`w-full md:w-1/2 flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-50'} p-0 md:p-10`}>
-          {/* Kontainer Foto Utama */}
-          <div className={`relative w-full overflow-hidden shadow-2xl transition-all duration-500 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'} rounded-none md:rounded-[2.5rem] max-w-[500px] ${isModal ? 'md:aspect-square md:max-h-[62vh]' : ''}`}>
-            {/* Logic swipe horizontal / Carousell foto */}
-            <div 
-              className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none w-full"
-              onScroll={handleScroll}
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {allImages.map((img, index) => (
-                <div key={index} className={`w-full flex-shrink-0 snap-start ${isModal ? 'h-full' : ''}`}>
-                  <img 
-                    src={img} 
-                    className={`w-full rounded-none ${isModal ? 'h-full object-contain' : 'h-auto object-cover'}`}
-                    alt={`${product?.name} ${index + 1}`}
-                  />
-                </div>
+      </header>
+      <div className={`mx-auto flex flex-col gap-5 p-4 md:flex-row md:gap-8 md:p-7 ${isModal ? 'max-w-none' : 'max-w-7xl'}`}>
+        <div className="w-full shrink-0 md:w-[46%]">
+          <div className={`group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-slate-50'}`}>
+            {selectedImage ? (
+              <img src={selectedImage} className="h-full w-full object-contain" alt={product?.name || 'Foto produk'} />
+            ) : (
+              <div className="text-sm text-slate-400">Foto produk belum tersedia</div>
+            )}
+            {selectedImage && (
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(true)}
+                aria-label="Perbesar foto produk"
+                className="absolute bottom-3 left-3 rounded-full bg-slate-950/75 p-2 text-white transition hover:bg-sky-600"
+              >
+                <ZoomIn size={19} />
+              </button>
+            )}
+            {allImages.length > 1 && (
+              <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/75 px-3 py-1 text-xs font-semibold text-white">
+                {currentImageIndex + 1} / {allImages.length}
+              </span>
+            )}
+          </div>
+          {allImages.length > 1 && (
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {allImages.map((imageUrl, index) => (
+                <button
+                  type="button"
+                  key={`${imageUrl}-${index}`}
+                  onClick={() => setCurrentImageIndex(index)}
+                  aria-label={`Tampilkan foto ${index + 1}`}
+                  aria-pressed={currentImageIndex === index}
+                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-20 sm:w-20 ${currentImageIndex === index ? 'border-sky-500' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                >
+                  <img src={imageUrl} className="h-full w-full object-cover" alt="" />
+                </button>
               ))}
             </div>
-
-            {/* Indikator Angka Foto ala TikTok Shop di Pojok Kanan Bawah Foto */}
-            {allImages.length > 1 && (
-              <div className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full font-medium">
-                {currentImageIndex + 1}/{allImages.length}
-              </div>
-            )}
-          </div>
-          {/* Thumbnail Gallery (Hanya tampil di Desktop, atau di bawah info produk untuk Mobile) */}
-          <div className="hidden md:flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-            {[product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean).map((img, idx) => (
-              <button
-                key={idx}
-                onClick={() => setActiveImage(img)}
-                className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
-              >
-                <img src={img} className="w-full h-full object-cover" alt="" />
-              </button>
-            ))}
-          </div>
+          )}
         </div>
 
-        {/* Sisi Kanan: Detail & Info (Mobile di bawah foto, Desktop di samping) */}
-        <div className="w-full md:w-1/2 p-6 md:p-10 md:pt-14">
-          <div className="flex flex-col h-full">
-            {/* SEKSI HARGA DAN JUDUL ALA TIKTOK SHOP */}
-            <div className="px-4 mt-2 md:p-0 md:mt-0">
-              <div className="flex justify-between items-center">
-                {/* Format Harga: Rp kecil, Angka besar dengan warna #FFD662 */}
-                <div className={`flex items-baseline font-black ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
-                  <span className="text-sm md:text-lg font-medium mr-0.5">Rp</span>
-                  <span className="text-3xl md:text-5xl">
-                    {parseInt(product?.price || 0).toLocaleString('id-ID')}
+        <div className="min-w-0 flex-1">
+          <div className="space-y-4">
+            <div>
+              <span className="inline-flex rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-500">{product?.category || 'Produk SobatNiaga'}</span>
+              <h1 className={`mt-3 text-2xl font-bold leading-tight md:text-3xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{product?.name || 'Nama Produk'}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                {(Number(product?.rating) > 0 || reviews.length > 0) && (
+                  <span className="flex items-center gap-1 font-semibold text-amber-500">
+                    <Star size={16} fill="currentColor" />
+                    {Number(product?.rating || (reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length)).toFixed(1)}
+                    <span className="font-normal text-slate-500">({Number(product?.reviewCount || reviews.length).toLocaleString('id-ID')} ulasan)</span>
                   </span>
-                </div>
-
-                {/* Tombol Aksi Kanan (Share & Favorite) */}
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={handleShareOptions}
-                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-sky-400' : 'text-gray-500 hover:text-sky-600'}`}
-                  >
-                    <Forward size={26} />
-                  </button>
-                  <button 
-                    onClick={() => Swal.fire({ icon: 'success', title: 'Ditambahkan ke Wishlist!', toast: true, position: 'top', showConfirmButton: false, timer: 1500 })}
-                    className={`transition-colors ${isDarkMode ? 'text-gray-300 hover:text-red-500' : 'text-gray-500 hover:text-red-600'}`}
-                  >
-                    <Heart size={22} />
-                  </button>
-                </div>
+                )}
+                {Number(product?.sold ?? product?.soldCount ?? product?.totalSold) > 0 && (
+                  <span>{Number(product.sold ?? product.soldCount ?? product.totalSold).toLocaleString('id-ID')} terjual</span>
+                )}
               </div>
-
-              {/* Judul diletakkan tepat di bawah harga */}
-              <h1 className={`text-lg md:text-2xl font-bold mt-2 leading-snug ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                {product?.name || "Nama Produk"}
-              </h1>
             </div>
 
-            {/* Kontainer Komponen Rating Mini */}
-            <div className="flex items-center gap-1 mt-1.5 px-4 text-gray-400 text-xs md:text-sm">
-              <span className="text-[#FFD662]">★</span>
-              <span className="font-semibold text-white">{product?.rating || '4.8'}</span>
-              <span className="text-gray-500">|</span>
-              <span>{product?.sold || 0} Terjual</span>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className={`text-3xl font-black ${isDarkMode ? 'text-amber-300' : 'text-sky-700'}`}>Rp {Number(product?.price || 0).toLocaleString('id-ID')}</span>
+              {Number(product?.originalPrice) > Number(product?.price) && (
+                <>
+                  <span className="text-sm text-slate-400 line-through">Rp {Number(product.originalPrice).toLocaleString('id-ID')}</span>
+                  <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-600">{Math.round((1 - Number(product.price) / Number(product.originalPrice)) * 100)}%</span>
+                </>
+              )}
             </div>
 
-            {/* Kategori Official (Pindah ke bawah rating atau sesuaikan) */}
-            <span className={`text-[11px] font-black uppercase tracking-[0.4em] mt-4 px-4 block ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
-              {product?.category} Official
-            </span>
-
-            {/* Share Button (Desktop Only) */}
-            <button
-              onClick={handleShareOptions}
-              className="hidden md:flex p-4 rounded-3xl border transition-all hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-600 border-sky-100 dark:border-slate-700 shadow-sm active:scale-90 mt-4 ml-4"
-            >
-              <Forward size={24} />
-            </button>
-
-            {/* Thumbnail Gallery (Mobile: di bawah info produk) */}
-            {(product?.gallery && product?.gallery?.length > 0) && (
-              <div className="flex md:hidden gap-3 mt-4 px-4 overflow-x-auto pb-2 scrollbar-hide">
-                {[product?.mediaUrl || product?.image, ...product?.gallery].filter(Boolean).map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveImage(img)}
-                    className={`w-16 h-16 rounded-2xl border-2 flex-shrink-0 overflow-hidden transition-all ${activeImage === img ? 'border-sky-500 scale-95 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                  >
-                    <img src={img} className="w-full h-full object-cover" alt="" />
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleShareOptions}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${isDarkMode ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}
+              >
+                <Send size={17} className="text-sky-500" /> Bagikan Link
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleProductCollection('likedProducts', isFavorite, setIsFavorite, 'Suka')}
+                aria-pressed={isFavorite}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${isFavorite ? 'border-rose-300 bg-rose-50 text-rose-600' : isDarkMode ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}
+              >
+                <Heart size={17} fill={isFavorite ? 'currentColor' : 'none'} /> Suka
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleProductCollection('savedProducts', isSaved, setIsSaved, 'Simpan produk')}
+                aria-pressed={isSaved}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${isSaved ? 'border-sky-300 bg-sky-50 text-sky-700' : isDarkMode ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}
+              >
+                <Bookmark size={17} fill={isSaved ? 'currentColor' : 'none'} /> Simpan Produk
+              </button>
+            </div>
 
             {/* Tabs Navigation (Pemisah Deskripsi & Review) */}
             <div className={`flex border-b mb-6 mt-6 transition-colors duration-300 ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
@@ -567,32 +613,116 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
             {/* Content Berdasarkan Tab yang Dipilih */}
             <div className="flex-1">
                 {activeTab === 'about' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all w-full ${isDarkMode ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                      <div className="flex items-center gap-3">
-                        {sellerProfile?.photoURL ? (
-                          <img src={sellerProfile.photoURL} alt="Store Profile" className="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover border border-slate-600 shadow-sm" />
-                        ) : (
-                          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-700 animate-pulse border border-slate-600" />
-                        )}
-                        <div className="min-w-0">
-                          <h4 className={`font-bold text-base md:text-lg truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{product?.storeName || "Nama Toko"}</h4>
-                          <p className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Verified Seller</p>
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <section>
+                      <h2 className="mb-2 text-base font-bold">Deskripsi Produk</h2>
+                      <p className={`whitespace-pre-line text-sm leading-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'} ${!isDescExpanded ? 'line-clamp-5' : ''}`}>
+                        {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
+                      </p>
+                      {(product?.description || '').length > 260 && (
+                        <button type="button" onClick={() => setIsDescExpanded(!isDescExpanded)} className="mt-2 text-sm font-bold text-sky-500">
+                          {isDescExpanded ? 'Lebih Sedikit' : 'Selengkapnya'}
+                        </button>
+                      )}
+                    </section>
+
+                    {(product?.brand || product?.condition || product?.stock !== undefined) && (
+                      <section className={`grid grid-cols-2 gap-3 rounded-xl p-3 text-sm ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+                        {product?.brand && <div><span className="text-slate-500">Merek</span><p className="font-semibold">{product.brand}</p></div>}
+                        {product?.condition && <div><span className="text-slate-500">Kondisi</span><p className="font-semibold">{product.condition}</p></div>}
+                        {product?.stock !== undefined && <div><span className="text-slate-500">Stok</span><p className="font-semibold">{product.stock}</p></div>}
+                        {product?.category && <div><span className="text-slate-500">Kategori</span><p className="font-semibold">{product.category}</p></div>}
+                      </section>
+                    )}
+
+                    <section className={`rounded-2xl border p-4 ${isDarkMode ? 'border-slate-700 bg-slate-900/70' : 'border-slate-200 bg-white'}`}>
+                      <h2 className="mb-3 text-sm font-bold">Informasi Penjual</h2>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          {sellerProfile?.photoURL || sellerProfile?.sellerInfo?.storeLogo || sellerProfile?.avatarURL || product?.storeLogo || product?.sellerPhoto ? (
+                            <img src={sellerProfile?.photoURL || sellerProfile?.sellerInfo?.storeLogo || sellerProfile?.avatarURL || product?.storeLogo || product?.sellerPhoto} alt="" className="h-14 w-14 rounded-full border border-slate-200 object-cover" />
+                          ) : (
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">
+                              {(product?.storeName || sellerProfile?.sellerInfo?.storeName || 'T').trim().slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h3 className="flex items-center gap-1 truncate font-bold">
+                              {product?.storeName || sellerProfile?.sellerInfo?.storeName || 'Toko SobatNiaga'}
+                              {sellerVerified && <BadgeCheck size={16} className="shrink-0 text-sky-500" aria-label="Penjual terverifikasi" />}
+                            </h3>
+                            {sellerRating > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Star size={13} fill="currentColor" className="text-amber-400" /> {sellerRating.toFixed(1)} Rating Toko</p>}
+                            {sellerVerified && <p className="mt-1 text-xs font-semibold text-emerald-500">Penjual Terverifikasi</p>}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-2 sm:w-40">
+                          <button type="button" onClick={handleInternalChat} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-sky-700">
+                            <MessageCircle size={15} /> Chat Penjual
+                          </button>
+                          <button type="button" onClick={() => onVisitStore?.(product?.sellerId)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${isDarkMode ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}>
+                            Kunjungi Toko
+                          </button>
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1.5 min-w-[125px]">
-                        <button onClick={handleInternalChat} className={`w-full py-1.5 px-3 rounded-lg text-[11px] font-bold text-center transition-all active:scale-95 ${isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>Chat Penjual</button>
-                        <button onClick={() => onVisitStore(product?.sellerId)} className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg text-center transition-all active:scale-95 shadow-sm">Kunjungi Toko</button>
-                      </div>
-                    </div>
-                    <div className="mb-10">
-                      <h4 className="text-sm font-black uppercase tracking-widest mb-3 border-b pb-2 dark:border-slate-800">Deskripsi Produk</h4>
-                      <p className={`text-sm leading-relaxed px-4 md:p-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{product?.description || 'Tidak ada deskripsi untuk produk ini.'}</p>
-                    </div>
+                    </section>
                   </div>
                 )}
                 {activeTab === 'review' && (
-                  <div className="py-10 text-center opacity-30 animate-in fade-in duration-300"><Star size={48} className="mx-auto mb-2" /><p className="font-bold text-sm uppercase tracking-widest">Belum Ada Ulasan</p><p className="text-xs mt-1">Jadilah yang pertama memberikan ulasan, Bro!</p></div>
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    {reviewError ? (
+                      <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{reviewError}</p>
+                    ) : (
+                      <>
+                        <section className={`flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+                          <div className="min-w-32 text-center">
+                            <p className="text-3xl font-black">{reviewAverage > 0 ? reviewAverage.toFixed(1) : '—'}</p>
+                            <div className="my-1 flex justify-center text-amber-400">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(reviewAverage) ? 'currentColor' : 'none'} />)}</div>
+                            <p className="text-xs text-slate-500">{reviewCount.toLocaleString('id-ID')} ulasan</p>
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            {reviews.length > 0 && ratingDistribution.map(({ rating, count }) => (
+                              <div key={rating} className="flex items-center gap-2 text-xs">
+                                <span className="w-8 text-slate-500">{rating} ★</span>
+                                <div className={`h-2 flex-1 overflow-hidden rounded-full ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                                  <div className="h-full rounded-full bg-amber-400" style={{ width: `${reviews.length ? (count / reviews.length) * 100 : 0}%` }} />
+                                </div>
+                                <span className="w-6 text-right text-slate-500">{count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                        {reviews.length ? reviews.map((review) => {
+                          const reviewImages = [
+                            review.imageUrl,
+                            review.photoUrl,
+                            review.image,
+                            ...(Array.isArray(review.images) ? review.images : []),
+                            ...(Array.isArray(review.photos) ? review.photos : [])
+                          ].filter(Boolean);
+                          return (
+                            <article key={review.id} className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                              <div className="flex items-center gap-3">
+                                {review.buyerPhoto ? <img src={review.buyerPhoto} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600"><User size={17} /></div>}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold">{review.buyerName || 'Pembeli'}</p>
+                                  {review.createdAt && <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString('id-ID')}</p>}
+                                </div>
+                                <span className="flex items-center gap-1 text-sm font-bold text-amber-500"><Star size={14} fill="currentColor" /> {Number(review.rating || 0)}</span>
+                              </div>
+                              {review.comment && <p className="mt-3 whitespace-pre-line text-sm leading-5 text-slate-500">{review.comment}</p>}
+                              {reviewImages.length > 0 && <div className="mt-3 flex gap-2">{reviewImages.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt="Foto ulasan" className="h-16 w-16 rounded-lg object-cover" />)}</div>}
+                            </article>
+                          );
+                        }) : (
+                          <div className={`rounded-2xl border border-dashed p-6 text-center ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                            <Star size={30} className="mx-auto mb-2 text-amber-400" />
+                            <p className="text-sm font-semibold">Belum ada ulasan produk</p>
+                            <p className="mt-1 text-xs text-slate-500">Ulasan pembeli akan muncul di sini setelah tersedia.</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
             </div>
 
@@ -603,14 +733,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                 disabled={isAdding}
                 className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
               >
-                {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Keranjang</>}
+                {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={20} /> Tambah ke Keranjang</>}
               </button>
               <button 
                 onClick={() => handleAddToCart(true)}
                 disabled={isAdding}
                 className="flex-[2] py-4 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none transition-all"
               >
-                Pesan Sekarang
+                Beli Sekarang
               </button>
             </div>
           </div>
@@ -624,19 +754,95 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           disabled={isAdding}
           className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl font-bold flex items-center justify-center gap-2"
         >
-          {isAdding ? <Loader2 className="animate-spin" /> : <ShoppingCart size={24} />}
+          {isAdding ? <Loader2 className="animate-spin" /> : <><ShoppingCart size={19} /> Tambah ke Keranjang</>}
         </button>
         <button 
           onClick={() => handleAddToCart(true)}
           disabled={isAdding}
           className="flex-[2] py-3 bg-sky-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg"
         >
-          Pesan Sekarang
+          Beli Sekarang
         </button>
       </div>
     </div>
   );
-  return isModal ? modalOverlay(productContent) : productContent;
+  const shareModal = isShareOpen && createPortal(
+    <div
+      className="fixed inset-0 z-[2600] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-md sm:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setIsShareOpen(false);
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-product-title"
+        className="relative max-h-[90vh] w-[92vw] max-w-[880px] overflow-y-auto rounded-[22px] bg-white p-5 text-slate-900 shadow-2xl sm:p-8 md:p-12"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button type="button" onClick={() => setIsShareOpen(false)} aria-label="Tutup Bagikan Produk" className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 sm:right-6 sm:top-6">
+          <X size={24} />
+        </button>
+        <h2 id="share-product-title" className="pr-10 text-2xl font-bold sm:text-3xl">Bagikan Produk</h2>
+
+        <div className="mt-6 flex items-center gap-4 border-b border-slate-200 pb-6 sm:gap-7">
+          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-32 sm:w-32">
+            {(product?.mediaUrl || product?.image) && <img src={product.mediaUrl || product.image} alt={product?.name || 'Foto produk'} className="h-full w-full object-cover" />}
+          </div>
+          <div className="min-w-0">
+            <h3 className="line-clamp-2 text-lg font-bold sm:text-2xl">{product?.name || 'Produk SobatNiaga'}</h3>
+            <p className="mt-2 text-xl font-bold text-emerald-700 sm:text-2xl">Rp {Number(product?.price || 0).toLocaleString('id-ID')}</p>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <label htmlFor="product-share-url" className="mb-2 block text-base font-bold sm:text-lg">Link Produk</label>
+          <div className="flex gap-2">
+            <input id="product-share-url" readOnly value={getProductShareUrl()} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700 sm:px-4 sm:text-sm" />
+            <button type="button" onClick={handleCopyShareLink} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#1e416d] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#17365b]">
+              {copySuccess ? <Check size={17} /> : <Copy size={17} />}<span className="hidden sm:inline">{copySuccess ? 'Tersalin' : 'Salin'}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="mb-3 text-base font-bold sm:text-lg">Bagikan ke Media Sosial</h3>
+          <div className="grid grid-cols-5 gap-2 sm:gap-3">
+            {[
+              { name: 'WhatsApp', symbol: <MessageCircle size={25} />, color: 'bg-[#25D366] text-white' },
+              { name: 'Instagram', symbol: <span className="text-xl font-black">◎</span>, color: 'bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 text-white' },
+              { name: 'TikTok', symbol: <span className="text-xl font-black">♪</span>, color: 'bg-black text-white' },
+              { name: 'Facebook', symbol: <span className="text-2xl font-black">f</span>, color: 'bg-[#1877F2] text-white' },
+              { name: 'Gmail', symbol: <span className="text-xl font-black text-[#EA4335]">M</span>, color: 'bg-white text-slate-700 border border-slate-200' }
+            ].map(({ name, symbol, color }) => (
+              <button key={name} type="button" onClick={() => handleSocialShare(name)} className="flex min-w-0 flex-col items-center gap-2 rounded-xl border border-slate-100 p-2 transition hover:border-slate-300 hover:bg-slate-50 sm:p-3">
+                <span className={`flex h-10 w-10 items-center justify-center rounded-full ${color}`}>{symbol}</span>
+                <span className="text-center text-[10px] font-medium text-slate-600 sm:text-xs">{name}</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">Instagram dan TikTok akan menyalin link lalu membuka aplikasinya.</p>
+        </div>
+
+        <div className="mt-6 border-t border-slate-200 pt-4 text-center">
+          <button type="button" onClick={handleReportProduct} className="inline-flex items-center gap-2 font-semibold text-red-600 transition hover:text-red-700">
+            <Flag size={17} /> Laporkan Produk
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+  const zoomModal = isZoomOpen && selectedImage && createPortal(
+    <div className="fixed inset-0 z-[2700] flex items-center justify-center bg-black/90 p-4" onClick={() => setIsZoomOpen(false)}>
+      <button type="button" aria-label="Tutup foto produk" onClick={() => setIsZoomOpen(false)} className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"><X size={24} /></button>
+      <img src={selectedImage} alt={product?.name || 'Foto produk'} className="max-h-[90vh] max-w-[95vw] object-contain" onClick={(event) => event.stopPropagation()} />
+    </div>,
+    document.body
+  );
+  const detailContent = isModal ? modalOverlay(productContent) : productContent;
+  const renderedDetail = isModal ? createPortal(detailContent, document.body) : detailContent;
+  return <>{renderedDetail}{shareModal}{zoomModal}</>;
 };
 
 export default ProductDetail;

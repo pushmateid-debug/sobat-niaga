@@ -889,8 +889,8 @@ const Home = () => {
     return () => window.removeEventListener('popstate', handleBackButton);
   }, [currentView, previousView, window.location.pathname]);
 
-  // Loading Screen: Tahan tampilan sampai Firebase selesai ngecek
-  if (isLoading) {
+  // Keep the public homepage visible while Firebase restores the user's session.
+  if (isLoading && currentView !== 'home') {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
         <div className="flex flex-col items-center gap-4">
