@@ -180,7 +180,12 @@ const TransactionHistory = ({ user, onBack, onPay, initialTab, highlightOrderId 
       } catch (error) {
           console.error("Error completing order:", error);
           if (!isAuto) {
-            const message = error.message || 'Silakan coba lagi.';
+            const errorCode = String(error.code || '');
+            const message = errorCode === 'functions/internal'
+              ? `Server pencairan sedang mengalami kendala. Pesanan belum dapat dipastikan selesai. Coba sekali lagi; jika masih gagal, kirim ID pesanan ${order.id} ke Admin.`
+              : errorCode === 'functions/unavailable'
+                ? 'Layanan penyelesaian pesanan sementara tidak tersedia. Periksa koneksi lalu coba lagi.'
+                : error.message || 'Silakan coba lagi.';
             Swal.showValidationMessage(message);
           }
           return false;

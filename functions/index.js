@@ -68,7 +68,7 @@ const settleDriverDeliveryFee = async (orderId, driverId, amount, timestamp) => 
   return deliveryFee;
 };
 
-const completeOrderTransaction = onCall({ region: 'asia-southeast1' }, async (request) => {
+const settleOrder = async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Silakan masuk untuk menyelesaikan pesanan.');
   }
@@ -291,6 +291,27 @@ const completeOrderTransaction = onCall({ region: 'asia-southeast1' }, async (re
   }
 
   return { status: 'completed', alreadyCompleted: false, notificationWarnings };
+};
+
+const completeOrderTransaction = onCall({ region: 'asia-southeast1' }, async (request) => {
+  const orderId = request.data?.orderId;
+  try {
+    return await settleOrder(request);
+  } catch (error) {
+    console.error('Order settlement failed', {
+      orderId,
+      uid: request.auth?.uid,
+      code: error.code || 'unknown',
+      message: error.message,
+      stack: error.stack
+    });
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError(
+      'internal',
+      'Server gagal memproses pencairan pesanan. Silakan coba lagi; jika masih gagal, hubungi Admin dengan ID pesanan.',
+      { orderId }
+    );
+  }
 });
 
 const completeFoodDelivery = onCall({ region: 'asia-southeast1' }, async (request) => {
