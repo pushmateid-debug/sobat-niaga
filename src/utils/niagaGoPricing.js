@@ -1,5 +1,23 @@
 const OSRM_ROUTE_URL = 'https://router.project-osrm.org/route/v1/driving';
 
+// Helper: Hitung jarak Haversine antara dua koordinat (dalam km)
+const haversineDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Estimasi durasi berdasarkan jarak (asumsi rata-rata 30 km/jam di kota)
+const estimateDurationFromDistance = (distanceKm) => {
+  const avgSpeedKmh = 30;
+  return Math.ceil((distanceKm / avgSpeedKmh) * 60);
+};
+
 export const getNiagaGoFare = (distanceKm) => {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
 
@@ -31,20 +49,23 @@ export const getOsrmRoute = async (start, end) => {
     throw new Error('Koordinat penjemputan dan tujuan tidak valid.');
   }
 
+  // Coba OSRM dengan timeout 8 detik
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
     const url = `${OSRM_ROUTE_URL}/${startLng},${startLat};${endLng},${endLat}?overview=false&steps=false`;
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
       signal: controller.signal
     });
-    if (!response.ok) throw new Error('Layanan rute tidak dapat menghitung perjalanan saat ini.');
+
+    if (!response.ok) throw new Error('OSRM tidak merespon dengan baik.');
 
     const result = await response.json();
     const route = result.code === 'Ok' && Array.isArray(result.routes) ? result.routes[0] : null;
     if (!route || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) {
-      throw new Error('Rute jalan untuk lokasi tersebut tidak ditemukan.');
+      throw new Error('Rute OSRM tidak ditemukan.');
     }
 
     return {
@@ -52,10 +73,18 @@ export const getOsrmRoute = async (start, end) => {
       durationMinutes: Math.ceil(route.duration / 60)
     };
   } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error('Permintaan rute terlalu lama. Periksa koneksi lalu coba lagi.');
-    }
-    throw error;
+    // Fallback: Gunakan Haversine + multiplier 1.3 untuk estimasi jalan darat
+    const straightDistance = haversineDistance(startLat, startLng, endLat, endLng);
+    const estimatedRoadDistance = straightDistance * 1.3;
+    const estimatedDuration = estimateDurationFromDistance(estimatedRoadDistance);
+
+    console.warn('OSRM gagal, menggunakan estimasi Haversine:', error.message);
+
+    return {
+      distanceKm: Number(estimatedRoadDistance.toFixed(2)),
+      durationMinutes: estimatedDuration,
+      isEstimated: true
+    };
   } finally {
     clearTimeout(timeout);
   }
