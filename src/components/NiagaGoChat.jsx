@@ -219,7 +219,6 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
   };
 
   const locationLinks = (location) => ({
-    google: `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`,
     osm: `https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lng}#map=16/${location.lat}/${location.lng}`
   });
 
@@ -270,16 +269,15 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
                       <div className="p-8 flex items-center justify-center"><Loader2 size={20} className="animate-spin" /></div>
                     )
                   )}
-                  {message.type === 'location' && links && (
-                    <div className="space-y-2 min-w-48">
-                      <p className="flex items-center gap-2 text-sm font-bold"><MapPin size={16} /> Lokasi GPS</p>
-                      <p className="text-xs opacity-80">{Number(message.location.lat).toFixed(6)}, {Number(message.location.lng).toFixed(6)}</p>
-                      <div className="flex flex-wrap gap-3 text-xs underline">
-                        <a href={links.google} target="_blank" rel="noreferrer" className="flex items-center gap-1"><ExternalLink size={12} /> Google Maps</a>
-                        <a href={links.osm} target="_blank" rel="noreferrer" className="flex items-center gap-1"><ExternalLink size={12} /> OpenStreetMap</a>
+{message.type === 'location' && links && (
+                      <div className="space-y-2 min-w-48">
+                        <p className="flex items-center gap-2 text-sm font-bold"><MapPin size={16} /> Lokasi GPS</p>
+                        <p className="text-xs opacity-80">{Number(message.location.lat).toFixed(6)}, {Number(message.location.lng).toFixed(6)}</p>
+                        <div className="flex flex-wrap gap-3 text-xs underline">
+                          <a href={links.osm} target="_blank" rel="noreferrer" className="flex items-center gap-1"><ExternalLink size={12} /> Buka di OpenStreetMap</a>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                   {message.type === 'text' && <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>}
                   <footer className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${isOwnMessage ? 'text-sky-100' : 'text-gray-400'}`}>
                     <span>{formatMessageTime(message.createdAt)}</span>
