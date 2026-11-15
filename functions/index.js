@@ -1,12 +1,145 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 const { HttpsError, onCall } = require('firebase-functions/v2/https');
+const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
 
 initializeApp({
   databaseURL: 'https://sobatniaga-default-rtdb.asia-southeast1.firebasedatabase.app'
 });
 
 const database = getDatabase();
+const firestore = getFirestore();
+const chatImageBucket = getStorage().bucket('sobatniaga.firebasestorage.app');
+
+const NIAGAGO_CHAT_ACTIVE_STATUSES = new Set(['accepted', 'paid', 'verified', 'ongoing']);
+const NIAGAGO_CHAT_CLOSED_STATUSES = new Set(['completed', 'cancelled', 'expired', 'payment_rejected']);
+
+const syncNiagaGoChatRoom = async (orderId, order) => {
+  const { userId, driverId, status } = order;
+  if (typeof userId !== 'string' || typeof driverId !== 'string' || userId === driverId) return;
+
+  const roomRef = database.ref(`niagago_chats/${orderId}`);
+  if (NIAGAGO_CHAT_ACTIVE_STATUSES.has(status)) {
+    await Promise.all([
+      roomRef.update({ members: { [userId]: true, [driverId]: true }, canSend: true }),
+      roomRef.child('createdAt').transaction((current) => current || Date.now())
+    ]);
+  } else if (
+    NIAGAGO_CHAT_CLOSED_STATUSES.has(status) &&
+    (await roomRef.child('canSend').get()).exists()
+  ) {
+    await roomRef.child('canSend').set(false);
+  }
+};
+
+const openNiagaGoChat = onCall({ region: 'asia-southeast1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Silakan masuk untuk membuka chat perjalanan.');
+  }
+
+  const orderId = request.data?.orderId;
+  if (typeof orderId !== 'string' || !orderId || orderId.includes('/')) {
+    throw new HttpsError('invalid-argument', 'ID pesanan tidak valid.');
+  }
+
+  const orderSnapshot = await firestore.collection('ojek_orders').doc(orderId).get();
+  if (!orderSnapshot.exists) {
+    throw new HttpsError('not-found', 'Pesanan tidak ditemukan.');
+  }
+
+  const order = orderSnapshot.data();
+  if (![order.userId, order.driverId].includes(request.auth.uid)) {
+    throw new HttpsError('permission-denied', 'Chat ini bukan milik akun Anda.');
+  }
+  if (typeof order.userId !== 'string' || typeof order.driverId !== 'string') {
+    throw new HttpsError('failed-precondition', 'Pesanan belum memiliki driver dan penumpang yang terhubung.');
+  }
+
+  const active = NIAGAGO_CHAT_ACTIVE_STATUSES.has(order.status);
+  const closed = NIAGAGO_CHAT_CLOSED_STATUSES.has(order.status);
+  const roomRef = database.ref(`niagago_chats/${orderId}`);
+  if (!active && !closed) {
+    throw new HttpsError('failed-precondition', 'Chat tersedia setelah driver dan penumpang menyetujui pesanan.');
+  }
+
+  if (active) {
+    await syncNiagaGoChatRoom(orderId, order);
+  } else {
+    await Promise.all([
+      roomRef.update({ members: { [order.userId]: true, [order.driverId]: true }, canSend: false }),
+      roomRef.child('createdAt').transaction((current) => current || Date.now())
+    ]);
+  }
+
+  return { orderId, canSend: active };
+});
+
+const getNiagaGoChatImageUrl = onCall({ region: 'asia-southeast1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Silakan masuk untuk melihat gambar chat.');
+  }
+
+  const { orderId, messageId, storagePath } = request.data || {};
+  if (typeof orderId !== 'string' || !orderId ||
+      typeof messageId !== 'string' || !messageId ||
+      orderId.includes('/') || !/^[A-Za-z0-9_-]+$/.test(messageId) ||
+      typeof storagePath !== 'string') {
+    throw new HttpsError('invalid-argument', 'Data gambar chat tidak valid.');
+  }
+
+  const orderSnapshot = await firestore.collection('ojek_orders').doc(orderId).get();
+  if (!orderSnapshot.exists) throw new HttpsError('not-found', 'Pesanan tidak ditemukan.');
+  const order = orderSnapshot.data();
+  const participantIds = [order.userId, order.driverId];
+  if (!participantIds.includes(request.auth.uid)) {
+    throw new HttpsError('permission-denied', 'Anda bukan anggota percakapan ini.');
+  }
+
+  const roomSnapshot = await database.ref(`niagago_chats/${orderId}/members`).get();
+  if (roomSnapshot.child(request.auth.uid).val() !== true) {
+    throw new HttpsError('permission-denied', 'Anda bukan anggota percakapan ini.');
+  }
+
+  const messageSnapshot = await database.ref(`niagago_chats/${orderId}/messages/${messageId}`).get();
+  const message = messageSnapshot.val();
+  const pathParts = storagePath.split('/');
+  if (pathParts.length !== 4 || pathParts[0] !== 'niagago_chats' ||
+      pathParts[1] !== orderId || pathParts[3] !== messageId ||
+      !participantIds.includes(pathParts[2]) ||
+      message?.senderId !== pathParts[2] ||
+      message?.imagePath !== storagePath ||
+      message?.type !== 'image' ||
+      !/^[A-Za-z0-9_-]+$/.test(pathParts[3])) {
+    throw new HttpsError('invalid-argument', 'Lokasi file chat tidak valid.');
+  }
+
+  const file = chatImageBucket.file(storagePath);
+  const [metadata] = await file.getMetadata();
+  const fileSize = Number(metadata.size);
+  if (metadata.metadata?.orderId !== orderId ||
+      metadata.metadata?.senderId !== pathParts[2] ||
+      !['image/jpeg', 'image/png', 'image/webp'].includes(metadata.contentType) ||
+      !Number.isFinite(fileSize) || fileSize > 5 * 1024 * 1024) {
+    throw new HttpsError('permission-denied', 'File tidak memenuhi kebijakan keamanan chat.');
+  }
+
+  const [url] = await file.getSignedUrl({
+    action: 'read',
+    expires: Date.now() + 15 * 60 * 1000
+  });
+  return { url };
+});
+
+const syncNiagaGoChatRoomOnOrderUpdate = onDocumentUpdated(
+  { document: 'ojek_orders/{orderId}', region: 'asia-southeast1' },
+  async (event) => {
+    const orderId = event.params.orderId;
+    const currentOrder = await firestore.collection('ojek_orders').doc(orderId).get();
+    if (currentOrder.exists) await syncNiagaGoChatRoom(orderId, currentOrder.data());
+  }
+);
 
 const toItems = (items) => (Array.isArray(items) ? items : Object.values(items || {}))
   .filter((item) => item && typeof item === 'object');
@@ -453,4 +586,11 @@ const updateSellerOrderStatus = onCall({ region: 'asia-southeast1' }, async (req
   return { status, alreadyUpdated: isAlreadyUpdated };
 });
 
-module.exports = { completeOrderTransaction, completeFoodDelivery, updateSellerOrderStatus };
+module.exports = {
+  completeOrderTransaction,
+  completeFoodDelivery,
+  updateSellerOrderStatus,
+  openNiagaGoChat,
+  getNiagaGoChatImageUrl,
+  syncNiagaGoChatRoomOnOrderUpdate
+};

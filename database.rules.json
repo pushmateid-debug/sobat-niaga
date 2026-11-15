@@ -74,6 +74,35 @@
       }
     },
 
+    "niagago_chats": {
+      "$orderId": {
+        ".read": "auth != null && data.child('members').child(auth.uid).val() == true",
+        "members": {
+          ".write": false
+        },
+        "canSend": {
+          ".write": false
+        },
+        "createdAt": {
+          ".write": false
+        },
+        "messages": {
+          "$messageId": {
+            ".write": "auth != null && root.child('niagago_chats').child($orderId).child('members').child(auth.uid).val() == true && ((!data.exists() && root.child('niagago_chats').child($orderId).child('canSend').val() == true && newData.child('senderId').val() == auth.uid && newData.child('status').val() == 'sent') || (data.exists() && data.child('senderId').val() != auth.uid && newData.child('status').val() == 'read' && newData.child('senderId').val() == data.child('senderId').val() && newData.child('senderName').val() == data.child('senderName').val() && newData.child('senderPhoto').val() == data.child('senderPhoto').val() && newData.child('type').val() == data.child('type').val() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('text').val() == data.child('text').val() && newData.child('imagePath').val() == data.child('imagePath').val() && newData.child('location/lat').val() == data.child('location/lat').val() && newData.child('location/lng').val() == data.child('location/lng').val()))",
+            ".validate": "newData.hasChildren(['senderId', 'senderName', 'type', 'createdAt', 'status']) && newData.child('senderId').isString() && newData.child('senderName').isString() && newData.child('senderName').val().length <= 100 && newData.child('type').isString() && newData.child('createdAt').isNumber() && (newData.child('senderPhoto').isString() || !newData.hasChild('senderPhoto')) && (newData.child('status').val() == 'sent' || newData.child('status').val() == 'read') && ((newData.child('type').val() == 'text' && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 2000 && !newData.hasChild('imagePath') && !newData.hasChild('location')) || (newData.child('type').val() == 'image' && newData.child('imagePath').isString() && newData.child('imagePath').val().length <= 300 && !newData.hasChild('text') && !newData.hasChild('location')) || (newData.child('type').val() == 'location' && newData.child('location/lat').isNumber() && newData.child('location/lat').val() >= -90 && newData.child('location/lat').val() <= 90 && newData.child('location/lng').isNumber() && newData.child('location/lng').val() >= -180 && newData.child('location/lng').val() <= 180 && !newData.hasChild('text') && !newData.hasChild('imagePath')))",
+            "$other": {
+              ".validate": "$other == 'senderId' || $other == 'senderName' || $other == 'senderPhoto' || $other == 'type' || $other == 'createdAt' || $other == 'status' || $other == 'text' || $other == 'imagePath' || $other == 'location'"
+            },
+            "location": {
+              "$other": {
+                ".validate": "$other == 'lat' || $other == 'lng'"
+              }
+            }
+          }
+        }
+      }
+    },
+
     "seller_chats": {
       ".indexOn": ["buyerId", "sellerId", "lastMessageTime"],
       ".read": "auth != null && (query.orderByChild == 'buyerId' && query.equalTo == auth.uid || query.orderByChild == 'sellerId' && query.equalTo == auth.uid)",

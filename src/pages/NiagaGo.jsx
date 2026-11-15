@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X,
+  Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, MessageCircle,
   Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils,
   Share2
 } from 'lucide-react';
@@ -11,6 +11,8 @@ import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryU
 import { ref, onValue, update, get, push, runTransaction, query as realQuery, orderByChild, equalTo } from 'firebase/database';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, getDoc, getDocs, writeBatch, doc, orderBy, serverTimestamp, arrayUnion, runTransaction as runFirestoreTransaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
+import NiagaGoChat from '../components/NiagaGoChat';
+import { getNiagaGoFare, getOsrmRoute } from '../utils/niagaGoPricing';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
@@ -519,6 +521,10 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [vehicleType, setVehicleType] = useState('motor'); // 'motor' | 'mobil'
   const [estDistance, setEstDistance] = useState(null);
   const [estDuration, setEstDuration] = useState(null);
+  const [routeDistanceKm, setRouteDistanceKm] = useState(null);
+  const [routeEstimateError, setRouteEstimateError] = useState('');
+  const [isEstimatingRoute, setIsEstimatingRoute] = useState(false);
+  const routeEstimateRequestRef = useRef(0);
   
   // State Map Picker & Coordinates
   const [pickupCoords, setPickupCoords] = useState(null); // {lat, lng}
@@ -565,6 +571,8 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [searchExpiryMs, setSearchExpiryMs] = useState(DEFAULT_SEARCH_EXPIRY_MS);
   const [searchExpiryLoaded, setSearchExpiryLoaded] = useState(false);
   const expiringOrderIdsRef = useRef(new Set());
+  const [activeChat, setActiveChat] = useState(null);
+  const [openingChatOrderId, setOpeningChatOrderId] = useState(null);
 
   const getAuthorizedDriverOrder = async (orderId, allowedStatuses) => {
     if (!isDriverMode || !userProfile?.uid) {
@@ -961,26 +969,41 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
-  // Helper: Hitung Estimasi Harga (Jarak Lurus)
-  const calculateEstimatedPrice = (start, end, type = vehicleType) => {
-    if (!start || !end) return;
-    // Rumus Haversine / Leaflet distanceTo
-    const distMeters = L.latLng(start.lat, start.lng).distanceTo(L.latLng(end.lat, end.lng));
-    const distKm = distMeters / 1000;
-    
-    // Pricing Logic
-    const ratePerKm = type === 'mobil' ? 5000 : 2500; 
-    const minPrice = type === 'mobil' ? 10000 : 5000;
-    const estPrice = Math.ceil(distKm * ratePerKm); 
-    const finalPrice = Math.max(minPrice, estPrice); 
-    
-    // Time Logic (Simple)
-    const speed = type === 'mobil' ? 40 : 30; // km/h
-    const durationMinutes = Math.ceil((distKm / speed) * 60) + 5; // +5 mins buffer
-    
-    setPrice(finalPrice.toString());
-    setEstDistance(distKm.toFixed(1));
-    setEstDuration(durationMinutes);
+  // Route distance comes from OSRM; the public endpoint receives the selected coordinates.
+  const calculateEstimatedPrice = async (start, end) => {
+    const requestId = ++routeEstimateRequestRef.current;
+    if (!start || !end) {
+      setRouteDistanceKm(null);
+      setEstDistance(null);
+      setEstDuration(null);
+      setPrice('');
+      setRouteEstimateError('');
+      setIsEstimatingRoute(false);
+      return;
+    }
+
+    setIsEstimatingRoute(true);
+    setRouteEstimateError('');
+    setRouteDistanceKm(null);
+    setPrice('');
+    try {
+      const route = await getOsrmRoute(start, end);
+      if (requestId !== routeEstimateRequestRef.current) return;
+      const fare = getNiagaGoFare(route.distanceKm);
+      setRouteDistanceKm(route.distanceKm);
+      setEstDistance(route.distanceKm.toFixed(1));
+      setEstDuration(route.durationMinutes);
+      setPrice(fare == null ? '' : String(fare));
+    } catch (error) {
+      if (requestId !== routeEstimateRequestRef.current) return;
+      console.error('Gagal menghitung rute perjalanan NiagaGo:', error);
+      setRouteEstimateError(error.message || 'Rute tidak dapat dihitung. Coba lagi.');
+      setEstDistance(null);
+      setEstDuration(null);
+      setRouteDistanceKm(null);
+    } finally {
+      if (requestId === routeEstimateRequestRef.current) setIsEstimatingRoute(false);
+    }
   };
 
   // Handle Konfirmasi Lokasi dari Map Picker
@@ -992,11 +1015,11 @@ const NiagaGo = ({ onOpenProfile }) => {
     if (mapPickerMode === 'pickup') {
       setPickup(address);
       setPickupCoords({ lat, lng });
-      if (destCoords) calculateEstimatedPrice({ lat, lng }, destCoords, vehicleType);
+      if (destCoords) calculateEstimatedPrice({ lat, lng }, destCoords);
     } else {
       setDestination(address);
       setDestCoords({ lat, lng });
-      if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat, lng }, vehicleType);
+      if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat, lng });
     }
     setMapPickerMode(null);
   };
@@ -1051,11 +1074,11 @@ const NiagaGo = ({ onOpenProfile }) => {
                 if (mapPickerMode === 'pickup') {
                     setPickup(address);
                     setPickupCoords({ lat: latitude, lng: longitude });
-                    if (destCoords) calculateEstimatedPrice({ lat: latitude, lng: longitude }, destCoords, vehicleType);
+                    if (destCoords) calculateEstimatedPrice({ lat: latitude, lng: longitude }, destCoords);
                 } else {
                     setDestination(address);
                     setDestCoords({ lat: latitude, lng: longitude });
-                    if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat: latitude, lng: longitude }, vehicleType);
+                    if (pickupCoords) calculateEstimatedPrice(pickupCoords, { lat: latitude, lng: longitude });
                 }
                 setMapPickerMode(null);
             } catch (error) {
@@ -1106,7 +1129,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   // Recalculate price when vehicle type changes
   useEffect(() => {
     if (pickupCoords && destCoords) {
-      calculateEstimatedPrice(pickupCoords, destCoords, vehicleType);
+      calculateEstimatedPrice(pickupCoords, destCoords);
     }
   }, [vehicleType]);
 
@@ -1164,8 +1187,12 @@ const NiagaGo = ({ onOpenProfile }) => {
   const handleCreateOrder = async (e) => {
     e.preventDefault();
     if (createOrderInProgressRef.current) return;
-    if (!pickup.trim() || !destination.trim() || !Number.isInteger(Number(price)) || Number(price) <= 0) {
-      Swal.fire('Data Kurang', 'Mohon isi lokasi jemput, tujuan, dan harga.', 'warning');
+    const requiresManualQuote = Number.isFinite(routeDistanceKm) && routeDistanceKm > 30;
+    const routeFare = Number.isFinite(routeDistanceKm) ? getNiagaGoFare(routeDistanceKm) : null;
+    if (!pickup.trim() || !destination.trim() || !pickupCoords || !destCoords ||
+        isEstimatingRoute || !Number.isFinite(routeDistanceKm) ||
+        (!requiresManualQuote && (!routeFare || Number(price) !== routeFare))) {
+      Swal.fire('Data Rute Belum Siap', 'Pilih koordinat penjemputan dan tujuan, lalu tunggu estimasi rute jalan selesai.', 'warning');
       return;
     }
 
@@ -1212,10 +1239,12 @@ const NiagaGo = ({ onOpenProfile }) => {
         }
       }
 
-      const numericPrice = Number(price);
+      const numericPrice = requiresManualQuote ? null : routeFare;
       const { value: selectedPaymentMethod } = await Swal.fire({
         title: 'Metode Pembayaran',
-        html: `<div class="text-left"><p class="text-sm text-gray-600 mb-3">Harga awal: <b class="text-gray-800">Rp ${numericPrice.toLocaleString('id-ID')}</b>. Harga akhir dikunci setelah kamu memilih penawaran driver.</p></div>`,
+        html: requiresManualQuote
+          ? `<div class="text-left"><p class="text-sm text-gray-600 mb-3">Rute ${routeDistanceKm.toFixed(1)} km melebihi 30 km. Tarif tidak dihitung otomatis; driver akan mengajukan tarif untuk kamu setujui sebelum pesanan diterima.</p></div>`
+          : `<div class="text-left"><p class="text-sm text-gray-600 mb-3">Tarif rute ${routeDistanceKm.toFixed(1)} km: <b class="text-gray-800">Rp ${numericPrice.toLocaleString('id-ID')}</b>. Driver mengonfirmasi tarif yang sama saat mengirim penawaran.</p></div>`,
         input: 'radio',
         inputOptions: {
           saldo: `Saldo SobatNiaga (Sisa: Rp ${(userProfile?.balance || 0).toLocaleString('id-ID')})`,
@@ -1236,14 +1265,17 @@ const NiagaGo = ({ onOpenProfile }) => {
       await addDoc(collection(dbFirestore, 'ojek_orders'), {
         userId: userProfile.uid,
         userName: userProfile.displayName || userProfile.username || 'Mahasiswa',
+        userPhotoURL: userProfile.photoURL || null,
         pickup: pickup.trim(),
         destination: destination.trim(),
         pickupCoords: pickupCoords || null,
         destCoords: destCoords || null,
         vehicleType,
-        distance: estDistance,
+        distance: Number(routeDistanceKm.toFixed(1)),
+        routeDistanceKm,
         duration: estDuration,
         price: numericPrice,
+        fareAmount: numericPrice,
         notes: notes.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),
@@ -1272,8 +1304,11 @@ const NiagaGo = ({ onOpenProfile }) => {
       setNotes('');
       setPickupCoords(null);
       setDestCoords(null);
+      routeEstimateRequestRef.current += 1;
+      setRouteDistanceKm(null);
       setEstDistance(null);
       setEstDuration(null);
+      setRouteEstimateError('');
     } catch (error) {
       console.error(error);
       Swal.fire('Error', error.message || 'Gagal membuat pesanan.', 'error');
@@ -1302,23 +1337,29 @@ const NiagaGo = ({ onOpenProfile }) => {
         throw new Error('Pesanan ini belum masuk radius pencarian untuk lokasimu.');
       }
 
-      const { value: offeredPrice } = await Swal.fire({
-        title: 'Kirim Penawaran Harga',
-        text: `Harga yang diajukan penumpang Rp ${(order.price || 0).toLocaleString('id-ID')}. Kamu dapat mengirim harga sendiri.`,
-        input: 'number',
-        inputValue: order.price || '',
-        inputAttributes: { min: '1', step: '1000', inputmode: 'numeric' },
-        inputValidator: (value) => {
-          if (!Number.isInteger(Number(value)) || Number(value) <= 0) return 'Masukkan harga yang valid.';
-          return undefined;
-        },
-        showCancelButton: true,
-        confirmButtonText: 'Kirim Penawaran',
-        cancelButtonText: 'Batal'
-      });
-      if (!offeredPrice) return;
+      const routeDistanceKm = Number(order.routeDistanceKm ?? order.distance);
+      const requiresManualQuote = !Number.isFinite(routeDistanceKm) || routeDistanceKm > 30;
+      let priceValue = getNiagaGoFare(routeDistanceKm);
+      if (requiresManualQuote) {
+        const { value: offeredPrice } = await Swal.fire({
+          title: 'Konfirmasi Tarif Manual',
+          text: `Rute ${Number.isFinite(routeDistanceKm) ? `${routeDistanceKm.toFixed(1)} km` : ''} tidak memiliki tarif otomatis. Ajukan tarif yang perlu disetujui penumpang.`,
+          input: 'number',
+          inputAttributes: { min: '1', step: '1000', inputmode: 'numeric' },
+          inputValidator: (value) => {
+            if (!Number.isInteger(Number(value)) || Number(value) <= 0) return 'Masukkan tarif yang valid.';
+            return undefined;
+          },
+          showCancelButton: true,
+          confirmButtonText: 'Ajukan Tarif',
+          cancelButtonText: 'Batal'
+        });
+        if (!offeredPrice) return;
+        priceValue = Number(offeredPrice);
+      } else if (!priceValue || Number(order.price) !== priceValue) {
+        throw new Error('Tarif pesanan tidak cocok dengan jarak rute. Muat ulang pesanan.');
+      }
 
-      const priceValue = Number(offeredPrice);
       const offerId = `${userProfile.uid}_${now}`;
       const vehicle = latestReg?.status === 'approved'
         ? latestReg.vehicles?.[activeVehicle]
@@ -1346,6 +1387,15 @@ const NiagaGo = ({ onOpenProfile }) => {
         if (currentOrder.status !== 'pending') throw new Error('Pesanan sudah tidak mencari driver.');
         if (currentOrder.searchExpiresAt && currentOrder.searchExpiresAt <= Date.now()) {
           throw new Error('Waktu pencarian pesanan sudah habis.');
+        }
+        const currentDistanceKm = Number(currentOrder.routeDistanceKm ?? currentOrder.distance);
+        const expectedFare = getNiagaGoFare(currentDistanceKm);
+        const currentNeedsManualQuote = !Number.isFinite(currentDistanceKm) || currentDistanceKm > 30;
+        if (!currentNeedsManualQuote && (expectedFare !== priceValue || currentOrder.price !== expectedFare)) {
+          throw new Error('Tarif tetap pesanan berubah. Muat ulang sebelum mengirim penawaran.');
+        }
+        if (currentNeedsManualQuote !== requiresManualQuote) {
+          throw new Error('Jenis tarif pesanan berubah. Muat ulang sebelum mengirim penawaran.');
         }
         const existingOffer = getActiveOffers(currentOrder).some((offer) => offer.driverId === userProfile.uid);
         if (existingOffer) throw new Error('Kamu sudah mengirim penawaran untuk pesanan ini.');
@@ -1587,14 +1637,25 @@ const NiagaGo = ({ onOpenProfile }) => {
         if (currentOrder.status !== 'pending' && !isRetry) {
           throw new Error('Pesanan sudah dipilih atau tidak tersedia.');
         }
+        if (Number(selectedOffer.price) !== agreedPrice) {
+          throw new Error('Tarif penawaran berubah. Pilih kembali penawaran terbaru.');
+        }
+        const routeDistanceKm = Number(currentOrder.routeDistanceKm ?? currentOrder.distance);
+        const requiresManualQuote = !Number.isFinite(routeDistanceKm) || routeDistanceKm > 30;
+        const fixedFare = getNiagaGoFare(routeDistanceKm);
+        if (!requiresManualQuote && agreedPrice !== fixedFare) {
+          throw new Error('Tarif tidak sesuai dengan jarak rute pesanan.');
+        }
 
         transaction.update(orderRef, {
           status: 'accepting',
           selectedOfferId,
           driverId: offer.driverId,
           driverName: offer.driverName,
+          driverPhoto: offer.driverPhoto || null,
           price: agreedPrice,
           agreedPrice,
+          fareAmount: agreedPrice,
           acceptingAt: Date.now(),
           paymentMethod
         });
@@ -1701,12 +1762,19 @@ const NiagaGo = ({ onOpenProfile }) => {
             if (!orderSnapshot.exists()) return;
             const currentOrder = orderSnapshot.data();
             if (currentOrder.status === 'accepting' && currentOrder.selectedOfferId === selectedOfferId) {
+              const routeDistanceKm = Number(currentOrder.routeDistanceKm ?? currentOrder.distance);
+              const requiresManualQuote = !Number.isFinite(routeDistanceKm) || routeDistanceKm > 30;
+              const fixedFare = getNiagaGoFare(routeDistanceKm);
               transaction.update(orderRef, {
                 status: 'pending',
                 selectedOfferId: null,
                 driverId: null,
                 driverName: null,
+                driverPhoto: null,
                 driverPhone: null,
+                price: requiresManualQuote ? null : fixedFare,
+                fareAmount: requiresManualQuote ? null : fixedFare,
+                agreedPrice: null,
                 paymentStatus: 'pending'
               });
             }
@@ -1830,6 +1898,48 @@ const NiagaGo = ({ onOpenProfile }) => {
     } catch (error) {
       console.error('Gagal memulai perjalanan NiagaGo:', error);
       Swal.fire('Tidak Dapat Memulai', error.message || 'Gagal memperbarui status perjalanan.', 'error');
+    }
+  };
+
+  const handleOpenNiagaGoChat = async (order) => {
+    const uid = userProfile?.uid;
+    const isOrderParticipant = isDriverMode
+      ? order.driverId === uid
+      : order.userId === uid;
+    if (!isOrderParticipant) {
+      await Swal.fire('Chat Tidak Tersedia', 'Chat hanya dapat dibuka oleh driver dan penumpang pada pesanan ini.', 'error');
+      return;
+    }
+
+    setOpeningChatOrderId(order.id);
+    try {
+      const openChat = httpsCallable(functions, 'openNiagaGoChat');
+      const response = await openChat({ orderId: order.id });
+      const data = response.data || {};
+      const offer = (Array.isArray(order.offers) ? order.offers : [])
+        .find((item) => item.driverId === order.driverId);
+      const partner = isDriverMode
+        ? {
+            uid: order.userId,
+            name: order.userName || 'Penumpang',
+            photoURL: order.userPhotoURL || ''
+          }
+        : {
+            uid: order.driverId,
+            name: order.driverName || offer?.driverName || 'Driver NiagaGo',
+            photoURL: order.driverPhoto || offer?.driverPhoto || ''
+          };
+
+      setActiveChat({
+        orderId: order.id,
+        partner,
+        canSend: data.canSend === true
+      });
+    } catch (error) {
+      console.error('Gagal membuka chat NiagaGo:', error);
+      Swal.fire('Chat Tidak Tersedia', error.message || 'Chat pesanan tidak dapat dibuka.', 'error');
+    } finally {
+      setOpeningChatOrderId(null);
     }
   };
 
@@ -2465,14 +2575,34 @@ const NiagaGo = ({ onOpenProfile }) => {
             <form onSubmit={handleCreateOrder} className="space-y-4">
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 text-gray-400" size={16} />
-                <input type="text" placeholder="Lokasi Jemput (cth: Gerbang Depan)" value={pickup} onChange={(e) => setPickup(e.target.value)} className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <input
+                  type="text"
+                  placeholder="Lokasi Jemput (cth: Gerbang Depan)"
+                  value={pickup}
+                  onChange={(e) => {
+                    setPickup(e.target.value);
+                    setPickupCoords(null);
+                    calculateEstimatedPrice(null, null);
+                  }}
+                  className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+                />
                 <button type="button" onClick={() => setMapPickerMode('pickup')} className="absolute right-2 top-1.5 p-1 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
                   <LocateFixed size={16} />
                 </button>
               </div>
               <div className="relative">
                 <Navigation className="absolute left-3 top-3 text-gray-400" size={16} />
-                <input type="text" placeholder="Tujuan (cth: Kost Putri)" value={destination} onChange={(e) => setDestination(e.target.value)} className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+                <input
+                  type="text"
+                  placeholder="Tujuan (cth: Kost Putri)"
+                  value={destination}
+                  onChange={(e) => {
+                    setDestination(e.target.value);
+                    setDestCoords(null);
+                    calculateEstimatedPrice(null, null);
+                  }}
+                  className={`w-full pl-9 pr-9 py-2 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`}
+                />
                 <button type="button" onClick={() => setMapPickerMode('destination')} className="absolute right-2 top-1.5 p-1 bg-sky-100 text-sky-600 rounded-lg hover:bg-sky-200 transition-colors" title="Pilih di Peta">
                   <LocateFixed size={16} />
                 </button>
@@ -2499,24 +2629,38 @@ const NiagaGo = ({ onOpenProfile }) => {
               </div>
 
               {/* Estimation Info */}
-              {estDistance && estDuration && (
-                <div className={`p-3 rounded-xl border flex justify-between items-center ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-sky-50 border-sky-100'}`}>
-                  <div>
-                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Jarak</p>
-                    <p className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{estDistance} km</p>
+              {isEstimatingRoute && (
+                <p className="text-xs text-sky-600 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Menghitung jarak melalui rute jalan...</p>
+              )}
+              {routeEstimateError && (
+                <p role="alert" className="text-xs text-red-500">{routeEstimateError}</p>
+              )}
+              {estDistance != null && estDuration != null && (
+                <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-sky-50 border-sky-100'}`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Jarak rute</p>
+                      <p className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{estDistance} km</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Estimasi Waktu</p>
+                      <p className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{formatDuration(estDuration)}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Estimasi Waktu</p>
-                    <p className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{formatDuration(estDuration)}</p>
-                  </div>
+                  {routeDistanceKm > 30 ? (
+                    <p className="mt-3 text-sm font-bold text-amber-600">Tarif rute &gt;30 km perlu dikonfirmasi melalui penawaran driver.</p>
+                  ) : (
+                    <p className="mt-3 text-sm font-bold text-sky-600">
+                      Tarif NiagaGo: Rp {Number(price || 0).toLocaleString('id-ID')}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-gray-500">Tarif memakai pembulatan jarak ke kilometer penuh berikutnya.</p>
+                  <p className="mt-2 text-[10px] text-gray-500">Jarak jalan dihitung oleh OSRM publik; koordinat rute dikirim ke layanan routing.</p>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="Harga (Rp)" value={price} onChange={(e) => setPrice(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-                <input type="text" placeholder="Catatan (Cth: Jemput Ibu saya, baju kuning...)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
-              </div>
-              <button type="submit" disabled={isLoading} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">
+              <input type="text" placeholder="Catatan (Cth: Jemput Ibu saya, baju kuning...)" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full py-2 px-3 rounded-xl border text-sm outline-none ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-gray-200'}`} />
+              <button type="submit" disabled={isLoading || isEstimatingRoute || !Number.isFinite(routeDistanceKm)} className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">
                 {isLoading ? 'Memproses...' : 'Cari Driver Sekarang 🚀'}
               </button>
             </form>
@@ -2712,6 +2856,25 @@ const NiagaGo = ({ onOpenProfile }) => {
                   {order.paymentMethod === 'saldo' && <span className="text-sky-600 font-bold">• Lunas via Saldo</span>}
                 </div>
 
+                {order.type !== 'food' &&
+                  order.driverId &&
+                  ['accepted', 'paid', 'verified', 'ongoing', 'completed', 'cancelled', 'expired', 'payment_rejected'].includes(order.status) &&
+                  (isDriverMode ? order.driverId === userProfile?.uid : order.userId === userProfile?.uid) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenNiagaGoChat(order)}
+                      disabled={openingChatOrderId === order.id}
+                      className="mb-3 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                    >
+                      {openingChatOrderId === order.id
+                        ? <Loader2 size={16} className="animate-spin" />
+                        : <MessageCircle size={16} />}
+                      {['completed', 'cancelled', 'expired', 'payment_rejected'].includes(order.status)
+                        ? 'Lihat Riwayat Chat'
+                        : isDriverMode ? 'Pesan Penumpang' : 'Pesan Driver'}
+                    </button>
+                  )}
+
                 {/* 0. STATUS PENDING: User Cari Driver */}
                 {!isDriverMode && ['pending', 'accepting'].includes(order.status) && order.type !== 'food' && (
                     <div className="flex flex-col gap-3 w-full mb-3">
@@ -2766,7 +2929,9 @@ const NiagaGo = ({ onOpenProfile }) => {
 
                 <div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-300 dark:border-slate-600">
                   <div className="font-bold text-lg text-sky-500">
-                    Rp {(order.price || order.totalPrice || 0).toLocaleString('id-ID')}
+                    {Number.isFinite(Number(order.price ?? order.totalPrice))
+                      ? `Rp ${Number(order.price ?? order.totalPrice).toLocaleString('id-ID')}`
+                      : 'Menunggu konfirmasi tarif'}
                   </div>
                   
                   {/* --- LOGIKA TOMBOL BERDASARKAN STATUS --- */}
@@ -3000,7 +3165,11 @@ const NiagaGo = ({ onOpenProfile }) => {
               </div>
               <div className="text-right">
                  <p className="text-xs text-gray-400">Tarif {viewingRouteOrder.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</p>
-                 <p className="text-lg font-bold text-green-600">Rp {(viewingRouteOrder.price || 0).toLocaleString('id-ID')}</p>
+                 <p className="text-lg font-bold text-green-600">
+                   {viewingRouteOrder.price != null && Number.isFinite(Number(viewingRouteOrder.price))
+                     ? `Rp ${Number(viewingRouteOrder.price).toLocaleString('id-ID')}`
+                     : 'Perlu konfirmasi'}
+                 </p>
               </div>
             </div>
           </div>
@@ -3008,6 +3177,21 @@ const NiagaGo = ({ onOpenProfile }) => {
       )}
 
       {/* --- MODAL PEMBAYARAN USER --- */}
+      {activeChat && userProfile?.uid && (
+        <NiagaGoChat
+          orderId={activeChat.orderId}
+          currentUser={{
+            uid: userProfile.uid,
+            displayName: userProfile.displayName,
+            username: userProfile.username,
+            photoURL: userProfile.photoURL || auth.currentUser?.photoURL || ''
+          }}
+          partner={activeChat.partner}
+          canSend={activeChat.canSend}
+          onClose={() => setActiveChat(null)}
+        />
+      )}
+
       {paymentModalOpen && selectedOrderForPayment && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className={`w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
