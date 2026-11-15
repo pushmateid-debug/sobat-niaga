@@ -64,13 +64,9 @@ const getGoogleMapsDirectionsUrl = (coordinates) => (
   `https://www.google.com/maps/dir/?api=1&destination=${coordinates.lat},${coordinates.lng}&travelmode=two-wheeler&dir_action=navigate`
 );
 
+// DISABLED: Aturan jarak dinonaktifkan sesuai permintaan user
+// Semua driver dapat melihat dan mengirim penawaran ke semua pesanan tanpa batas jarak
 const getSearchRadius = (order, now = Date.now()) => {
-  if (getActiveOffers(order, now).length > 0) return INITIAL_SEARCH_RADIUS_METERS;
-  const createdAt = getTimestampMillis(order.createdAt);
-  const elapsed = createdAt ? Math.max(0, now - createdAt) : 0;
-  if (elapsed < INITIAL_SEARCH_DURATION_MS) return INITIAL_SEARCH_RADIUS_METERS;
-  if (elapsed < INITIAL_SEARCH_DURATION_MS + SEARCH_EXPANSION_STEP_MS) return 3000;
-  if (elapsed < INITIAL_SEARCH_DURATION_MS + SEARCH_EXPANSION_STEP_MS * 2) return MAX_SEARCH_RADIUS_METERS;
   return Infinity;
 };
 
@@ -328,10 +324,8 @@ const NearbyDrivers = ({ driversLocations, center, filterType }) => {
       // 3. Cek Tipe Kendaraan (Filter Penumpang)
       if (filterType && d.vehicleType !== filterType) return false;
 
-      // 2. Cek Jarak (Zona)
-      // Pastikan icon motor hanya muncul jika dalam radius ZONE_RADIUS
-      const dist = L.latLng(d.lat, d.lng).distanceTo(L.latLng(center));
-      return dist <= ZONE_RADIUS;
+      // ATURAN JARAK DINONAKTIFKAN - Tampilkan semua driver tanpa batas jarak
+      return true;
   });
 
   return (
@@ -899,11 +893,13 @@ const NiagaGo = ({ onOpenProfile }) => {
           const createdAt = getTimestampMillis(order.createdAt);
           const expiresAt = createdAt ? createdAt + searchExpiryMs : order.searchExpiresAt;
           if (Number.isFinite(searchExpiryMs) && expiresAt && expiresAt <= searchClock) return false;
-          if (!hasFreshDriverLocation || order.vehicleType !== activeVehicle) return false;
-          if (!order.pickupCoords) return true;
-          const pickupDistance = L.latLng(driverLocation.lat, driverLocation.lng)
-            .distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng));
-          return pickupDistance <= getSearchRadius(order, searchClock);
+          // ATURAN JARAK DINONAKTIFKAN - Semua driver bisa lihat semua pesanan
+          // if (!hasFreshDriverLocation || order.vehicleType !== activeVehicle) return false;
+          // if (!order.pickupCoords) return true;
+          // const pickupDistance = L.latLng(driverLocation.lat, driverLocation.lng)
+          //   .distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng));
+          // return pickupDistance <= getSearchRadius(order, searchClock);
+          return true;
         })
       : allOrders;
 
@@ -1330,12 +1326,13 @@ const NiagaGo = ({ onOpenProfile }) => {
         throw new Error('Lokasi GPS driver belum aktif atau sudah kedaluwarsa. Aktifkan lokasi lalu coba lagi.');
       }
 
+      // Hitung jarak untuk ditampilkan di offer (tidak digunakan untuk validasi)
       const pickupDistance = order.pickupCoords
         ? L.latLng(location.lat, location.lng).distanceTo(L.latLng(order.pickupCoords.lat, order.pickupCoords.lng))
         : null;
-      if (pickupDistance != null && pickupDistance > getSearchRadius(order, now)) {
-        throw new Error('Pesanan ini belum masuk radius pencarian untuk lokasimu.');
-      }
+      
+      // ATURAN JARAK DINONAKTIFKAN - Driver bisa kirim penawaran ke semua pesanan tanpa batas jarak
+      // (Tidak ada validasi pickupDistance > getSearchRadius)
 
       const routeDistanceKm = Number(order.routeDistanceKm ?? order.distance);
       const requiresManualQuote = !Number.isFinite(routeDistanceKm) || routeDistanceKm > 30;
@@ -2883,7 +2880,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                           <p className="text-xs text-center text-gray-500 animate-pulse">
                             {order.searchExpiresAt && order.searchExpiresAt <= searchClock
                               ? 'Waktu pencarian habis. Batalkan pesanan lalu coba cari kembali.'
-                              : `Mencari driver${getSearchRadius(order, searchClock) === Infinity ? ' di semua jarak' : ` dalam radius ${getSearchRadius(order, searchClock) / 1000} km`}. Penawaran berlaku 60 detik.`}
+                              : 'Mencari driver di semua jarak. Penawaran berlaku 60 detik.'}
                           </p>
                         ) : (
                           <p className="text-xs text-center text-sky-600">Menyelesaikan persetujuan harga dan pembayaran dengan aman...</p>
