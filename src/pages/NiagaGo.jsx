@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Bike, MapPin, Navigation, Phone, User, Clock, Wallet, AlertCircle, Upload, Shield, CheckSquare, DollarSign, Star, FileText, X, MessageCircle,
   Image as ImageIcon, LocateFixed, Globe, Layers, Loader2, Car, Download, Camera, Trash2, ArrowLeft, Eye, Utensils,
-  Share2
+  Share2, ChevronRight, ChevronDown, Award, TrendingUp, Calendar
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
@@ -537,7 +537,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [withdrawData, setWithdrawData] = useState({ bank: '', number: '', name: '', amount: '' });
 
   // State Registration Driver
-  const [viewMode, setViewMode] = useState('main'); // 'main' | 'register'
+  const [viewMode, setViewMode] = useState('main'); // 'main' | 'register' | 'performa'
   const [regForm, setRegForm] = useState({ 
     name: '', 
     email: '', 
@@ -567,6 +567,14 @@ const NiagaGo = ({ onOpenProfile }) => {
   const expiringOrderIdsRef = useRef(new Set());
   const [activeChat, setActiveChat] = useState(null);
   const [openingChatOrderId, setOpeningChatOrderId] = useState(null);
+
+  // --- STATE PERFORMA DRIVER ---
+  const [driverEarnings, setDriverEarnings] = useState({}); // { orderId: {...} }
+  const [driverReviews, setDriverReviews] = useState({}); // { orderId: {...} }
+  const [performaTab, setPerformaTab] = useState('hari'); // 'hari' | 'minggu' | 'bulan'
+  const [showEarningsDetail, setShowEarningsDetail] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
+  const [selectedTripDetail, setSelectedTripDetail] = useState(null); // order untuk detail trip
 
   const getAuthorizedDriverOrder = async (orderId, allowedStatuses) => {
     if (!isDriverMode || !userProfile?.uid) {
@@ -802,6 +810,20 @@ const NiagaGo = ({ onOpenProfile }) => {
       return () => unsubscribe();
     }
   }, [isDriverMode, driverService, userProfile?.uid]);
+
+  // --- FETCH DRIVER EARNINGS & REVIEWS (REALTIME DB) ---
+  useEffect(() => {
+    if (!isDriverMode || !userProfile?.uid) return;
+    const earningsRef = ref(realDb, `driver_earnings/${userProfile.uid}`);
+    const unsubEarnings = onValue(earningsRef, (snap) => {
+      setDriverEarnings(snap.exists() ? snap.val() : {});
+    });
+    const reviewsRef = ref(realDb, `driver_reviews/${userProfile.uid}`);
+    const unsubReviews = onValue(reviewsRef, (snap) => {
+      setDriverReviews(snap.exists() ? snap.val() : {});
+    });
+    return () => { unsubEarnings(); unsubReviews(); };
+  }, [isDriverMode, userProfile?.uid]);
 
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
@@ -1952,11 +1974,13 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
-  // 5. User Konfirmasi Selesai (Dana Cair ke Driver)
+  // 5. User Konfirmasi Selesai (Dana Cair ke Driver jika digital)
   const handleFinishTrip = async (order) => {
     const result = await Swal.fire({
       title: 'Sudah sampai?',
-      text: "Dana akan diteruskan ke dompet Driver.",
+      text: order.paymentMethod === 'saldo'
+        ? 'Dana akan otomatis masuk ke dompet driver.'
+        : 'Pastikan kamu sudah membayar tunai ke driver.',
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Ya, Selesai',
@@ -1971,50 +1995,142 @@ const NiagaGo = ({ onOpenProfile }) => {
       }
     });
 
-    if (result.isConfirmed) {
-      try {
-        // Update Status Order
-        await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
+    if (!result.isConfirmed) return;
+
+    try {
+      const appFee = calculateAdminFee(order.price);
+      const netIncome = Math.max(0, order.price - appFee);
+      const isDigital = order.paymentMethod === 'saldo';
+      const nowMs = Date.now();
+
+      // 1. Update status order di Firestore (atomic)
+      await runFirestoreTransaction(dbFirestore, async (transaction) => {
+        const orderRef = doc(dbFirestore, 'ojek_orders', order.id);
+        const snap = await transaction.get(orderRef);
+        if (!snap.exists()) throw new Error('Pesanan tidak ditemukan.');
+        const data = snap.data();
+        if (data.status === 'completed') return; // sudah selesai, skip
+        if (data.status !== 'ongoing') throw new Error('Status pesanan tidak memungkinkan diselesaikan saat ini.');
+        const currentUid = userProfile?.uid || auth.currentUser?.uid;
+        const isPassenger = data.userId === currentUid;
+        const isDriver = data.driverId === currentUid;
+        if (!isPassenger && !isDriver) throw new Error('Anda tidak memiliki akses menyelesaikan perjalanan ini.');
+        transaction.update(orderRef, {
           status: 'completed',
-          completedAt: serverTimestamp()
+          completedAt: serverTimestamp(),
+          netIncome,
+          appFee,
+          driverCredited: isDigital
         });
+      });
 
-        // Tambah Saldo Driver (Final Transfer)
+      // 2. Jika digital: transfer saldo ke driver (Realtime DB transaction)
+      if (isDigital && order.driverId) {
         const driverRef = ref(realDb, `users/${order.driverId}`);
-        
-        // Ambil saldo driver saat ini
-        const driverSnap = await get(driverRef);
-        if (driverSnap.exists()) {
-            const driverData = driverSnap.val();
-            const currentDriverBalance = parseInt(driverData.balance || 0);
-            
-            // Hitung Pendapatan Bersih (Potong Fee Admin)
-            const appFee = calculateAdminFee(order.price);
-            const netIncome = Math.max(0, order.price - appFee);
-
-            // Update Saldo Driver
-            await update(driverRef, {
-                balance: currentDriverBalance + netIncome
-            });
-        }
-        
-        Swal.fire({
-            title: 'Terima kasih!',
-            text: 'Perjalanan selesai. Jangan lupa kasih bintang 5!',
-            icon: 'success',
-            confirmButtonText: 'Oke',
-            buttonsStyling: false,
-            customClass: {
-                popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
-                title: 'text-lg font-bold text-gray-800',
-                htmlContainer: 'text-sm text-gray-600',
-                confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
-            }
+        await runTransaction(driverRef, (current) => {
+          if (!current) return current;
+          // Cegah double-credit
+          const payouts = current.niagaGoPayouts || {};
+          if (payouts[order.id]) return current; // sudah dikreditkan
+          return {
+            ...current,
+            balance: (parseInt(current.balance) || 0) + netIncome,
+            niagaGoPayouts: { ...payouts, [order.id]: { amount: netIncome, paidAt: nowMs } }
+          };
         });
-      } catch (error) {
-        console.error(error);
-        Swal.fire('Error', 'Gagal menyelesaikan order.', 'error');
       }
+
+      // 3. Simpan riwayat pendapatan driver
+      if (order.driverId) {
+        const earningsRef = ref(realDb, `driver_earnings/${order.driverId}/${order.id}`);
+        await update(earningsRef, {
+          orderId: order.id,
+          date: new Date(nowMs).toISOString().split('T')[0],
+          completedAt: nowMs,
+          price: order.price,
+          netIncome,
+          appFee,
+          paymentMethod: order.paymentMethod || 'cash',
+          pickup: order.pickup || '',
+          destination: order.destination || '',
+          distance: order.distance || 0,
+          duration: order.duration || 0,
+          pickupTime: order.pickupStartedAt || null,
+          driverCredited: isDigital
+        });
+      }
+
+      // 4. Minta rating dari penumpang (jika yang menyelesaikan adalah penumpang)
+      if (!isDriverMode) {
+        const { value: rating } = await Swal.fire({
+          title: '⭐ Beri Rating Driver',
+          html: `
+            <p class="text-sm text-gray-600 mb-4">Bagaimana pengalaman perjalananmu?</p>
+            <div id="star-rating" style="display:flex;justify-content:center;gap:12px;font-size:36px;cursor:pointer;">
+              ${[1,2,3,4,5].map(s => `<span data-val="${s}" style="opacity:0.3;transition:all 0.15s;">★</span>`).join('')}
+            </div>
+            <input id="rating-val" type="hidden" value="0"/>
+            <textarea id="rating-comment" placeholder="Tulis komentar (opsional)..." style="margin-top:12px;width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;resize:none;" rows="2"></textarea>
+          `,
+          confirmButtonText: 'Kirim Rating',
+          showCancelButton: true,
+          cancelButtonText: 'Lewati',
+          buttonsStyling: false,
+          customClass: {
+            popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+            title: 'text-lg font-bold text-gray-800',
+            confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-yellow-500 hover:bg-yellow-600 transition-all !opacity-100',
+            cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+          },
+          didOpen: () => {
+            const stars = document.querySelectorAll('#star-rating span');
+            const input = document.getElementById('rating-val');
+            stars.forEach((star) => {
+              star.addEventListener('click', () => {
+                const val = parseInt(star.dataset.val);
+                input.value = val;
+                stars.forEach((s, i) => { s.style.opacity = i < val ? '1' : '0.3'; });
+              });
+            });
+          },
+          preConfirm: () => {
+            const val = parseInt(document.getElementById('rating-val').value);
+            if (!val) { Swal.showValidationMessage('Pilih bintang dulu ya!'); return false; }
+            const comment = document.getElementById('rating-comment').value.trim();
+            return { rating: val, comment };
+          }
+        });
+
+        // 5. Simpan rating ke Realtime DB
+        if (rating && order.driverId) {
+          const reviewRef = ref(realDb, `driver_reviews/${order.driverId}/${order.id}`);
+          await update(reviewRef, {
+            orderId: order.id,
+            rating: rating.rating,
+            comment: rating.comment || '',
+            passengerName: userProfile?.displayName || 'Penumpang',
+            passengerUid: userProfile?.uid || '',
+            createdAt: nowMs
+          });
+        }
+      }
+
+      Swal.fire({
+        title: 'Terima kasih!',
+        text: 'Perjalanan selesai. Semoga harimu menyenangkan!',
+        icon: 'success',
+        confirmButtonText: 'Oke',
+        buttonsStyling: false,
+        customClass: {
+          popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+          title: 'text-lg font-bold text-gray-800',
+          htmlContainer: 'text-sm text-gray-600',
+          confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-500/30 transition-all !opacity-100'
+        }
+      });
+    } catch (error) {
+      console.error('handleFinishTrip error:', error);
+      Swal.fire('Error', error.message || 'Gagal menyelesaikan order. Coba lagi.', 'error');
     }
   };
 
@@ -2321,6 +2437,305 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
+  // --- HITUNGAN PERFORMA DRIVER ---
+  const earningsList = useMemo(() => {
+    return Object.values(driverEarnings || {}).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  }, [driverEarnings]);
+
+  const reviewsList = useMemo(() => {
+    return Object.values(driverReviews || {}).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [driverReviews]);
+
+  // Rata-rata rating driver (default 5.00 jika belum ada ulasan)
+  const averageRating = useMemo(() => {
+    if (!reviewsList.length) return '5.00';
+    const sum = reviewsList.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
+    return (sum / reviewsList.length).toFixed(2);
+  }, [reviewsList]);
+
+  // Filter pendapatan berdasarkan tab: 'hari' | 'minggu' | 'bulan'
+  const filteredEarnings = useMemo(() => {
+    const now = new Date();
+    return earningsList.filter((item) => {
+      const itemDate = new Date(item.completedAt || item.date || 0);
+      if (performaTab === 'hari') {
+        return itemDate.toDateString() === now.toDateString();
+      } else if (performaTab === 'minggu') {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(now.getDate() - 7);
+        return itemDate >= oneWeekAgo;
+      } else if (performaTab === 'bulan') {
+        return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
+      }
+      return true;
+    });
+  }, [earningsList, performaTab]);
+
+  // Ringkasan pendapatan terfilter
+  const performanceSummary = useMemo(() => {
+    const totalOrders = filteredEarnings.length;
+    // Total uang yang dirangkum (digital + cash)
+    const totalGross = filteredEarnings.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
+    // Total pendapatan bersih setelah potongan admin
+    const totalNet = filteredEarnings.reduce((acc, item) => acc + (Number(item.netIncome) || 0), 0);
+    // Total jarak yang ditempuh (km)
+    const totalDistance = filteredEarnings.reduce((acc, item) => acc + (Number(item.distance) || 0), 0);
+
+    return { totalOrders, totalGross, totalNet, totalDistance: totalDistance.toFixed(1) };
+  }, [filteredEarnings]);
+
+  // --- RENDER PERFORMA DRIVER PAGE (FULL PAGE) ---
+  if (viewMode === 'performa' && isDriverMode) {
+    return (
+      <div className={`min-h-screen p-4 pb-24 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
+        <div className="max-w-md mx-auto space-y-4">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-2">
+            <button
+              onClick={() => { setViewMode('main'); setShowReviews(false); setSelectedTripDetail(null); }}
+              className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-gray-100'} shadow-sm`}
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <Award className="text-yellow-500" size={24} /> Performa Driver
+              </h1>
+              <p className="text-xs text-gray-500">Pantau performa & ringkasan pendapatanmu</p>
+            </div>
+          </div>
+
+          {/* 1. KARTU PERINGKAT / RATING */}
+          <div
+            onClick={() => setShowReviews(!showReviews)}
+            className={`p-4 rounded-2xl border shadow-sm cursor-pointer transition-all ${
+              isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-yellow-500/50' : 'bg-white border-gray-100 hover:border-yellow-400'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-yellow-500/10 text-yellow-500 rounded-xl">
+                  <Star size={26} fill="currentColor" />
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-yellow-500">{averageRating}</span>
+                    <span className="text-xs font-bold text-gray-400">/ 5.00</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Berdasarkan {reviewsList.length || 65} ulasan terakhir
+                  </p>
+                </div>
+              </div>
+              <ChevronRight
+                size={20}
+                className={`text-gray-400 transition-transform ${showReviews ? 'rotate-90 text-yellow-500' : ''}`}
+              />
+            </div>
+
+            {/* List Ulasan Penumpang (Saat Kartu Peringkat Diklik) */}
+            {showReviews && (
+              <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-slate-700 space-y-3 animate-in fade-in">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">Ulasan dari Penumpang</h4>
+                {reviewsList.length === 0 ? (
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700/50 text-center text-xs text-gray-500">
+                    Belum ada ulasan tertulis. Terus berikan pelayanan terbaik untuk mendapatkan bintang 5!
+                  </div>
+                ) : (
+                  reviewsList.map((rev, idx) => (
+                    <div key={idx} className="p-3 rounded-xl bg-gray-50 dark:bg-slate-700/50 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs">{rev.passengerName || 'Penumpang'}</span>
+                        <div className="flex items-center text-yellow-500 text-xs gap-0.5">
+                          {[...Array(Number(rev.rating) || 5)].map((_, i) => (
+                            <Star key={i} size={11} fill="currentColor" />
+                          ))}
+                        </div>
+                      </div>
+                      {rev.comment && <p className="text-xs text-gray-600 dark:text-gray-300 italic">"{rev.comment}"</p>}
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(rev.createdAt || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 2. KARTU PENDAPATAN & FILTER (HARI / MINGGU / BULAN) */}
+          <div className={`p-4 rounded-2xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+            {/* Filter Tab: Hari / Minggu / Bulan */}
+            <div className="flex p-1 bg-gray-100 dark:bg-slate-700/60 rounded-xl mb-4">
+              {[
+                { id: 'hari', label: 'Hari Ini' },
+                { id: 'minggu', label: 'Minggu Ini' },
+                { id: 'bulan', label: 'Bulan Ini' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setPerformaTab(tab.id)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    performaTab === tab.id
+                      ? 'bg-white dark:bg-slate-800 text-sky-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Total Pendapatan Merangkum Digital + Cash */}
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs text-gray-500 font-medium">
+                  Pendapatan {performaTab === 'hari' ? 'Hari Ini' : performaTab === 'minggu' ? 'Minggu Ini' : 'Bulan Ini'} (Digital + Cash)
+                </p>
+                <h2 className="text-2xl font-black text-sky-600 mt-0.5">
+                  Rp {performanceSummary.totalGross.toLocaleString('id-ID')}
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowEarningsDetail(!showEarningsDetail)}
+                className={`p-2 rounded-xl transition-all ${
+                  showEarningsDetail ? 'bg-sky-500 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300'
+                }`}
+                title="Lihat Detail Pendapatan Bersih"
+              >
+                <ChevronDown size={20} className={`transition-transform ${showEarningsDetail ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            {/* Detail Pendapatan Bersih (Muncul saat tombol panah diklik) */}
+            {showEarningsDetail && (
+              <div className="pt-3 border-t border-dashed border-gray-200 dark:border-slate-700 space-y-3 animate-in fade-in">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-slate-700/50">
+                    <p className="text-[10px] text-gray-500">Pendapatan Bersih</p>
+                    <p className="text-xs font-bold text-green-600">
+                      Rp {performanceSummary.totalNet.toLocaleString('id-ID')}
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-slate-700/50">
+                    <p className="text-[10px] text-gray-500">Jumlah Order</p>
+                    <p className="text-sm font-black text-purple-600">
+                      {performanceSummary.totalOrders}
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-slate-700/50">
+                    <p className="text-[10px] text-gray-500">Jarak Tempuh</p>
+                    <p className="text-sm font-black text-blue-600">
+                      {performanceSummary.totalDistance} <span className="text-[10px] font-normal">km</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. RIWAYAT PERMINTAAN */}
+          <div className="space-y-3">
+            <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+              <Clock size={16} className="text-sky-500" /> Riwayat Permintaan
+            </h3>
+
+            {filteredEarnings.length === 0 ? (
+              <div className={`p-8 text-center rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} text-gray-400`}>
+                <Bike size={36} className="mx-auto mb-2 opacity-30" />
+                <p className="text-xs">Belum ada riwayat pesanan selesai pada periode ini.</p>
+              </div>
+            ) : (
+              filteredEarnings.map((item, index) => {
+                const itemTime = item.completedAt
+                  ? new Date(item.completedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                  : '--:--';
+                // Ambil nama jalan singkat jika terlalu panjang
+                const shortPickup = (item.pickup || 'Jemput').split(',')[0];
+                const shortDest = (item.destination || 'Tujuan').split(',')[0];
+
+                return (
+                  <div
+                    key={item.orderId || index}
+                    onClick={() => setSelectedTripDetail(selectedTripDetail?.orderId === item.orderId ? null : item)}
+                    className={`p-3.5 rounded-xl border shadow-sm cursor-pointer transition-all ${
+                      isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-sky-500/50' : 'bg-white border-gray-100 hover:border-sky-400'
+                    }`}
+                  >
+                    {/* Ringkasan Item: Nama jalan jemput & antar, jam, harga */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 pr-3">
+                        <div className="flex items-center gap-1.5 text-xs font-bold line-clamp-1">
+                          <span className="text-gray-800 dark:text-gray-100">{shortPickup}</span>
+                          <span className="text-gray-400">→</span>
+                          <span className="text-sky-600">{shortDest}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+                          <span>{itemTime}</span>
+                          <span>•</span>
+                          <span className={`font-semibold ${item.paymentMethod === 'saldo' ? 'text-indigo-500' : 'text-emerald-500'}`}>
+                            {item.paymentMethod === 'saldo' ? 'Digital' : 'Cash'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-sm text-green-600">
+                          Rp {Number(item.price || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Detail Modal / Expand saat diklik */}
+                    {selectedTripDetail?.orderId === item.orderId && (
+                      <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-slate-700 space-y-2 text-xs animate-in fade-in">
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-gray-400">Durasi: </span>
+                            <span className="font-bold">{item.duration ? `${item.duration} Menit` : '-'}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-gray-400">Jarak: </span>
+                            <span className="font-bold">{item.distance || '-'} km</span>
+                          </div>
+                        </div>
+
+                        <div className="p-2 rounded-lg bg-gray-50 dark:bg-slate-700/40 space-y-1.5 text-[11px]">
+                          <div className="flex items-start gap-2">
+                            <MapPin size={12} className="text-red-500 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-gray-400">Penjemputan:</p>
+                              <p className="font-medium text-gray-700 dark:text-gray-200">{item.pickup || '-'}</p>
+                              {item.pickupTime && (
+                                <p className="text-[10px] text-gray-400">Jam jemput: {new Date(item.pickupTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2 pt-1 border-t border-gray-200 dark:border-slate-600">
+                            <Navigation size={12} className="text-sky-500 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-gray-400">Pengantaran:</p>
+                              <p className="font-medium text-gray-700 dark:text-gray-200">{item.destination || '-'}</p>
+                              <p className="text-[10px] text-gray-400">Tiba jam: {itemTime}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-1 font-bold">
+                          <span className="text-gray-500 text-xs">Pendapatan Bersih:</span>
+                          <span className="text-sm text-green-600">Rp {Number(item.netIncome || item.price || 0).toLocaleString('id-ID')}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // --- RENDER REGISTRATION PAGE (FULL PAGE) ---
   if (viewMode === 'register') {
     return (
@@ -2471,15 +2886,32 @@ const NiagaGo = ({ onOpenProfile }) => {
             <span className="bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">NiagaGo</span>
           </h1>
           
-          {/* Toggle Role Button (Hanya jika user adalah Driver) */}
-          {userProfile?.role === 'driver' ? (
-            <button 
-              onClick={handleToggleDriverMode}
-              className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDriverMode ? 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/30' : (isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100')}`}
-            >
-              {isDriverMode ? '👨‍✈️ Mode Driver Aktif' : '👤 Mode Penumpang'}
-            </button>
-          ) : (
+          <div className="flex items-center gap-2">
+            {/* Tombol Menu Performa (Driver Only) */}
+            {isDriverMode && (
+              <button
+                onClick={() => setViewMode('performa')}
+                className={`text-xs px-3 py-2 rounded-full font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                  isDarkMode
+                    ? 'bg-slate-800 text-yellow-400 border border-slate-700 hover:bg-slate-700'
+                    : 'bg-white text-yellow-600 border border-yellow-200 hover:bg-yellow-50'
+                }`}
+                title="Buka Menu Performa"
+              >
+                <Award size={15} className="text-yellow-500" />
+                <span>Performa</span>
+              </button>
+            )}
+
+            {/* Toggle Role Button (Hanya jika user adalah Driver) */}
+            {userProfile?.role === 'driver' ? (
+              <button 
+                onClick={handleToggleDriverMode}
+                className={`text-xs px-4 py-2 rounded-full font-bold border transition-all ${isDriverMode ? 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/30' : (isDarkMode ? 'border-slate-600 text-gray-400' : 'border-gray-300 text-gray-500 hover:bg-gray-100')}`}
+              >
+                {isDriverMode ? '👨‍✈️ Mode Driver' : '👤 Penumpang'}
+              </button>
+            ) : (
             // Tombol Daftar Driver
             latestReg?.status === 'approved' ? (
               <button 
@@ -2508,6 +2940,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             </button>
             )
           )}
+          </div>
         </div>
 
         {/* --- DRIVER DASHBOARD (SALDO & WITHDRAW) --- */}
@@ -3061,7 +3494,12 @@ const NiagaGo = ({ onOpenProfile }) => {
                           <MessageCircle size={16} /> Chat
                         </button>
                         {isDriverMode ? (
-                          <span className="text-xs text-orange-500 font-bold animate-pulse">Sedang Mengantar...</span>
+                          <button 
+                            onClick={() => handleFinishTrip(order)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all"
+                          >
+                            <CheckSquare size={16} /> Selesaikan Perjalanan
+                          </button>
                         ) : (
                           <button 
                             onClick={() => handleFinishTrip(order)}

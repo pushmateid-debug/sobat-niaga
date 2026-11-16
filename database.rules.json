@@ -128,6 +128,18 @@
       ".indexOn": ["sellerId"],
       ".read": "auth != null && (data.child('sellerId').val() == auth.uid || auth.token.email == 'pushmate.id@gmail.com')",
       ".write": "auth != null && (newData.child('sellerId').val() == auth.uid || auth.token.email == 'pushmate.id@gmail.com')"
+    },
+    "driver_earnings": {
+      "$driverId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "driver_reviews": {
+      "$driverId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
     }
   }
 }
