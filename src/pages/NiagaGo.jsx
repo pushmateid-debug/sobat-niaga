@@ -1898,45 +1898,57 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
-  const handleOpenNiagaGoChat = async (order) => {
-    const uid = userProfile?.uid;
-    const isOrderParticipant = isDriverMode
-      ? order.driverId === uid
-      : order.userId === uid;
+  const handleOpenNiagaGoChat = (order) => {
+    const uid = userProfile?.uid || auth.currentUser?.uid;
+    const isOrderParticipant = Boolean(
+      uid && (isDriverMode ? order.driverId === uid : order.userId === uid)
+    );
     if (!isOrderParticipant) {
-      await Swal.fire('Chat Tidak Tersedia', 'Chat hanya dapat dibuka oleh driver dan penumpang pada pesanan ini.', 'error');
+      Swal.fire('Chat Tidak Tersedia', 'Chat hanya dapat dibuka oleh driver dan penumpang pada pesanan ini.', 'error');
       return;
     }
 
-    setOpeningChatOrderId(order.id);
+    const offer = (Array.isArray(order.offers) ? order.offers : [])
+      .find((item) => item.driverId === order.driverId);
+    const partner = isDriverMode
+      ? {
+          uid: order.userId,
+          name: order.userName || 'Penumpang',
+          photoURL: order.userPhotoURL || ''
+        }
+      : {
+          uid: order.driverId,
+          name: order.driverName || offer?.driverName || 'Driver NiagaGo',
+          photoURL: order.driverPhoto || offer?.driverPhoto || ''
+        };
+
+    const isOrderActive = ['accepted', 'paid', 'verified', 'ongoing'].includes(order.status);
+
+    // Langsung buka halaman/modal chat tanpa delay dan tanpa blocking error
+    setActiveChat({
+      orderId: order.id,
+      partner,
+      canSend: isOrderActive
+    });
+
+    // Inisialisasi metadata room di Realtime DB di background (non-blocking)
+    try {
+      const roomRef = ref(realDb, `niagago_chats/${order.id}`);
+      update(roomRef, {
+        [`members/${order.userId}`]: true,
+        [`members/${order.driverId}`]: true,
+        canSend: isOrderActive
+      }).catch((e) => console.debug('Sync room non-blocking error:', e));
+    } catch (err) {
+      console.debug('Init room silent error:', err);
+    }
+
+    // Optional sync jika Cloud Functions aktif
     try {
       const openChat = httpsCallable(functions, 'openNiagaGoChat');
-      const response = await openChat({ orderId: order.id });
-      const data = response.data || {};
-      const offer = (Array.isArray(order.offers) ? order.offers : [])
-        .find((item) => item.driverId === order.driverId);
-      const partner = isDriverMode
-        ? {
-            uid: order.userId,
-            name: order.userName || 'Penumpang',
-            photoURL: order.userPhotoURL || ''
-          }
-        : {
-            uid: order.driverId,
-            name: order.driverName || offer?.driverName || 'Driver NiagaGo',
-            photoURL: order.driverPhoto || offer?.driverPhoto || ''
-          };
-
-      setActiveChat({
-        orderId: order.id,
-        partner,
-        canSend: data.canSend === true
-      });
-    } catch (error) {
-      console.error('Gagal membuka chat NiagaGo:', error);
-      Swal.fire('Chat Tidak Tersedia', error.message || 'Chat pesanan tidak dapat dibuka.', 'error');
-    } finally {
-      setOpeningChatOrderId(null);
+      openChat({ orderId: order.id }).catch(() => {});
+    } catch (err) {
+      // ignore
     }
   };
 
@@ -2856,16 +2868,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                 {order.type !== 'food' &&
                   order.driverId &&
                   ['accepted', 'paid', 'verified', 'ongoing', 'completed', 'cancelled', 'expired', 'payment_rejected'].includes(order.status) &&
-                  (isDriverMode ? order.driverId === userProfile?.uid : order.userId === userProfile?.uid) && (
+                  (isDriverMode ? order.driverId === (userProfile?.uid || auth.currentUser?.uid) : order.userId === (userProfile?.uid || auth.currentUser?.uid)) && (
                     <button
                       type="button"
                       onClick={() => handleOpenNiagaGoChat(order)}
-                      disabled={openingChatOrderId === order.id}
-                      className="mb-3 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                      className="mb-3 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95"
                     >
-                      {openingChatOrderId === order.id
-                        ? <Loader2 size={16} className="animate-spin" />
-                        : <MessageCircle size={16} />}
+                      <MessageCircle size={16} />
                       {['completed', 'cancelled', 'expired', 'payment_rejected'].includes(order.status)
                         ? 'Lihat Riwayat Chat'
                         : isDriverMode ? 'Pesan Penumpang' : 'Pesan Driver'}
@@ -2988,6 +2997,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                       <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
                       
                       <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenNiagaGoChat(order)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
+                      >
+                        <MessageCircle size={16} /> Chat
+                      </button>
                       <a 
                         href={getWALink(isDriverMode ? order.userPhone : order.driverPhone, isDriverMode ? 'driver' : 'user')}
                         target="_blank"
@@ -3036,7 +3052,14 @@ const NiagaGo = ({ onOpenProfile }) => {
                       {/* Tampilkan Peta Live Tracking (User & Driver) */}
                       <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
                       
-                      <div className="flex justify-end">
+                      <div className="flex gap-2 justify-end items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNiagaGoChat(order)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
+                        >
+                          <MessageCircle size={16} /> Chat
+                        </button>
                         {isDriverMode ? (
                           <span className="text-xs text-orange-500 font-bold animate-pulse">Sedang Mengantar...</span>
                         ) : (
@@ -3173,15 +3196,15 @@ const NiagaGo = ({ onOpenProfile }) => {
         </div>
       )}
 
-      {/* --- MODAL PEMBAYARAN USER --- */}
-      {activeChat && userProfile?.uid && (
+      {/* --- MODAL CHAT NIAGAGO --- */}
+      {activeChat && (userProfile?.uid || auth.currentUser?.uid) && (
         <NiagaGoChat
           orderId={activeChat.orderId}
           currentUser={{
-            uid: userProfile.uid,
-            displayName: userProfile.displayName,
-            username: userProfile.username,
-            photoURL: userProfile.photoURL || auth.currentUser?.photoURL || ''
+            uid: userProfile?.uid || auth.currentUser?.uid,
+            displayName: userProfile?.displayName || auth.currentUser?.displayName || 'Pengguna NiagaGo',
+            username: userProfile?.username || '',
+            photoURL: userProfile?.photoURL || auth.currentUser?.photoURL || ''
           }}
           partner={activeChat.partner}
           canSend={activeChat.canSend}
