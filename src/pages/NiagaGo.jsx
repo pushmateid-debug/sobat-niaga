@@ -861,6 +861,51 @@ const NiagaGo = ({ onOpenProfile }) => {
       listenTo(query(ordersRef, where('driverId', '==', userProfile.uid)), (data) => {
         assignedDriverOrders = data;
         publishDriverOrders();
+
+        // Auto-credit pesanan digital selesai yang belum dicairkan ke saldo driver
+        data.forEach(async (orderItem) => {
+          if (orderItem.status === 'completed' && orderItem.paymentMethod === 'saldo' && orderItem.driverCredited !== true) {
+            const appFee = calculateAdminFee(orderItem.price);
+            const netIncome = Math.max(0, orderItem.price - appFee);
+            const nowMs = Date.now();
+            try {
+              const driverRef = ref(realDb, `users/${userProfile.uid}`);
+              await runTransaction(driverRef, (current) => {
+                if (!current) return current;
+                const payouts = current.niagaGoPayouts || {};
+                if (payouts[orderItem.id]) return current;
+                return {
+                  ...current,
+                  balance: (parseInt(current.balance) || 0) + netIncome,
+                  niagaGoPayouts: { ...payouts, [orderItem.id]: { amount: netIncome, paidAt: nowMs } }
+                };
+              });
+
+              await updateDoc(doc(dbFirestore, 'ojek_orders', orderItem.id), {
+                driverCredited: true
+              });
+
+              const earningsRef = ref(realDb, `driver_earnings/${userProfile.uid}/${orderItem.id}`);
+              await update(earningsRef, {
+                orderId: orderItem.id,
+                date: new Date(nowMs).toISOString().split('T')[0],
+                completedAt: nowMs,
+                price: orderItem.price,
+                netIncome,
+                appFee,
+                paymentMethod: orderItem.paymentMethod || 'cash',
+                pickup: orderItem.pickup || '',
+                destination: orderItem.destination || '',
+                distance: orderItem.distance || 0,
+                duration: orderItem.duration || 0,
+                pickupTime: orderItem.pickupStartedAt || null,
+                driverCredited: true
+              }).catch(() => {});
+            } catch (autoCreditErr) {
+              console.warn('Auto credit driver payout error:', autoCreditErr);
+            }
+          }
+        });
       });
     } else {
       listenTo(query(ordersRef, where('userId', '==', userProfile.uid)), (data) => {
@@ -2002,6 +2047,8 @@ const NiagaGo = ({ onOpenProfile }) => {
       const netIncome = Math.max(0, order.price - appFee);
       const isDigital = order.paymentMethod === 'saldo';
       const nowMs = Date.now();
+      const currentUid = userProfile?.uid || auth.currentUser?.uid;
+      const isDriver = order.driverId === currentUid;
 
       // 1. Update status order di Firestore (atomic)
       await runFirestoreTransaction(dbFirestore, async (transaction) => {
@@ -2011,53 +2058,62 @@ const NiagaGo = ({ onOpenProfile }) => {
         const data = snap.data();
         if (data.status === 'completed') return; // sudah selesai, skip
         if (data.status !== 'ongoing') throw new Error('Status pesanan tidak memungkinkan diselesaikan saat ini.');
-        const currentUid = userProfile?.uid || auth.currentUser?.uid;
         const isPassenger = data.userId === currentUid;
-        const isDriver = data.driverId === currentUid;
-        if (!isPassenger && !isDriver) throw new Error('Anda tidak memiliki akses menyelesaikan perjalanan ini.');
+        const isOrderDriver = data.driverId === currentUid;
+        if (!isPassenger && !isOrderDriver) throw new Error('Anda tidak memiliki akses menyelesaikan perjalanan ini.');
         transaction.update(orderRef, {
           status: 'completed',
           completedAt: serverTimestamp(),
           netIncome,
           appFee,
-          driverCredited: isDigital
+          driverCredited: isDigital ? isOrderDriver : true
         });
       });
 
-      // 2. Jika digital: transfer saldo ke driver (Realtime DB transaction)
-      if (isDigital && order.driverId) {
-        const driverRef = ref(realDb, `users/${order.driverId}`);
-        await runTransaction(driverRef, (current) => {
-          if (!current) return current;
-          // Cegah double-credit
-          const payouts = current.niagaGoPayouts || {};
-          if (payouts[order.id]) return current; // sudah dikreditkan
-          return {
-            ...current,
-            balance: (parseInt(current.balance) || 0) + netIncome,
-            niagaGoPayouts: { ...payouts, [order.id]: { amount: netIncome, paidAt: nowMs } }
-          };
-        });
+      // 2. Jika digital dan yang menyelesaikan adalah DRIVER: transfer saldo ke dompet driver
+      // Catatan: Penumpang tidak boleh menulis ke users/${driverId} karena Realtime Database
+      // membatasi auth.uid == $uid (akan menimbulkan PERMISSION_DENIED).
+      // Bila penumpang yang menyelesaikan, listener driver akan mengkreditkannya secara otomatis.
+      if (isDigital && order.driverId && isDriver) {
+        try {
+          const driverRef = ref(realDb, `users/${order.driverId}`);
+          await runTransaction(driverRef, (current) => {
+            if (!current) return current;
+            const payouts = current.niagaGoPayouts || {};
+            if (payouts[order.id]) return current; // sudah dikreditkan
+            return {
+              ...current,
+              balance: (parseInt(current.balance) || 0) + netIncome,
+              niagaGoPayouts: { ...payouts, [order.id]: { amount: netIncome, paidAt: nowMs } }
+            };
+          });
+        } catch (credErr) {
+          console.warn('Driver saldo direct credit warning (non-blocking):', credErr);
+        }
       }
 
-      // 3. Simpan riwayat pendapatan driver
+      // 3. Simpan riwayat pendapatan driver (non-blocking agar tidak menggagalkan order)
       if (order.driverId) {
-        const earningsRef = ref(realDb, `driver_earnings/${order.driverId}/${order.id}`);
-        await update(earningsRef, {
-          orderId: order.id,
-          date: new Date(nowMs).toISOString().split('T')[0],
-          completedAt: nowMs,
-          price: order.price,
-          netIncome,
-          appFee,
-          paymentMethod: order.paymentMethod || 'cash',
-          pickup: order.pickup || '',
-          destination: order.destination || '',
-          distance: order.distance || 0,
-          duration: order.duration || 0,
-          pickupTime: order.pickupStartedAt || null,
-          driverCredited: isDigital
-        });
+        try {
+          const earningsRef = ref(realDb, `driver_earnings/${order.driverId}/${order.id}`);
+          await update(earningsRef, {
+            orderId: order.id,
+            date: new Date(nowMs).toISOString().split('T')[0],
+            completedAt: nowMs,
+            price: order.price,
+            netIncome,
+            appFee,
+            paymentMethod: order.paymentMethod || 'cash',
+            pickup: order.pickup || '',
+            destination: order.destination || '',
+            distance: order.distance || 0,
+            duration: order.duration || 0,
+            pickupTime: order.pickupStartedAt || null,
+            driverCredited: isDigital ? isDriver : true
+          });
+        } catch (earningsErr) {
+          console.warn('Driver earnings save warning (non-blocking):', earningsErr);
+        }
       }
 
       // 4. Minta rating dari penumpang (jika yang menyelesaikan adalah penumpang)
@@ -2101,17 +2157,21 @@ const NiagaGo = ({ onOpenProfile }) => {
           }
         });
 
-        // 5. Simpan rating ke Realtime DB
+        // 5. Simpan rating ke Realtime DB (non-blocking)
         if (rating && order.driverId) {
-          const reviewRef = ref(realDb, `driver_reviews/${order.driverId}/${order.id}`);
-          await update(reviewRef, {
-            orderId: order.id,
-            rating: rating.rating,
-            comment: rating.comment || '',
-            passengerName: userProfile?.displayName || 'Penumpang',
-            passengerUid: userProfile?.uid || '',
-            createdAt: nowMs
-          });
+          try {
+            const reviewRef = ref(realDb, `driver_reviews/${order.driverId}/${order.id}`);
+            await update(reviewRef, {
+              orderId: order.id,
+              rating: rating.rating,
+              comment: rating.comment || '',
+              passengerName: userProfile?.displayName || 'Penumpang',
+              passengerUid: userProfile?.uid || '',
+              createdAt: nowMs
+            });
+          } catch (reviewErr) {
+            console.warn('Driver review save warning (non-blocking):', reviewErr);
+          }
         }
       }
 

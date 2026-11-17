@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── HELPER FUNCTIONS ───────────────────────────────────────────────────
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'pushmate.id@gmail.com';
+    }
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // ─── OJEK ORDERS (NiagaGo) ──────────────────────────────────────────────
+    match /ojek_orders/{orderId} {
+      // Siapapun yang login bisa baca:
+      // - Penumpang lihat pesanan sendiri
+      // - Driver lihat semua pending + pesanan yang dia handle
+      allow read: if isAuth();
+
+      // Penumpang buat pesanan baru
+      allow create: if isAuth()
+        && request.resource.data.userId == uid()
+        && request.resource.data.status == 'pending';
+
+      // Update pesanan: penumpang atau driver yang terlibat, atau admin
+      allow update: if isAuth() && (
+        isAdmin()
+        || resource.data.userId == uid()
+        || resource.data.driverId == uid()
+        // Driver ambil pesanan: set driverId ke uid-nya sendiri
+        || (
+          resource.data.driverId == null
+          && request.resource.data.driverId == uid()
+        )
+      );
+
+      // Hanya admin yang bisa hapus (tidak dipakai oleh user biasa)
+      allow delete: if isAdmin();
+    }
+
+    // ─── DRIVER REGISTRATIONS ────────────────────────────────────────────────
+    match /driver_registrations/{regId} {
+      // User baca registrasi miliknya, admin baca semua
+      allow read: if isAuth() && (
+        isAdmin()
+        || resource.data.userId == uid()
+      );
+
+      // User buat pendaftaran baru untuk dirinya sendiri
+      allow create: if isAuth()
+        && request.resource.data.userId == uid()
+        && request.resource.data.status == 'pending';
+
+      // Hanya admin yang bisa update (approve/reject)
+      allow update: if isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    // ─── SEMUA KOLEKSI LAIN (fallback: hanya admin) ─────────────────────────
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
