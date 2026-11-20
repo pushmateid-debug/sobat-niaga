@@ -1091,8 +1091,8 @@ const NiagaGo = ({ onOpenProfile }) => {
   const handleUseCurrentLocation = () => {
     setIsLocating(true);
     
-    // Cek HTTPS (Penting buat HP)
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+    // Cek HTTPS (Wajib untuk produksi)
+    if (window.location.protocol !== 'https:') {
         Swal.fire({
             title: 'Keamanan Browser',
             text: 'Fitur lokasi butuh koneksi aman (HTTPS). Coba refresh atau gunakan browser lain.',
