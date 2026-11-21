@@ -1230,7 +1230,9 @@ const Home = () => {
                         src={banner.image} 
                         alt={banner.alt} 
                         className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
-                        loading={index === 0 ? "eager" : "lazy"} // Optimasi LCP: Slide pertama eager, sisanya lazy
+                        loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
                       />
                     </a>
                   ) : (
@@ -1243,6 +1245,8 @@ const Home = () => {
                         alt={banner.alt} 
                         className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
                         loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
                       />
                     </Link>
                   )
@@ -1252,6 +1256,8 @@ const Home = () => {
                     alt={banner.alt} 
                     className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
                     loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
                   />
                 )}
               </SwiperSlide>
@@ -1506,7 +1512,7 @@ const Home = () => {
       <div className="max-w-7xl mx-auto px-4 space-y-10 pb-10 mt-6 text-left">
         
         {/* SECTION: Populer */}
-        <div ref={populerRef} className="scroll-mt-40">
+        <div ref={populerRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
           </div>
@@ -1525,7 +1531,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Isi Pulsa */}
-        <div ref={pulsaRef} className="scroll-mt-40">
+        <div ref={pulsaRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('topup')}
@@ -1546,7 +1552,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Makan */}
-        <div ref={makanRef} className="scroll-mt-40">
+        <div ref={makanRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('food')}
@@ -1567,7 +1573,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Skin Care */}
-        <div ref={skincareRef} className="scroll-mt-40">
+        <div ref={skincareRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('skincare')}
@@ -1588,7 +1594,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Fashion */}
-        <div ref={fashionRef} className="scroll-mt-40">
+        <div ref={fashionRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('fashion')}
@@ -1609,7 +1615,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Jasa */}
-        <div ref={jasaRef} className="scroll-mt-40">
+        <div ref={jasaRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('jasa')}
@@ -1630,7 +1636,7 @@ const Home = () => {
         </div>
 
         {/* SECTION: Top Up Game */}
-        <div ref={gameRef} className="scroll-mt-40">
+        <div ref={gameRef} className="scroll-mt-40 home-lazy-section">
           <div className="flex items-start justify-between mb-6">
             <h2 
               onClick={() => setCurrentView('digital-center')}
@@ -1648,7 +1654,7 @@ const Home = () => {
                 className={`rounded-xl border p-3 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-sky-500' : 'bg-white border-gray-100 hover:border-sky-200'}`}
               >
                 <div className={`w-full aspect-square rounded-lg overflow-hidden ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
-                  <img src={product.mediaUrl || 'https://via.placeholder.com/150'} alt={product.name} className="w-full h-full object-cover" />
+                  <img src={product.mediaUrl || 'https://via.placeholder.com/150'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 </div>
                 <div className="text-center w-full">
                   <p className={`text-sm font-bold line-clamp-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>

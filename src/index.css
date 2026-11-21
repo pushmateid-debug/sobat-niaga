@@ -159,6 +159,11 @@ body {
 .quill {
   overflow: hidden; /* Prevent outer scroll */
 }
+.home-lazy-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
 .ql-container {
   flex: 1;
   overflow-y: auto; /* Allow scrolling inside container */
