@@ -86,6 +86,13 @@ const calculateAdminFee = (amount) => {
   return 2000;
 };
 
+const summarizeReviews = (reviews) => {
+  const entries = Object.values(reviews || {}).filter((review) => Number.isFinite(Number(review?.rating)));
+  if (!entries.length) return { average: null, count: 0 };
+  const total = entries.reduce((sum, review) => sum + Number(review.rating), 0);
+  return { average: Number((total / entries.length).toFixed(2)), count: entries.length };
+};
+
 // Custom Icon Motor (Biar Keren!)
 const motorIcon = new L.Icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png', 
@@ -459,7 +466,8 @@ const OfferCard = ({ offer, expiresAt: offerExpiresAt, onAccept, onReject, onTim
         <div className="flex-1">
            <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{offer.driverName}</h4>
            <div className="flex items-center gap-1 text-xs text-yellow-500">
-              <Star size={10} fill="currentColor" /> {offer.rating ? Number(offer.rating).toFixed(1) : 'Baru'} <span className="text-gray-400">• {offer.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</span>
+              <Star size={10} fill="currentColor" /> {offer.rating ? Number(offer.rating).toFixed(1) : 'Baru'}
+              <span className="text-gray-400">• {Number(offer.completedTrips) || 0} perjalanan • {offer.vehicleType === 'mobil' ? 'Mobil' : 'Motor'}</span>
            </div>
            {offer.pickupDistance != null && <p className="text-[11px] text-gray-500">Jarak jemput {Number(offer.pickupDistance).toFixed(1)} km</p>}
            {offer.vehiclePlate && <p className="text-[11px] text-gray-500">Plat terverifikasi: {offer.vehiclePlate}</p>}
@@ -571,6 +579,9 @@ const NiagaGo = ({ onOpenProfile }) => {
   // --- STATE PERFORMA DRIVER ---
   const [driverEarnings, setDriverEarnings] = useState({}); // { orderId: {...} }
   const [driverReviews, setDriverReviews] = useState({}); // { orderId: {...} }
+  const [passengerReviews, setPassengerReviews] = useState({});
+  const [passengerReviewSummaries, setPassengerReviewSummaries] = useState({});
+  const passengerReviewRequestsRef = useRef(new Set());
   const [performaTab, setPerformaTab] = useState('hari'); // 'hari' | 'minggu' | 'bulan'
   const [showEarningsDetail, setShowEarningsDetail] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
@@ -811,6 +822,41 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   }, [isDriverMode, driverService, userProfile?.uid]);
 
+  // --- FETCH ULASAN PENUMPANG UNTUK PERFORMA PRIBADI ---
+  useEffect(() => {
+    if (!userProfile?.uid) {
+      setPassengerReviews({});
+      return;
+    }
+    const passengerReviewsRef = ref(realDb, `passenger_reviews/${userProfile.uid}`);
+    return onValue(passengerReviewsRef, (snapshot) => {
+      setPassengerReviews(snapshot.exists() ? snapshot.val() : {});
+    });
+  }, [userProfile?.uid]);
+
+  // Driver dapat melihat rating penumpang pada order yang masuk.
+  useEffect(() => {
+    if (!isDriverMode) {
+      passengerReviewRequestsRef.current.clear();
+      setPassengerReviewSummaries({});
+      return;
+    }
+    const passengerIds = [...new Set(orders.filter((order) => order.type !== 'food' && order.userId).map((order) => order.userId))];
+    passengerIds.forEach((passengerId) => {
+      if (passengerReviewRequestsRef.current.has(passengerId)) return;
+      passengerReviewRequestsRef.current.add(passengerId);
+      get(ref(realDb, `passenger_reviews/${passengerId}`))
+        .then((snapshot) => {
+          const summary = summarizeReviews(snapshot.exists() ? snapshot.val() : {});
+          setPassengerReviewSummaries((current) => ({ ...current, [passengerId]: summary }));
+        })
+        .catch((error) => {
+          console.warn('Rating penumpang tidak dapat dimuat:', error);
+          setPassengerReviewSummaries((current) => ({ ...current, [passengerId]: { average: null, count: 0 } }));
+        });
+    });
+  }, [isDriverMode, orders]);
+
   // --- FETCH DRIVER EARNINGS & REVIEWS (REALTIME DB) ---
   useEffect(() => {
     if (!isDriverMode || !userProfile?.uid) return;
@@ -862,15 +908,23 @@ const NiagaGo = ({ onOpenProfile }) => {
         assignedDriverOrders = data;
         publishDriverOrders();
 
-        // Auto-credit pesanan digital selesai yang belum dicairkan ke saldo driver
+        // Pulihkan riwayat order selesai yang belum sempat tercatat, termasuk order cash lama.
         data.forEach(async (orderItem) => {
-          if (orderItem.status === 'completed' && orderItem.paymentMethod === 'saldo' && orderItem.driverCredited !== true) {
-            const appFee = calculateAdminFee(orderItem.price);
-            const netIncome = Math.max(0, orderItem.price - appFee);
-            const nowMs = Date.now();
-            try {
+          if (orderItem.status !== 'completed') return;
+
+          const completedAt = getTimestampMillis(orderItem.completedAt) || Date.now();
+          const price = Number(orderItem.agreedPrice ?? orderItem.price ?? orderItem.fareAmount);
+          if (!Number.isSafeInteger(price) || price <= 0) return;
+          const appFee = calculateAdminFee(price);
+          const netIncome = Math.max(0, price - appFee);
+          const nowMs = completedAt;
+          const earningsRef = ref(realDb, `driver_earnings/${userProfile.uid}/${orderItem.id}`);
+          const earningsSnapshot = await get(earningsRef).catch(() => null);
+
+          try {
+            if (orderItem.paymentMethod === 'saldo' && orderItem.driverCredited !== true) {
               const driverRef = ref(realDb, `users/${userProfile.uid}`);
-              await runTransaction(driverRef, (current) => {
+              const payoutResult = await runTransaction(driverRef, (current) => {
                 if (!current) return current;
                 const payouts = current.niagaGoPayouts || {};
                 if (payouts[orderItem.id]) return current;
@@ -880,30 +934,34 @@ const NiagaGo = ({ onOpenProfile }) => {
                   niagaGoPayouts: { ...payouts, [orderItem.id]: { amount: netIncome, paidAt: nowMs } }
                 };
               });
+              if (!payoutResult.committed && !payoutResult.snapshot.child(`niagaGoPayouts/${orderItem.id}`).exists()) {
+                throw new Error('Pencairan saldo driver belum dapat dipastikan.');
+              }
+            }
 
-              await updateDoc(doc(dbFirestore, 'ojek_orders', orderItem.id), {
-                driverCredited: true
-              });
-
-              const earningsRef = ref(realDb, `driver_earnings/${userProfile.uid}/${orderItem.id}`);
+            if (!earningsSnapshot?.exists()) {
               await update(earningsRef, {
                 orderId: orderItem.id,
-                date: new Date(nowMs).toISOString().split('T')[0],
-                completedAt: nowMs,
-                price: orderItem.price,
+                date: new Date(completedAt).toISOString().split('T')[0],
+                completedAt,
+                price,
                 netIncome,
                 appFee,
                 paymentMethod: orderItem.paymentMethod || 'cash',
                 pickup: orderItem.pickup || '',
                 destination: orderItem.destination || '',
-                distance: orderItem.distance || 0,
+                distance: orderItem.distance || orderItem.routeDistanceKm || 0,
                 duration: orderItem.duration || 0,
                 pickupTime: orderItem.pickupStartedAt || null,
                 driverCredited: true
-              }).catch(() => {});
-            } catch (autoCreditErr) {
-              console.warn('Auto credit driver payout error:', autoCreditErr);
+              });
             }
+
+            if (orderItem.paymentMethod === 'saldo' && orderItem.driverCredited !== true) {
+              await updateDoc(doc(dbFirestore, 'ojek_orders', orderItem.id), { driverCredited: true });
+            }
+          } catch (autoCreditErr) {
+            console.warn('Driver earnings recovery error:', autoCreditErr);
           }
         });
       });
@@ -1467,6 +1525,12 @@ const NiagaGo = ({ onOpenProfile }) => {
         throw new Error('Tarif pesanan tidak cocok dengan jarak rute. Muat ulang pesanan.');
       }
 
+      const [driverReviewsSnapshot, driverEarningsSnapshot] = await Promise.all([
+        get(ref(realDb, `driver_reviews/${userProfile.uid}`)),
+        get(ref(realDb, `driver_earnings/${userProfile.uid}`))
+      ]);
+      const driverStats = summarizeReviews(driverReviewsSnapshot.exists() ? driverReviewsSnapshot.val() : {});
+      const completedTrips = Object.keys(driverEarningsSnapshot.exists() ? driverEarningsSnapshot.val() : {}).length;
       const offerId = `${userProfile.uid}_${now}`;
       const vehicle = latestReg?.status === 'approved'
         ? latestReg.vehicles?.[activeVehicle]
@@ -1478,7 +1542,9 @@ const NiagaGo = ({ onOpenProfile }) => {
         driverPhoto: userProfile.photoURL || null,
         vehicleType: activeVehicle,
         vehiclePlate: vehicle?.plate || '',
-        rating: Number(userProfile.rating) || null,
+        rating: driverStats.average,
+        ratingCount: driverStats.count,
+        completedTrips,
         pickupDistance: pickupDistance == null ? null : Number((pickupDistance / 1000).toFixed(1)),
         price: priceValue,
         status: 'pending',
@@ -1760,6 +1826,9 @@ const NiagaGo = ({ onOpenProfile }) => {
           driverId: offer.driverId,
           driverName: offer.driverName,
           driverPhoto: offer.driverPhoto || null,
+          driverRating: Number(offer.rating) || null,
+          driverRatingCount: Number(offer.ratingCount) || 0,
+          driverCompletedTrips: Number(offer.completedTrips) || 0,
           price: agreedPrice,
           agreedPrice,
           fareAmount: agreedPrice,
@@ -2160,7 +2229,7 @@ const NiagaGo = ({ onOpenProfile }) => {
       }
 
       // 4. Minta rating dari penumpang (jika yang menyelesaikan adalah penumpang)
-      if (!isDriverMode) {
+      if (!isDriver) {
         const { value: rating } = await Swal.fire({
           title: '⭐ Beri Rating Driver',
           html: `
@@ -2213,19 +2282,6 @@ const NiagaGo = ({ onOpenProfile }) => {
               createdAt: nowMs
             });
 
-            // Update agregat rating driver di profil user driver
-            const driverRef = ref(realDb, `users/${order.driverId}`);
-            await runTransaction(driverRef, (cur) => {
-              if (!cur) return cur;
-              const count = Number(cur.totalDriverTrips || 0);
-              const curRating = Number(cur.driverRating || 5);
-              const newRating = count > 0 ? Number(((curRating * count + rating.rating) / (count + 1)).toFixed(2)) : rating.rating;
-              return {
-                ...cur,
-                driverRating: newRating,
-                totalDriverTrips: count + 1
-              };
-            }).catch(() => {});
           } catch (reviewErr) {
             console.warn('Driver review save warning (non-blocking):', reviewErr);
           }
@@ -2285,19 +2341,6 @@ const NiagaGo = ({ onOpenProfile }) => {
                 createdAt: nowMs
               });
 
-              // Update metrik performa penumpang
-              const pUserRef = ref(realDb, `users/${targetPassengerId}`);
-              await runTransaction(pUserRef, (cur) => {
-                if (!cur) return cur;
-                const count = Number(cur.totalPassengerTrips || 0);
-                const curRating = Number(cur.passengerRating || 5);
-                const newRating = count > 0 ? Number(((curRating * count + passengerRating.rating) / (count + 1)).toFixed(2)) : passengerRating.rating;
-                return {
-                  ...cur,
-                  passengerRating: newRating,
-                  totalPassengerTrips: count + 1
-                };
-              }).catch(() => {});
             } catch (pReviewErr) {
               console.warn('Passenger review save warning (non-blocking):', pReviewErr);
             }
@@ -2701,9 +2744,18 @@ const NiagaGo = ({ onOpenProfile }) => {
     return Object.values(driverReviews || {}).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }, [driverReviews]);
 
-  // Rata-rata rating driver (default 5.00 jika belum ada ulasan)
+  const passengerReviewsList = useMemo(() => {
+    return Object.values(passengerReviews || {}).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [passengerReviews]);
+
+  const passengerAverageRating = useMemo(() => {
+    const summary = summarizeReviews(passengerReviews);
+    return summary.average == null ? null : summary.average.toFixed(2);
+  }, [passengerReviews]);
+
+  // Rata-rata rating driver dari ulasan yang benar-benar tersimpan
   const averageRating = useMemo(() => {
-    if (!reviewsList.length) return '5.00';
+    if (!reviewsList.length) return null;
     const sum = reviewsList.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
     return (sum / reviewsList.length).toFixed(2);
   }, [reviewsList]);
@@ -2738,6 +2790,49 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     return { totalOrders, totalGross, totalNet, totalDistance: totalDistance.toFixed(1) };
   }, [filteredEarnings]);
+
+  // --- RENDER PERFORMA PENUMPANG (RATING & KOMENTAR SAJA) ---
+  if (viewMode === 'performa' && !isDriverMode) {
+    return (
+      <div className={`min-h-screen p-4 pb-24 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={() => setViewMode('main')} className={`p-2 rounded-full ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-gray-100'} shadow-sm`}>
+              <ArrowLeft size={22} />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold flex items-center gap-2"><Award className="text-yellow-500" size={24} /> Performa Penumpang</h1>
+              <p className="text-xs text-gray-500">Rating dan komentar dari driver</p>
+            </div>
+          </div>
+
+          <div className={`p-5 rounded-2xl border shadow-sm text-center ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+            <Star size={28} className="mx-auto text-yellow-500 mb-2" fill="currentColor" />
+            <p className="text-4xl font-black text-yellow-500">{passengerAverageRating || '—'}</p>
+            <p className="text-xs text-gray-500 mt-1">{passengerReviewsList.length} ulasan dari driver</p>
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="font-bold text-sm text-gray-700 dark:text-gray-300">Komentar Driver</h2>
+            {passengerReviewsList.length === 0 ? (
+              <div className={`p-8 text-center rounded-2xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} text-gray-400`}>
+                <p className="text-xs">Belum ada rating atau komentar dari driver.</p>
+              </div>
+            ) : passengerReviewsList.map((review) => (
+              <div key={review.orderId} className={`p-4 rounded-2xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-sm">{review.driverName || 'Driver NiagaGo'}</span>
+                  <span className="flex items-center gap-1 text-yellow-500 text-xs font-bold"><Star size={13} fill="currentColor" /> {Number(review.rating) || 0}/5</span>
+                </div>
+                {review.comment && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">“{review.comment}”</p>}
+                <p className="mt-2 text-[10px] text-gray-400">{new Date(review.createdAt || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // --- RENDER PERFORMA DRIVER PAGE (FULL PAGE) ---
   if (viewMode === 'performa' && isDriverMode) {
@@ -2774,11 +2869,11 @@ const NiagaGo = ({ onOpenProfile }) => {
                 </div>
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-black text-yellow-500">{averageRating}</span>
+                    <span className="text-3xl font-black text-yellow-500">{averageRating || '—'}</span>
                     <span className="text-xs font-bold text-gray-400">/ 5.00</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Berdasarkan {reviewsList.length || 65} ulasan terakhir
+                    Berdasarkan {reviewsList.length} ulasan
                   </p>
                 </div>
               </div>
@@ -3142,21 +3237,19 @@ const NiagaGo = ({ onOpenProfile }) => {
           </h1>
           
           <div className="flex items-center gap-2">
-            {/* Tombol Menu Performa (Driver Only) */}
-            {isDriverMode && (
-              <button
-                onClick={() => setViewMode('performa')}
-                className={`text-xs px-3 py-2 rounded-full font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-                  isDarkMode
-                    ? 'bg-slate-800 text-yellow-400 border border-slate-700 hover:bg-slate-700'
-                    : 'bg-white text-yellow-600 border border-yellow-200 hover:bg-yellow-50'
-                }`}
-                title="Buka Menu Performa"
-              >
-                <Award size={15} className="text-yellow-500" />
-                <span>Performa</span>
-              </button>
-            )}
+            {/* Performa Driver atau Penumpang */}
+            <button
+              onClick={() => setViewMode('performa')}
+              className={`text-xs px-3 py-2 rounded-full font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                isDarkMode
+                  ? 'bg-slate-800 text-yellow-400 border border-slate-700 hover:bg-slate-700'
+                  : 'bg-white text-yellow-600 border border-yellow-200 hover:bg-yellow-50'
+              }`}
+              title={`Buka Performa ${isDriverMode ? 'Driver' : 'Penumpang'}`}
+            >
+              <Award size={15} className="text-yellow-500" />
+              <span>Performa</span>
+            </button>
 
             {/* Toggle Role Button (Hanya jika user adalah Driver) */}
             {userProfile?.role === 'driver' ? (
@@ -3472,6 +3565,23 @@ const NiagaGo = ({ onOpenProfile }) => {
                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400 font-semibold" title="Kode Referensi Pesanan">
                         Ref: #{String(order.id || '').slice(-6).toUpperCase()}
                       </span>
+                      {!isDriverMode && order.driverId && (
+                        <p className="mt-1 text-[11px] text-gray-500 flex items-center gap-1.5">
+                          <Star size={11} className="text-yellow-500" fill="currentColor" />
+                          Driver {order.driverRating ? Number(order.driverRating).toFixed(1) : 'Baru'}
+                          <span>• {Number(order.driverCompletedTrips) || 0} perjalanan</span>
+                        </p>
+                      )}
+                      {isDriverMode && order.type !== 'food' && (() => {
+                        const stats = passengerReviewSummaries[order.userId];
+                        return (
+                          <p className="mt-1 text-[11px] text-gray-500 flex items-center gap-1.5">
+                            <Star size={11} className="text-yellow-500" fill="currentColor" />
+                            Penumpang {stats?.average ? stats.average.toFixed(1) : 'Belum ada rating'}
+                            {stats?.count > 0 && <span>• {stats.count} ulasan</span>}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                   {/* Vehicle Icon Badge */}

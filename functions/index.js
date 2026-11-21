@@ -141,6 +141,78 @@ const syncNiagaGoChatRoomOnOrderUpdate = onDocumentUpdated(
   }
 );
 
+const syncNiagaGoTripPerformanceOnOrderUpdate = onDocumentUpdated(
+  { document: 'ojek_orders/{orderId}', region: 'asia-southeast1', retry: true },
+  async (event) => {
+    const before = event.data?.before.data();
+    const order = event.data?.after.data();
+    if (!before || !order || before.status === 'completed' || order.status !== 'completed') return;
+
+    const { orderId } = event.params;
+    const driverId = order.driverId;
+    if (typeof driverId !== 'string' || !driverId) {
+      console.warn('Completed NiagaGo order has no driver:', orderId);
+      return;
+    }
+
+    const price = Number(order.agreedPrice ?? order.price ?? order.fareAmount);
+    if (!Number.isSafeInteger(price) || price <= 0) {
+      throw new Error(`Completed NiagaGo order has invalid fare: ${orderId}`);
+    }
+
+    const completedAt = typeof order.completedAt?.toMillis === 'function'
+      ? order.completedAt.toMillis()
+      : Number(order.completedAt) || Date.now();
+    const appFee = price < 15000 ? 500 : 2000;
+    const netIncome = Math.max(0, price - appFee);
+    const paymentMethod = order.paymentMethod || 'cash';
+
+    // Credit digital fares exactly once, regardless of which participant completed the trip.
+    if (paymentMethod === 'saldo') {
+      const driverRef = database.ref(`users/${driverId}`);
+      const payoutSnapshot = await driverRef.transaction((current) => {
+        if (!current) return;
+        const payouts = current.niagaGoPayouts || {};
+        const existingPayout = payouts[orderId];
+        if (existingPayout) {
+          if (Number(existingPayout.amount) !== netIncome) return;
+          return current;
+        }
+        return {
+          ...current,
+          balance: toInteger(current.balance) + netIncome,
+          niagaGoPayouts: { ...payouts, [orderId]: { amount: netIncome, paidAt: completedAt } }
+        };
+      });
+      const payout = payoutSnapshot.snapshot.val()?.niagaGoPayouts?.[orderId];
+      if (!payout || Number(payout.amount) !== netIncome) {
+        throw new Error(`NiagaGo driver payout could not be confirmed: ${orderId}`);
+      }
+    }
+
+    // Keep a single performance row per trip. Cash trips are recorded here too.
+    const earningsRef = database.ref(`driver_earnings/${driverId}/${orderId}`);
+    await earningsRef.transaction((current) => ({
+      ...(current || {}),
+      orderId,
+      date: new Date(completedAt).toISOString().slice(0, 10),
+      completedAt,
+      price,
+      netIncome,
+      appFee,
+      paymentMethod,
+      pickup: order.pickup || '',
+      destination: order.destination || '',
+      distance: Number(order.distance || order.routeDistanceKm) || 0,
+      duration: Number(order.duration) || 0,
+      pickupTime: order.pickupStartedAt || null,
+      driverCredited: true
+    }));
+
+    await firestore.collection('ojek_orders').doc(orderId).update({ driverCredited: true });
+  }
+);
+
 const toItems = (items) => (Array.isArray(items) ? items : Object.values(items || {}))
   .filter((item) => item && typeof item === 'object');
 
@@ -592,5 +664,6 @@ module.exports = {
   updateSellerOrderStatus,
   openNiagaGoChat,
   getNiagaGoChatImageUrl,
-  syncNiagaGoChatRoomOnOrderUpdate
+  syncNiagaGoChatRoomOnOrderUpdate,
+  syncNiagaGoTripPerformanceOnOrderUpdate
 };
