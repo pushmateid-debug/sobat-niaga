@@ -62,6 +62,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── USERS (Firestore) ───────────────────────────────────────────────────
+    // Digunakan untuk menyimpan FCM token dan data profil tambahan
+    match /users/{userId} {
+      // User hanya bisa baca/tulis dokumen miliknya sendiri; admin bisa semua
+      allow read: if isAuth() && (uid() == userId || isAdmin());
+      allow write: if isAuth() && (uid() == userId || isAdmin());
+    }
+
     // ─── SEMUA KOLEKSI LAIN (fallback: hanya admin) ─────────────────────────
     match /{document=**} {
       allow read, write: if isAdmin();

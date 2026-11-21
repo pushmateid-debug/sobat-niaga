@@ -144,12 +144,19 @@ const Home = () => {
         
         if (token) {
           console.log('FCM Token didapat:', token);
-          // PENTING: Simpan ke Firestore (untuk push background) dan Realtime DB (untuk trigger cepat)
-          const userFirestoreRef = doc(dbFirestore, 'users', userId);
-          await setDoc(userFirestoreRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
-          
+          // Simpan ke Realtime DB (utama, selalu berhasil untuk user login)
           const userRtdbRef = ref(db, `users/${userId}`);
           await update(userRtdbRef, { fcmToken: token });
+
+          // Simpan ke Firestore juga (untuk push background) — tangkap error secara terpisah
+          // agar kegagalan Firestore tidak membatalkan penyimpanan ke Realtime DB
+          try {
+            const userFirestoreRef = doc(dbFirestore, 'users', userId);
+            await setDoc(userFirestoreRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
+          } catch (firestoreError) {
+            // Tidak kritis — FCM token sudah tersimpan di Realtime DB
+            console.warn('FCM token tidak tersimpan ke Firestore (akan dicoba ulang berikutnya):', firestoreError.code);
+          }
         }
       } else {
         console.warn('Izin notifikasi ditolak oleh user.');
@@ -245,6 +252,17 @@ const Home = () => {
   const gameRef = useRef(null);
   const niagaGoRef = useRef(null);
 
+  // Helper: validasi URL gambar agar tidak memicu 404 di konsol
+  const isValidImageUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   // Logic Banner Dinamis (Database > Lokal)
   const banners = useMemo(() => {
     const slots = [
@@ -262,6 +280,9 @@ const Home = () => {
       const image = (typeof data === 'object' && data !== null) ? data.url : data;
       const link = (typeof data === 'object' && data !== null) ? data.link : null;
       
+      // Lewati slot dengan URL tidak valid agar tidak muncul error 404
+      if (!isValidImageUrl(image)) return null;
+
       return { ...slot, image, link };
     }).filter(b => b && b.image);
   }, [bannerImages]);
