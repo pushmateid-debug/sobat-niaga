@@ -209,6 +209,24 @@ const syncNiagaGoTripPerformanceOnOrderUpdate = onDocumentUpdated(
       driverCredited: true
     }));
 
+    if (typeof order.userId === 'string' && order.userId) {
+      try {
+        await database.ref(`notifications/niagago_trip_completed_${orderId}`).set({
+          recipientId: order.userId,
+          title: 'Perjalanan selesai 🎉',
+          message: `Kamu sudah tiba bersama ${order.driverName || 'driver NiagaGo'}. Beri rating dan komentar untuk membantu driver terus memberikan perjalanan terbaik!`,
+          type: 'success',
+          targetView: 'history',
+          orderId,
+          actionLabel: 'Beri Rating Driver',
+          createdAt: completedAt,
+          status: 'unread'
+        });
+      } catch (notificationError) {
+        console.warn(`Gagal mengirim notifikasi selesai untuk order ${orderId}:`, notificationError);
+      }
+    }
+
     await firestore.collection('ojek_orders').doc(orderId).update({ driverCredited: true });
   }
 );

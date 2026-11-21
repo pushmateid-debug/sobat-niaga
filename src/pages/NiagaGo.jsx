@@ -24,6 +24,7 @@ const INITIAL_SEARCH_DURATION_MS = 2 * 60 * 1000;
 const SEARCH_EXPANSION_STEP_MS = 60 * 1000;
 const DEFAULT_SEARCH_EXPIRY_MS = 10 * 60 * 1000;
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
+const TRIP_COMPLETION_RADIUS_METERS = 150;
 const INITIAL_SEARCH_RADIUS_METERS = 2000;
 const MAX_SEARCH_RADIUS_METERS = 4000;
 const ZONE_RADIUS = MAX_SEARCH_RADIUS_METERS;
@@ -582,6 +583,8 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [passengerReviews, setPassengerReviews] = useState({});
   const [passengerReviewSummaries, setPassengerReviewSummaries] = useState({});
   const passengerReviewRequestsRef = useRef(new Set());
+  const passengerRatingPromptedRef = useRef(new Set());
+  const passengerRatingPromptInFlightRef = useRef(false);
   const [performaTab, setPerformaTab] = useState('hari'); // 'hari' | 'minggu' | 'bulan'
   const [showEarningsDetail, setShowEarningsDetail] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
@@ -2131,8 +2134,131 @@ const NiagaGo = ({ onOpenProfile }) => {
     }
   };
 
+  const promptPassengerToRateDriver = async (order) => {
+    if (!order?.driverId || !order?.id || !userProfile?.uid || order.userId !== userProfile.uid) return;
+
+    const safeDriverName = String(order.driverName || 'driver').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+    const reviewRef = ref(realDb, `driver_reviews/${order.driverId}/${order.id}`);
+    const existingReview = await get(reviewRef).catch(() => null);
+    if (existingReview?.exists()) {
+      await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), { passengerRatingSubmitted: true });
+      return;
+    }
+
+    const { value: review } = await Swal.fire({
+      title: 'Perjalanan selesai! 🎉',
+      html: `
+        <div style="text-align:center">
+          <p style="font-size:14px;color:#64748b;margin:0 0 8px">Terima kasih sudah naik NiagaGo.</p>
+          <p style="font-size:14px;color:#334155;margin:0 0 14px">Bagaimana perjalananmu bersama <b>${safeDriverName}?</b></p>
+          <div id="passenger-driver-stars" style="display:flex;justify-content:center;gap:9px;font-size:38px;cursor:pointer;color:#f59e0b">
+            ${[1,2,3,4,5].map((star) => `<span data-value="${star}" style="opacity:.28;transition:opacity .15s">★</span>`).join('')}
+          </div>
+          <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Pilih bintang, lalu ceritakan pengalamanmu</p>
+          <input id="passenger-driver-rating" type="hidden" value="0" />
+          <textarea id="passenger-driver-comment" placeholder="Tulis komentar untuk driver (opsional)" rows="3" style="box-sizing:border-box;margin-top:14px;width:100%;padding:11px 12px;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;resize:vertical"></textarea>
+        </div>
+      `,
+      confirmButtonText: 'Kirim Rating ⭐',
+      showCancelButton: true,
+      cancelButtonText: 'Nanti saja',
+      buttonsStyling: false,
+      customClass: {
+        popup: 'rounded-3xl w-auto max-w-sm p-6 bg-white',
+        title: 'text-xl font-black text-gray-900',
+        htmlContainer: 'text-sm text-gray-600',
+        confirmButton: 'px-6 py-3 rounded-xl text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-lg transition-all !opacity-100',
+        cancelButton: 'px-5 py-3 rounded-xl text-sm font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all ml-2 !opacity-100'
+      },
+      didOpen: () => {
+        const stars = document.querySelectorAll('#passenger-driver-stars span');
+        const ratingInput = document.getElementById('passenger-driver-rating');
+        stars.forEach((star) => star.addEventListener('click', () => {
+          const selected = Number(star.dataset.value);
+          ratingInput.value = selected;
+          stars.forEach((item) => { item.style.opacity = Number(item.dataset.value) <= selected ? '1' : '.28'; });
+        }));
+      },
+      preConfirm: () => {
+        const rating = Number(document.getElementById('passenger-driver-rating')?.value);
+        if (!rating) { Swal.showValidationMessage('Pilih jumlah bintang dulu ya!'); return false; }
+        return { rating, comment: document.getElementById('passenger-driver-comment')?.value.trim() || '' };
+      }
+    });
+
+    if (!review) return;
+    try {
+      await update(reviewRef, {
+        orderId: order.id,
+        rating: review.rating,
+        comment: review.comment,
+        passengerName: userProfile.displayName || 'Penumpang',
+        passengerUid: userProfile.uid,
+        createdAt: Date.now()
+      });
+      await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), {
+        passengerRatingSubmitted: true,
+        passengerRatingSubmittedAt: Date.now()
+      });
+      await Swal.fire({
+        toast: true,
+        position: 'top',
+        icon: 'success',
+        title: 'Terima kasih! Ratingmu membantu driver berkembang 💙',
+        showConfirmButton: false,
+        timer: 2600
+      });
+    } catch (error) {
+      console.error('Gagal menyimpan rating perjalanan:', error);
+      Swal.fire('Rating belum terkirim', error.message || 'Coba kirim rating sekali lagi.', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (isDriverMode || !userProfile?.uid || passengerRatingPromptInFlightRef.current) return;
+    const completedOrder = orders
+      .filter((order) => order.status === 'completed' && order.userId === userProfile.uid && order.driverId && !order.passengerRatingSubmitted && !passengerRatingPromptedRef.current.has(order.id))
+      .sort((a, b) => getTimestampMillis(b.completedAt) - getTimestampMillis(a.completedAt))[0];
+    if (!completedOrder) return;
+
+    passengerRatingPromptedRef.current.add(completedOrder.id);
+    passengerRatingPromptInFlightRef.current = true;
+    promptPassengerToRateDriver(completedOrder).finally(() => {
+      passengerRatingPromptInFlightRef.current = false;
+    });
+  }, [isDriverMode, orders, userProfile?.uid]);
+
   // 5. User Konfirmasi Selesai (Dana Cair ke Driver jika digital)
   const handleFinishTrip = async (order) => {
+    const currentUid = userProfile?.uid || auth.currentUser?.uid;
+    const isDriver = order.driverId === currentUid;
+    if (!isDriver) {
+      await Swal.fire('Menunggu Driver', 'Perjalanan akan otomatis selesai saat driver tiba di tujuan.', 'info');
+      return;
+    }
+
+    const driverLocation = driversLocations[currentUid];
+    const currentCoordinates = normalizeGpsCoordinates(driverLocation);
+    const destinationCoordinates = normalizeGpsCoordinates(order.destCoords);
+    const locationIsFresh = driverLocation?.updatedAt && Date.now() - Number(driverLocation.updatedAt) <= DRIVER_LOCATION_MAX_AGE_MS;
+    if (!currentCoordinates || !destinationCoordinates || !locationIsFresh) {
+      await Swal.fire('Lokasi Driver Belum Siap', 'Pastikan GPS aktif dan tunggu lokasi terbaru sebelum menyelesaikan perjalanan.', 'warning');
+      return;
+    }
+    const distanceToDestination = L.latLng(currentCoordinates.lat, currentCoordinates.lng)
+      .distanceTo(L.latLng(destinationCoordinates.lat, destinationCoordinates.lng));
+    if (distanceToDestination > TRIP_COMPLETION_RADIUS_METERS) {
+      await Swal.fire({
+        title: 'Sedikit lagi sampai! 📍',
+        text: 'Tombol selesai aktif saat kamu berada maksimal ' + TRIP_COMPLETION_RADIUS_METERS + ' meter dari tujuan. Jarak saat ini ' + Math.round(distanceToDestination) + ' meter.',
+        icon: 'info',
+        confirmButtonText: 'Lanjutkan Perjalanan'
+      });
+      return;
+    }
+
     const result = await Swal.fire({
       title: 'Sudah sampai?',
       text: order.paymentMethod === 'saldo'
@@ -2159,8 +2285,6 @@ const NiagaGo = ({ onOpenProfile }) => {
       const netIncome = Math.max(0, order.price - appFee);
       const isDigital = order.paymentMethod === 'saldo';
       const nowMs = Date.now();
-      const currentUid = userProfile?.uid || auth.currentUser?.uid;
-      const isDriver = order.driverId === currentUid;
 
       // 1. Update status order di Firestore (atomic)
       await runFirestoreTransaction(dbFirestore, async (transaction) => {
@@ -2170,9 +2294,8 @@ const NiagaGo = ({ onOpenProfile }) => {
         const data = snap.data();
         if (data.status === 'completed') return; // sudah selesai, skip
         if (data.status !== 'ongoing') throw new Error('Status pesanan tidak memungkinkan diselesaikan saat ini.');
-        const isPassenger = data.userId === currentUid;
         const isOrderDriver = data.driverId === currentUid;
-        if (!isPassenger && !isOrderDriver) throw new Error('Anda tidak memiliki akses menyelesaikan perjalanan ini.');
+        if (!isOrderDriver) throw new Error('Hanya driver yang ditugaskan yang dapat menyelesaikan perjalanan.');
         transaction.update(orderRef, {
           status: 'completed',
           completedAt: serverTimestamp(),
@@ -3679,9 +3802,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                       className="mb-3 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95"
                     >
                       <MessageCircle size={16} />
-                      {['completed', 'cancelled', 'expired', 'payment_rejected'].includes(order.status)
-                        ? 'Lihat Riwayat Chat'
-                        : isDriverMode ? 'Pesan Penumpang' : 'Pesan Driver'}
+                      Chat
                     </button>
                   )}
 
@@ -3737,7 +3858,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   </div>
                 )}
 
-                <div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-300 dark:border-slate-600">
+                <div className="flex flex-col items-stretch gap-3 pt-3 border-t border-dashed border-gray-300 dark:border-slate-600">
                   <div className="font-bold text-lg text-sky-500">
                     {Number.isFinite(Number(order.price ?? order.totalPrice))
                       ? `Rp ${Number(order.price ?? order.totalPrice).toLocaleString('id-ID')}`
@@ -3800,14 +3921,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                       {/* Tampilkan Peta Live Tracking (User & Driver) */}
                       <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
                       
-                      <div className="flex gap-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenNiagaGoChat(order)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
-                      >
-                        <MessageCircle size={16} /> Chat
-                      </button>
+                      <div className="flex flex-wrap gap-2 justify-end">
                       <button 
                         type="button"
                         onClick={() => handleEmergencyContact(order, isDriverMode ? 'user' : 'driver')}
@@ -3854,39 +3968,46 @@ const NiagaGo = ({ onOpenProfile }) => {
                     </div>
                   )}
 
-                  {/* 5. STATUS ONGOING: User Konfirmasi Selesai */}
+                  {/* 5. STATUS ONGOING: Driver completes after reaching destination */}
                   {order.status === 'ongoing' && (
                     <div className="flex flex-col gap-3 w-full">
-                      {/* Tampilkan Peta Live Tracking (User & Driver) */}
                       <TrackingMap driverId={order.driverId} pickupCoords={order.pickupCoords} driversLocations={driversLocations} />
-                      
-                      <div className="flex gap-2 justify-end items-center">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenNiagaGoChat(order)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
-                        >
-                          <MessageCircle size={16} /> Chat
-                        </button>
-                        {isDriverMode ? (
-                          <button 
-                            onClick={() => handleFinishTrip(order)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all"
-                          >
-                            <CheckSquare size={16} /> Selesaikan Perjalanan
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => handleFinishTrip(order)}
-                            className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
-                          >
-                            <CheckSquare size={16} /> Selesai
-                          </button>
-                        )}
-                      </div>
+                      {isDriverMode ? (() => {
+                        const location = driversLocations[userProfile?.uid];
+                        const driverCoordinates = normalizeGpsCoordinates(location);
+                        const destinationCoordinates = normalizeGpsCoordinates(order.destCoords);
+                        const isFresh = location?.updatedAt && Date.now() - Number(location.updatedAt) <= DRIVER_LOCATION_MAX_AGE_MS;
+                        const distance = driverCoordinates && destinationCoordinates
+                          ? L.latLng(driverCoordinates.lat, driverCoordinates.lng).distanceTo(L.latLng(destinationCoordinates.lat, destinationCoordinates.lng))
+                          : null;
+                        const canFinish = Boolean(isFresh && distance !== null && distance <= TRIP_COMPLETION_RADIUS_METERS);
+                        return (
+                          <div className="flex flex-col items-stretch gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleFinishTrip(order)}
+                              disabled={!canFinish}
+                              title={canFinish ? 'Selesaikan perjalanan' : 'Tombol aktif saat GPS berada dalam radius 150 meter dari tujuan'}
+                              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:hover:bg-slate-400 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+                            >
+                              <CheckSquare size={17} /> {canFinish ? 'Selesaikan Perjalanan' : 'Selesaikan saat Tiba'}
+                            </button>
+                            <p className="text-[11px] text-center text-gray-500">
+                              {distance === null || !isFresh
+                                ? 'Aktifkan GPS agar jarak ke tujuan bisa diperiksa.'
+                                : canFinish
+                                  ? 'Kamu sudah dekat tujuan. Perjalanan siap diselesaikan.'
+                                  : 'Tombol aktif dalam jarak 150 m. Jarak saat ini ' + Math.round(distance) + ' m.'}
+                            </p>
+                          </div>
+                        );
+                      })() : (
+                        <p className="text-xs text-center text-sky-600 bg-sky-50 dark:bg-slate-700/60 rounded-xl p-3">
+                          Menunggu driver menyelesaikan perjalanan. Setelah selesai, kamu bisa memberi rating dan komentar.
+                        </p>
+                      )}
                     </div>
                   )}
-
                   {/* 6. STATUS COMPLETED */}
                   {['completed', 'cancelled', 'payment_rejected', 'expired'].includes(order.status) && (
                     <div className="flex justify-between items-center w-full mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-slate-700">
