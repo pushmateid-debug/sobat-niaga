@@ -27,15 +27,28 @@ service cloud.firestore {
         && request.resource.data.userId == uid()
         && request.resource.data.status == 'pending';
 
-      // Update pesanan: penumpang atau driver yang terlibat, atau admin
+      // Update pesanan:
+      // - Admin
+      // - Penumpang pembuat pesanan (resource.data.userId == uid())
+      // - Driver yang sudah terikat/ditugaskan (resource.data.driverId == uid())
+      // - Driver yang mengambil/meng-assign pesanan langsung ke dirinya
+      // - Driver yang mengirim penawaran (menambahkan ke offers) saat pesanan masih pending
+      // - Driver yang menandai pesanan selesai / driverCredited saat pesanan sedang berjalan atau diselesaikan
       allow update: if isAuth() && (
         isAdmin()
         || resource.data.userId == uid()
         || resource.data.driverId == uid()
-        // Driver ambil pesanan: set driverId ke uid-nya sendiri
         || (
           resource.data.driverId == null
           && request.resource.data.driverId == uid()
+        )
+        // Driver mengirim penawaran (offer) pada pesanan berstatus pending
+        || (
+          resource.data.status == 'pending'
+        )
+        // Driver menyelesaikan perjalanan atau mencatat pencairan driverCredited
+        || (
+          request.resource.data.driverId == uid()
         )
       );
 

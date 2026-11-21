@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Camera, Check, CheckCheck, ExternalLink, ImagePlus, Loader2, MapPin, MessageCircle, Send, X
+  Check, CheckCheck, ExternalLink, ImagePlus, Loader2, MapPin, MessageCircle, Send, X
 } from 'lucide-react';
 import { onValue, push, ref, serverTimestamp, set, update } from 'firebase/database';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, storage } from '../config/firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 import { useTheme } from '../context/ThemeContext';
 
 const CHAT_IMAGE_MAX_SIZE = 5 * 1024 * 1024;
@@ -23,7 +24,6 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
   const [error, setError] = useState('');
   const messagesEndRef = useRef(null);
   const galleryInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
   const roomPath = `niagago_chats/${orderId}`;
 
   useEffect(() => {
@@ -97,11 +97,12 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
           messageId: message.id,
           storagePath: message.imagePath
         });
-        return [message.id, response.data?.url || null];
+        if (response.data?.url) return [message.id, response.data.url];
       } catch (imageError) {
-        console.debug('Gagal memuat gambar chat NiagaGo:', imageError);
-        return [message.id, null];
+        console.debug('Gagal memuat gambar chat NiagaGo via cloud function:', imageError);
       }
+      // Fallback: pastikan tidak loading selamanya
+      return [message.id, null];
     })).then((entries) => {
       if (active) {
         setImageUrls((current) => ({
@@ -175,27 +176,45 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
       const isAllowedToSend = roomCanSend ?? canSend ?? true;
       if (!isAllowedToSend) throw new Error('Chat hanya dapat digunakan selama pesanan aktif.');
       const messageRef = push(ref(db, `${roomPath}/messages`));
-      const imagePath = `${roomPath}/${currentUser.uid}/${messageRef.key}`;
-      const snap = await uploadBytes(storageRef(storage, imagePath), file, {
-        contentType: file.type,
-        customMetadata: { orderId, senderId: currentUser.uid }
-      });
-      let directUrl = '';
+
+      // Optimasi unggahan: Upload langsung dengan Cloudinary atau Firebase Storage
+      let uploadedUrl = '';
       try {
-        directUrl = await getDownloadURL(snap.ref);
-      } catch (dlErr) {
-        console.debug('Direct getDownloadURL error:', dlErr);
+        uploadedUrl = await uploadToCloudinary(file, 'sobatniaga/reviews', 'image');
+      } catch (cloudErr) {
+        console.debug('Cloudinary chat upload fallback to Firebase Storage:', cloudErr);
       }
+
+      let imagePath = '';
+      if (!uploadedUrl) {
+        imagePath = `${roomPath}/${currentUser.uid}/${messageRef.key}`;
+        const snap = await uploadBytes(storageRef(storage, imagePath), file, {
+          contentType: file.type,
+          customMetadata: { orderId, senderId: currentUser.uid }
+        });
+        try {
+          uploadedUrl = await getDownloadURL(snap.ref);
+        } catch (dlErr) {
+          console.debug('Direct getDownloadURL error:', dlErr);
+        }
+      }
+
       await set(messageRef, {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.username || 'Pengguna NiagaGo',
         type: 'image',
-        imagePath,
-        ...(directUrl ? { imageUrl: directUrl } : {}),
+        ...(imagePath ? { imagePath } : {}),
+        ...(uploadedUrl ? { imageUrl: uploadedUrl } : {}),
         createdAt: serverTimestamp(),
         status: 'sent',
         ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {})
       });
+
+      // Langsung simpan di local preview imageUrls state agar tidak loading terus
+      if (uploadedUrl) {
+        setImageUrls((prev) => ({ ...prev, [messageRef.key]: uploadedUrl }));
+      }
+
       update(ref(db, roomPath), {
         [`members/${currentUser.uid}`]: true,
         ...(partner?.uid ? { [`members/${partner.uid}`]: true } : {}),
@@ -325,15 +344,11 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
         {error && <p role="alert" className="px-4 py-2 text-xs text-red-500 bg-red-50 dark:bg-red-950/30">{error}</p>}
         {roomCanSend && canSend ? (
           <form onSubmit={handleSendText} className={`p-3 border-t flex items-center gap-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
-            <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleUploadImage} className="hidden" />
             <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadImage} className="hidden" />
-            <button type="button" disabled={isSending} onClick={() => cameraInputRef.current?.click()} className="p-2 rounded-full text-sky-600 hover:bg-sky-50 disabled:opacity-50" aria-label="Ambil foto">
-              <Camera size={20} />
-            </button>
-            <button type="button" disabled={isSending} onClick={() => galleryInputRef.current?.click()} className="p-2 rounded-full text-sky-600 hover:bg-sky-50 disabled:opacity-50" aria-label="Pilih gambar">
+            <button type="button" disabled={isSending} onClick={() => galleryInputRef.current?.click()} className="p-2 rounded-full text-sky-600 hover:bg-sky-50 dark:hover:bg-slate-800 disabled:opacity-50" aria-label="Kirim gambar / foto">
               <ImagePlus size={20} />
             </button>
-            <button type="button" disabled={isSending} onClick={handleShareLocation} className="p-2 rounded-full text-sky-600 hover:bg-sky-50 disabled:opacity-50" aria-label="Bagikan lokasi">
+            <button type="button" disabled={isSending} onClick={handleShareLocation} className="p-2 rounded-full text-sky-600 hover:bg-sky-50 dark:hover:bg-slate-800 disabled:opacity-50" aria-label="Bagikan lokasi">
               <MapPin size={20} />
             </button>
             <input

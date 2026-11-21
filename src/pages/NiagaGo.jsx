@@ -1321,6 +1321,19 @@ const NiagaGo = ({ onOpenProfile }) => {
       });
       if (!selectedPaymentMethod) return;
 
+      if (selectedPaymentMethod === 'saldo' && numericPrice !== null) {
+        const userBalance = parseInt(userProfile?.balance || 0);
+        if (userBalance < numericPrice) {
+          Swal.fire({
+            title: 'Saldo Tidak Cukup',
+            text: `Saldo Anda (Rp ${userBalance.toLocaleString('id-ID')}) tidak mencukupi untuk tarif perjalanan Rp ${numericPrice.toLocaleString('id-ID')}. Silakan isi saldo atau pilih metode tunai.`,
+            icon: 'error',
+            confirmButtonText: 'Mengerti'
+          });
+          return;
+        }
+      }
+
       if (!dbFirestore) {
         throw new Error('Database belum terhubung.');
       }
@@ -2121,12 +2134,12 @@ const NiagaGo = ({ onOpenProfile }) => {
         const { value: rating } = await Swal.fire({
           title: '⭐ Beri Rating Driver',
           html: `
-            <p class="text-sm text-gray-600 mb-4">Bagaimana pengalaman perjalananmu?</p>
+            <p class="text-sm text-gray-600 mb-4">Bagaimana pengalaman perjalananmu bersama driver?</p>
             <div id="star-rating" style="display:flex;justify-content:center;gap:12px;font-size:36px;cursor:pointer;">
               ${[1,2,3,4,5].map(s => `<span data-val="${s}" style="opacity:0.3;transition:all 0.15s;">★</span>`).join('')}
             </div>
             <input id="rating-val" type="hidden" value="0"/>
-            <textarea id="rating-comment" placeholder="Tulis komentar (opsional)..." style="margin-top:12px;width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;resize:none;" rows="2"></textarea>
+            <textarea id="rating-comment" placeholder="Tulis komentar untuk driver (opsional)..." style="margin-top:12px;width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;resize:none;" rows="2"></textarea>
           `,
           confirmButtonText: 'Kirim Rating',
           showCancelButton: true,
@@ -2157,7 +2170,7 @@ const NiagaGo = ({ onOpenProfile }) => {
           }
         });
 
-        // 5. Simpan rating ke Realtime DB (non-blocking)
+        // 5. Simpan rating ke Realtime DB (driver_reviews)
         if (rating && order.driverId) {
           try {
             const reviewRef = ref(realDb, `driver_reviews/${order.driverId}/${order.id}`);
@@ -2169,8 +2182,95 @@ const NiagaGo = ({ onOpenProfile }) => {
               passengerUid: userProfile?.uid || '',
               createdAt: nowMs
             });
+
+            // Update agregat rating driver di profil user driver
+            const driverRef = ref(realDb, `users/${order.driverId}`);
+            await runTransaction(driverRef, (cur) => {
+              if (!cur) return cur;
+              const count = Number(cur.totalDriverTrips || 0);
+              const curRating = Number(cur.driverRating || 5);
+              const newRating = count > 0 ? Number(((curRating * count + rating.rating) / (count + 1)).toFixed(2)) : rating.rating;
+              return {
+                ...cur,
+                driverRating: newRating,
+                totalDriverTrips: count + 1
+              };
+            }).catch(() => {});
           } catch (reviewErr) {
             console.warn('Driver review save warning (non-blocking):', reviewErr);
+          }
+        }
+      } else {
+        // Driver menilai penumpang (Sistem Penilaian Dua Arah)
+        const targetPassengerId = order.userId;
+        if (targetPassengerId) {
+          const { value: passengerRating } = await Swal.fire({
+            title: '⭐ Beri Rating Penumpang',
+            html: `
+              <p class="text-sm text-gray-600 mb-4">Bagaimana sikap dan pengalaman dengan penumpang ini?</p>
+              <div id="passenger-star-rating" style="display:flex;justify-content:center;gap:12px;font-size:36px;cursor:pointer;">
+                ${[1,2,3,4,5].map(s => `<span data-val="${s}" style="opacity:0.3;transition:all 0.15s;">★</span>`).join('')}
+              </div>
+              <input id="passenger-rating-val" type="hidden" value="0"/>
+              <textarea id="passenger-rating-comment" placeholder="Tulis komentar untuk penumpang (opsional)..." style="margin-top:12px;width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;resize:none;" rows="2"></textarea>
+            `,
+            confirmButtonText: 'Kirim Rating',
+            showCancelButton: true,
+            cancelButtonText: 'Lewati',
+            buttonsStyling: false,
+            customClass: {
+              popup: 'rounded-2xl w-auto max-w-sm p-6 bg-white',
+              title: 'text-lg font-bold text-gray-800',
+              confirmButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-yellow-500 hover:bg-yellow-600 transition-all !opacity-100',
+              cancelButton: 'px-6 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all mr-3 !opacity-100'
+            },
+            didOpen: () => {
+              const stars = document.querySelectorAll('#passenger-star-rating span');
+              const input = document.getElementById('passenger-rating-val');
+              stars.forEach((star) => {
+                star.addEventListener('click', () => {
+                  const val = parseInt(star.dataset.val);
+                  input.value = val;
+                  stars.forEach((s, i) => { s.style.opacity = i < val ? '1' : '0.3'; });
+                });
+              });
+            },
+            preConfirm: () => {
+              const val = parseInt(document.getElementById('passenger-rating-val').value);
+              if (!val) { Swal.showValidationMessage('Pilih bintang dulu ya!'); return false; }
+              const comment = document.getElementById('passenger-rating-comment').value.trim();
+              return { rating: val, comment };
+            }
+          });
+
+          if (passengerRating) {
+            try {
+              const pReviewRef = ref(realDb, `passenger_reviews/${targetPassengerId}/${order.id}`);
+              await update(pReviewRef, {
+                orderId: order.id,
+                rating: passengerRating.rating,
+                comment: passengerRating.comment || '',
+                driverName: userProfile?.displayName || 'Driver NiagaGo',
+                driverUid: userProfile?.uid || '',
+                createdAt: nowMs
+              });
+
+              // Update metrik performa penumpang
+              const pUserRef = ref(realDb, `users/${targetPassengerId}`);
+              await runTransaction(pUserRef, (cur) => {
+                if (!cur) return cur;
+                const count = Number(cur.totalPassengerTrips || 0);
+                const curRating = Number(cur.passengerRating || 5);
+                const newRating = count > 0 ? Number(((curRating * count + passengerRating.rating) / (count + 1)).toFixed(2)) : passengerRating.rating;
+                return {
+                  ...cur,
+                  passengerRating: newRating,
+                  totalPassengerTrips: count + 1
+                };
+              }).catch(() => {});
+            } catch (pReviewErr) {
+              console.warn('Passenger review save warning (non-blocking):', pReviewErr);
+            }
           }
         }
       }
@@ -2369,6 +2469,71 @@ const NiagaGo = ({ onOpenProfile }) => {
         Swal.fire('Dibatalkan', 'Pesanan berhasil dibatalkan.', 'success');
       } catch (error) {
         Swal.fire('Error', 'Gagal membatalkan pesanan.', 'error');
+      }
+    }
+  };
+
+  // Helper: Alur Kontak Darurat WhatsApp Bertahap
+  // Mengarahkan ke chat in-app terlebih dahulu, lalu verifikasi konfirmasi sebelum membuka WA
+  const handleEmergencyContact = async (order, targetRole) => {
+    const isTargetDriver = targetRole === 'driver';
+    const targetName = isTargetDriver
+      ? (order.driverName || 'Driver')
+      : (order.type === 'food' ? (order.buyerName || order.userName || 'Pembeli') : (order.userName || 'Penumpang'));
+    const targetPhone = isTargetDriver ? order.driverPhone : order.userPhone;
+
+    // Langkah 1: Arahkan ke obrolan dalam aplikasi terlebih dahulu
+    const step1 = await Swal.fire({
+      title: '🛡️ Hubungi Lawan Bicara',
+      html: `
+        <div class="text-left text-sm space-y-2">
+          <p>Demi privasi dan keamanan bersama, gunakan <b>Chat Dalam Aplikasi</b> terlebih dahulu untuk komunikasi perjalanan.</p>
+          <p class="text-xs text-gray-500">Nomor WhatsApp hanya disediakan untuk keadaan mendesak atau darurat.</p>
+        </div>
+      `,
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonText: '💬 Buka Chat Aplikasi',
+      cancelButtonText: '⚠️ Kontak Darurat WhatsApp',
+      buttonsStyling: false,
+      customClass: {
+        popup: 'rounded-2xl max-w-md p-6 bg-white dark:bg-slate-800 dark:text-white',
+        title: 'text-lg font-bold text-gray-800 dark:text-white',
+        confirmButton: 'px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md transition-all mr-2',
+        cancelButton: 'px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 transition-all'
+      }
+    });
+
+    if (step1.isConfirmed) {
+      handleOpenNiagaGoChat(order);
+      return;
+    }
+
+    // Jika memilih opsi kontak darurat WhatsApp, lakukan Langkah 2: Verifikasi
+    if (step1.dismiss === Swal.DismissReason.cancel) {
+      if (!targetPhone) {
+        Swal.fire('Nomor Tidak Tersedia', 'Nomor kontak darurat belum terdaftar pada pesanan ini.', 'warning');
+        return;
+      }
+
+      const step2 = await Swal.fire({
+        title: '⚠️ Verifikasi Kontak Darurat',
+        text: `Apakah Anda benar-benar memerlukan kontak darurat langsung dengan ${targetName}? Tindakan ini akan membuka aplikasi WhatsApp.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Tampilkan & Hubungi WA',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#22c55e',
+        cancelButtonColor: '#64748b'
+      });
+
+      if (step2.isConfirmed) {
+        const text = isDriverMode
+          ? `Halo ${targetName}, saya Driver NiagaGo untuk pesanan #${(order.id || '').slice(-6)}. Saya menghubungi Anda untuk keperluan mendesak perjalanan.`
+          : `Halo ${targetName}, saya Penumpang NiagaGo untuk pesanan #${(order.id || '').slice(-6)}. Saya menghubungi Anda untuk keperluan mendesak perjalanan.`;
+        const cleanedPhone = targetPhone.replace(/[^0-9]/g, '');
+        const formattedPhone = cleanedPhone.startsWith('0') ? `62${cleanedPhone.slice(1)}` : cleanedPhone;
+        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
       }
     }
   };
@@ -3271,7 +3436,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                   </div>
                   <div>
                     <h4 className="font-bold">{order.type === 'food' ? (order.buyerName || order.userName) : order.userName}</h4>
-                    <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> Baru saja</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> Baru saja</p>
+                      {/* Kode Referensi Pesanan untuk Pelacakan Transaksi */}
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400 font-semibold" title="Kode Referensi Pesanan">
+                        Ref: #{String(order.id || '').slice(-6).toUpperCase()}
+                      </span>
+                    </div>
                   </div>
                   {/* Vehicle Icon Badge */}
                   <div className={`ml-auto p-1.5 rounded-lg ${isDarkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
@@ -3483,7 +3654,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                     </div>
                   )}
 
-                  {/* 4. STATUS VERIFIED: Driver Jemput & Chat WA */}
+                  {/* 4. STATUS VERIFIED: Driver Jemput & Chat In-App / Kontak Darurat */}
                   {order.status === 'verified' && (
                     <div className="flex flex-col gap-3 w-full">
                       {/* Tampilkan Peta Live Tracking (User & Driver) */}
@@ -3497,14 +3668,14 @@ const NiagaGo = ({ onOpenProfile }) => {
                       >
                         <MessageCircle size={16} /> Chat
                       </button>
-                      <a 
-                        href={getWALink(isDriverMode ? order.userPhone : order.driverPhone, isDriverMode ? 'driver' : 'user')}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                      <button 
+                        type="button"
+                        onClick={() => handleEmergencyContact(order, isDriverMode ? 'user' : 'driver')}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                        title="Kontak Darurat Bertahap"
                       >
-                        <Phone size={16} /> WA
-                      </a>
+                        <Phone size={16} /> Kontak Darurat
+                      </button>
                       {isDriverMode && (
                         <button 
                           onClick={() => handleStartTrip(order.id)}
@@ -3520,9 +3691,13 @@ const NiagaGo = ({ onOpenProfile }) => {
                   {/* 4.5 STATUS PENGANTARAN MAKANAN (DRIVER) */}
                   {isDriverMode && order.type === 'food' && ['ready_for_pickup', 'delivering', 'completing'].includes(order.status) && (
                     <div className="flex gap-2 justify-end">
-                      <a href={`https://wa.me/${order.userPhone}`} target="_blank" rel="noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                        <Phone size={16} /> WA Pembeli
-                      </a>
+                      <button 
+                        type="button"
+                        onClick={() => handleEmergencyContact(order, 'user')}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5"
+                      >
+                        <Phone size={16} /> Kontak Darurat
+                      </button>
                       {order.status === 'ready_for_pickup' && (
                         <button onClick={() => handleUpdateFoodDeliveryStatus(order.id, 'delivering')} className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-sm font-bold">
                           Mulai Antar
@@ -3591,14 +3766,13 @@ const NiagaGo = ({ onOpenProfile }) => {
 
                   {/* Fallback Chat untuk status lama */}
                   {!isDriverMode && order.status === 'accepted_legacy' && (
-                    <a 
-                      href={`https://wa.me/${order.driverPhone}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                    <button 
+                      type="button"
+                      onClick={() => handleEmergencyContact(order, 'driver')}
+                      className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
                     >
-                      <Phone size={16} /> Chat Driver
-                    </a>
+                      <Phone size={16} /> Kontak Driver
+                    </button>
                   )}
                 </div>
               </div>

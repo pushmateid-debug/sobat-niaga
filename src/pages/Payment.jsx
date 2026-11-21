@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, CreditCard, Upload, CheckCircle, Loader2, Copy, Clock, ShieldCheck, ZoomIn, X, Banknote, Timer, ShieldAlert, Download, Sparkles, Wallet, AlertCircle, Truck, Instagram, MessageCircle } from 'lucide-react';
 import { db, auth } from '../config/firebase';
-import { ref, get, update, onValue, push, serverTimestamp } from 'firebase/database';
+import { ref, get, update, onValue, push, serverTimestamp, runTransaction } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 import { toPng } from 'html-to-image';
@@ -178,23 +178,48 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
   const handleConfirmPayment = async () => {
     // --- LOGIKA PEMBAYARAN VIA SALDO (INSTAN) ---
     if (paymentMethod === 'saldo') {
-      const currentBalance = parseInt(userProfile?.balance || 0);
       const totalToPay = parseInt(orderData?.totalPrice || 0);
-
-      if (currentBalance < totalToPay) {
-        Swal.fire('Saldo Kurang', 'Saldo kamu gak cukup nih, Bro! Top up dulu yuk.', 'error');
+      if (totalToPay <= 0) {
+        Swal.fire('Error', 'Total tagihan pembayaran tidak valid.', 'error');
         return;
       }
 
       setIsUploading(true);
       try {
-        const instantResi = generateInstantResi();
-        
-        // 1. Potong Saldo Pembeli
-        await update(ref(db, `users/${auth.currentUser.uid}`), {
-          balance: currentBalance - totalToPay
+        const userRef = ref(db, `users/${auth.currentUser.uid}`);
+
+        // Verifikasi dan pemotongan saldo secara atomik dengan runTransaction
+        const txResult = await runTransaction(userRef, (userData) => {
+          if (!userData) return userData;
+          const currentBal = parseInt(userData.balance || 0);
+          if (currentBal < totalToPay) {
+            // Abort transaksi jika dana tidak mencukupi
+            return undefined;
+          }
+          return {
+            ...userData,
+            balance: currentBal - totalToPay
+          };
         });
 
+        if (!txResult.committed) {
+          Swal.fire({
+            title: 'Saldo Tidak Cukup',
+            text: 'Pembayaran ditolak karena saldo Anda tidak mencukupi untuk menyelesaikan transaksi ini. Silakan top up saldo terlebih dahulu.',
+            icon: 'error',
+            confirmButtonText: 'Oke',
+            buttonsStyling: false,
+            customClass: {
+              popup: `rounded-[2rem] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800 shadow-2xl'}`,
+              confirmButton: 'px-6 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 shadow-lg'
+            }
+          });
+          setIsUploading(false);
+          return;
+        }
+
+        const instantResi = generateInstantResi();
+        
         // 2. Update Status Order: Langsung 'processed' (Bypass Admin)
         await update(ref(db, `orders/${order.id}`), {
           status: 'processed',
@@ -222,6 +247,7 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
         return;
       } catch (error) {
         console.error("Saldo payment error:", error);
+        Swal.fire('Terjadi Kesalahan', 'Gagal memproses pembayaran via saldo. Silakan coba lagi.', 'error');
       } finally { setIsUploading(false); return; }
     }
 

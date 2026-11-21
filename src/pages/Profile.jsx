@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store, AlertCircle, Star, Bike } from 'lucide-react';
 import { auth, db, storage } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { updateProfile, signOut } from 'firebase/auth';
@@ -27,6 +27,8 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
   const [saldo, setSaldo] = useState(0); // State untuk saldo
   const [niagaSaldo, setNiagaSaldo] = useState(0);
   const [sellerBalance, setSellerBalance] = useState(0);
+  const [driverMetrics, setDriverMetrics] = useState({ rating: 5, totalTrips: 0, isDriver: false });
+  const [passengerMetrics, setPassengerMetrics] = useState({ rating: 5, totalTrips: 0 });
   const { theme, toggleTheme } = useTheme() || { theme: 'light', toggleTheme: () => {} }; // 🛡️ Safety check context
   const isDarkMode = theme === 'dark'; // Helper variable biar kodingan lebih bersih
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
@@ -47,6 +49,17 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
           setNiagaSaldo(nSaldo);
           setSellerBalance(sBalance);
           setSaldo(nSaldo + sBalance);
+
+          // Metrik Performa Driver & Penumpang
+          setDriverMetrics({
+            rating: Number(data.driverRating || 5),
+            totalTrips: Number(data.totalDriverTrips || 0),
+            isDriver: data.role === 'driver'
+          });
+          setPassengerMetrics({
+            rating: Number(data.passengerRating || 5),
+            totalTrips: Number(data.totalPassengerTrips || 0)
+          });
         }
       });
       return () => unsubscribe();
@@ -260,6 +273,28 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
             </div>
             <h2 className={`mt-3 text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{displayName || 'User SobatNiaga'}</h2>
             <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user?.email}</p>
+
+            {/* Metrik Performa: Rating & Jumlah Perjalanan */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-slate-700/60 w-full max-w-xs justify-center">
+              <div className="text-center px-3">
+                <p className="text-[10px] uppercase font-bold text-gray-400">Penumpang</p>
+                <div className="flex items-center justify-center gap-1 mt-0.5">
+                  <Star size={13} className="text-yellow-400 fill-yellow-400" />
+                  <span className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{passengerMetrics.rating.toFixed(1)}</span>
+                </div>
+                <p className="text-[10px] text-gray-500">{passengerMetrics.totalTrips} trip</p>
+              </div>
+              {driverMetrics.isDriver && (
+                <div className="text-center px-3 border-l border-gray-200 dark:border-slate-700">
+                  <p className="text-[10px] uppercase font-bold text-sky-500 flex items-center justify-center gap-1"><Bike size={11} /> Driver</p>
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <Star size={13} className="text-yellow-400 fill-yellow-400" />
+                    <span className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{driverMetrics.rating.toFixed(1)}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500">{driverMetrics.totalTrips} trip</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Menu Tambahan */}
