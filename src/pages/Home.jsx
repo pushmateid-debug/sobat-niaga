@@ -348,7 +348,7 @@ const Home = () => {
   useEffect(() => {
     const bannersRef = ref(db, 'admin/banners');
     const unsubscribe = onValue(bannersRef, (snapshot) => {
-      if (snapshot.exists()) setBannerImages(snapshot.val());
+      setBannerImages(snapshot.exists() ? snapshot.val() : {});
     });
     return () => unsubscribe();
   }, []);

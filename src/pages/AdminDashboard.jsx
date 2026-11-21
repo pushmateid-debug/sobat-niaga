@@ -1599,7 +1599,9 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     // Auto-detect Aspect Ratio
     if (key.includes('logo') || key.includes('icon') || key.includes('favicon')) {
         setAspectRatio(1);
-    } else if (key.includes('slider') || key.includes('banner')) {
+    } else if (key.includes('slider')) {
+        setAspectRatio(21 / 9);
+    } else if (key.includes('banner')) {
         setAspectRatio(16 / 9);
     } else {
         setAspectRatio(NaN); // Free
@@ -2387,6 +2389,27 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                 </div>
               </section>
               
+              {/* HOME SLIDESHOW (5 BANNERS) */}
+              <section className={`rounded-2xl border p-5 ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                <div className="mb-4">
+                  <h3 className="font-bold text-lg flex items-center gap-2"><Film size={20} className="text-sky-500" /> Slide Halaman Home</h3>
+                  <p className="text-sm text-gray-500 mt-1">Ada 5 slot slide. Pilih gambar untuk mengunggah dan memperbarui slide tersebut; hasilnya tersimpan otomatis dan tampil untuk semua akun.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {[1, 2, 3, 4, 5].map((slideNumber) => {
+                    const key = `home_slider_${slideNumber}`;
+                    return (
+                      <ImageUploader
+                        key={key}
+                        label={`Slide Home ${slideNumber}`}
+                        currentUrl={banners[key]}
+                        onFileSelect={(file) => handleFileSelect(file, key)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+
               {/* 2. BRANDING (LOGO & FAVICON) */}
               <div>
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Branding (Logo & Icon)</h3>
