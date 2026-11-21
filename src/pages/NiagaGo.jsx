@@ -1209,23 +1209,53 @@ const NiagaGo = ({ onOpenProfile }) => {
       return;
     }
 
-    // Cek kendaraan yang terdaftar
-    const vehicles = userProfile?.vehicles || {};
-    const hasMotor = vehicles.motor?.active;
-    const hasMobil = vehicles.mobil?.active;
+    // Data kendaraan normalnya tersimpan di profil RTDB. Untuk profil lama yang kosong,
+    // pulihkan dari pendaftaran driver yang sudah disetujui di Firestore.
+    let vehicles = userProfile?.vehicles || {};
+    let legacyPlateNumber = userProfile?.plateNumber || '';
+    let hasMotor = Boolean(vehicles.motor?.active);
+    let hasMobil = Boolean(vehicles.mobil?.active);
+
+    if (!hasMotor && !hasMobil && !legacyPlateNumber && userProfile?.uid) {
+      try {
+        const registrationsQuery = query(
+          collection(dbFirestore, 'driver_registrations'),
+          where('userId', '==', userProfile.uid)
+        );
+        const registrationsSnapshot = await getDocs(registrationsQuery);
+        const approvedRegistration = registrationsSnapshot.docs
+          .map((registrationDoc) => registrationDoc.data())
+          .filter((registration) => registration.status === 'approved')
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+          .find((registration) =>
+            registration.vehicles?.motor?.active ||
+            registration.vehicles?.mobil?.active ||
+            registration.plateNumber
+          );
+
+        if (approvedRegistration) {
+          vehicles = approvedRegistration.vehicles || {};
+          legacyPlateNumber = approvedRegistration.plateNumber || '';
+          hasMotor = Boolean(vehicles.motor?.active);
+          hasMobil = Boolean(vehicles.mobil?.active);
+        }
+      } catch (error) {
+        console.error('Gagal memulihkan data kendaraan driver:', error);
+      }
+    }
 
     const inputOptions = {};
-    if (hasMotor) inputOptions.motor = `Motor (${vehicles.motor.plate})`;
-    if (hasMobil) inputOptions.mobil = `Mobil (${vehicles.mobil.plate})`;
+    if (hasMotor) inputOptions.motor = `Motor (${vehicles.motor.plate || legacyPlateNumber || 'Terdaftar'})`;
+    if (hasMobil) inputOptions.mobil = `Mobil (${vehicles.mobil.plate || legacyPlateNumber || 'Terdaftar'})`;
 
-    // Fallback jika data lama (belum ada object vehicles)
+    // Kompatibilitas untuk pendaftaran versi lama yang hanya menyimpan plat nomor.
     if (!hasMotor && !hasMobil) {
-        if (userProfile?.plateNumber) {
-             inputOptions.motor = `Kendaraan (${userProfile.plateNumber})`;
-        } else {
-             Swal.fire('Data Kendaraan Tidak Ditemukan', 'Silakan hubungi admin.', 'error');
-             return;
-        }
+      if (legacyPlateNumber) {
+        inputOptions.motor = `Kendaraan (${legacyPlateNumber})`;
+      } else {
+        Swal.fire('Data Kendaraan Tidak Ditemukan', 'Data kendaraan pada pendaftaran driver belum tersedia. Silakan lengkapi pendaftaran atau hubungi admin.', 'error');
+        return;
+      }
     }
 
     const { value } = await Swal.fire({
