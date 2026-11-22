@@ -75,6 +75,61 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── NIAGA VIDEO REELS ──────────────────────────────────────────────────
+    match /niaga_reels/{videoId} {
+      // Reels are public content; signed-in users can post their own video.
+      allow read: if true;
+      allow create: if isAuth()
+        && request.resource.data.userId == uid()
+        && request.resource.data.videoUrl is string
+        && request.resource.data.videoUrl.size() > 0
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 500
+        && request.resource.data.likes == 0
+        && request.resource.data.comments == 0
+        && request.resource.data.shares == 0
+        && request.resource.data.taggedProducts is list;
+
+      // Owners can manage their own reel. Other signed-in users can only
+      // adjust the public like/comment counters by one at a time.
+      allow update: if isAuth() && (
+        resource.data.userId == uid()
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+          && request.resource.data.likes is int
+          && request.resource.data.likes >= 0
+          && (
+            request.resource.data.likes == resource.data.likes + 1
+            || request.resource.data.likes == resource.data.likes - 1
+          )
+        )
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentsCount'])
+          && request.resource.data.commentsCount is int
+          && (
+            (!resource.data.keys().hasAny(['commentsCount']) && request.resource.data.commentsCount == 1)
+            || (
+              resource.data.commentsCount is int
+              && request.resource.data.commentsCount == resource.data.commentsCount + 1
+            )
+          )
+        )
+      );
+      allow delete: if isAdmin() || (isAuth() && resource.data.userId == uid());
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuth()
+          && request.resource.data.userId == uid()
+          && request.resource.data.videoId == videoId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000;
+        allow update: if false;
+        allow delete: if isAdmin() || (isAuth() && resource.data.userId == uid());
+      }
+    }
+
     // ─── USERS (Firestore) ───────────────────────────────────────────────────
     // Digunakan untuk menyimpan FCM token dan data profil tambahan
     match /users/{userId} {
