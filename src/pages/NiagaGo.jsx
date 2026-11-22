@@ -573,6 +573,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [searchExpiryMs, setSearchExpiryMs] = useState(DEFAULT_SEARCH_EXPIRY_MS);
   const [searchExpiryLoaded, setSearchExpiryLoaded] = useState(false);
+  const [allowRemoteTripCompletionForTesting, setAllowRemoteTripCompletionForTesting] = useState(false);
   const expiringOrderIdsRef = useRef(new Set());
   const [activeChat, setActiveChat] = useState(null);
   const [openingChatOrderId, setOpeningChatOrderId] = useState(null);
@@ -720,6 +721,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   useEffect(() => {
     const unsubscribe = onValue(ref(realDb, 'admin/settings'), (snapshot) => {
       const settings = snapshot.val() || {};
+      setAllowRemoteTripCompletionForTesting(settings.allowRemoteTripCompletionForTesting === true);
       if (settings.autoExpireOjekOrders === false) {
         setSearchExpiryMs(Infinity);
         setSearchExpiryLoaded(true);
@@ -2261,7 +2263,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   }, [isDriverMode, orders, userProfile?.uid]);
 
   // 5. User Konfirmasi Selesai (Dana Cair ke Driver jika digital)
-  const handleFinishTrip = async (order) => {
+  const handleFinishTrip = async (order, { remoteTesting = false } = {}) => {
     const currentUid = userProfile?.uid || auth.currentUser?.uid;
     const isDriver = order.driverId === currentUid;
     if (!isDriver) {
@@ -2269,29 +2271,37 @@ const NiagaGo = ({ onOpenProfile }) => {
       return;
     }
 
-    const driverLocation = driversLocations[currentUid];
-    const currentCoordinates = normalizeGpsCoordinates(driverLocation);
-    const destinationCoordinates = normalizeGpsCoordinates(order.destCoords);
-    const locationIsFresh = driverLocation?.updatedAt && Date.now() - Number(driverLocation.updatedAt) <= DRIVER_LOCATION_MAX_AGE_MS;
-    if (!currentCoordinates || !destinationCoordinates || !locationIsFresh) {
-      await Swal.fire('Lokasi Driver Belum Siap', 'Pastikan GPS aktif dan tunggu lokasi terbaru sebelum menyelesaikan perjalanan.', 'warning');
+    if (remoteTesting && !allowRemoteTripCompletionForTesting) {
+      await Swal.fire('Mode Testing Nonaktif', 'Minta admin mengaktifkan penyelesaian jarak jauh di pengaturan NiagaGo.', 'warning');
       return;
     }
-    const distanceToDestination = L.latLng(currentCoordinates.lat, currentCoordinates.lng)
-      .distanceTo(L.latLng(destinationCoordinates.lat, destinationCoordinates.lng));
-    if (distanceToDestination > TRIP_COMPLETION_RADIUS_METERS) {
-      await Swal.fire({
-        title: 'Sedikit lagi sampai! 📍',
-        text: 'Tombol selesai aktif saat kamu berada maksimal ' + TRIP_COMPLETION_RADIUS_METERS + ' meter dari tujuan. Jarak saat ini ' + Math.round(distanceToDestination) + ' meter.',
-        icon: 'info',
-        confirmButtonText: 'Lanjutkan Perjalanan'
-      });
-      return;
+    if (!remoteTesting) {
+      const driverLocation = driversLocations[currentUid];
+      const currentCoordinates = normalizeGpsCoordinates(driverLocation);
+      const destinationCoordinates = normalizeGpsCoordinates(order.destCoords);
+      const locationIsFresh = driverLocation?.updatedAt && Date.now() - Number(driverLocation.updatedAt) <= DRIVER_LOCATION_MAX_AGE_MS;
+      if (!currentCoordinates || !destinationCoordinates || !locationIsFresh) {
+        await Swal.fire('Lokasi Driver Belum Siap', 'Pastikan GPS aktif dan tunggu lokasi terbaru sebelum menyelesaikan perjalanan.', 'warning');
+        return;
+      }
+      const distanceToDestination = L.latLng(currentCoordinates.lat, currentCoordinates.lng)
+        .distanceTo(L.latLng(destinationCoordinates.lat, destinationCoordinates.lng));
+      if (distanceToDestination > TRIP_COMPLETION_RADIUS_METERS) {
+        await Swal.fire({
+          title: 'Sedikit lagi sampai! 📍',
+          text: 'Tombol selesai aktif saat kamu berada maksimal ' + TRIP_COMPLETION_RADIUS_METERS + ' meter dari tujuan. Jarak saat ini ' + Math.round(distanceToDestination) + ' meter.',
+          icon: 'info',
+          confirmButtonText: 'Lanjutkan Perjalanan'
+        });
+        return;
+      }
     }
 
     const result = await Swal.fire({
       title: 'Sudah sampai?',
-      text: order.paymentMethod === 'saldo'
+      text: remoteTesting
+        ? 'Mode testing: pesanan akan ditandai selesai tanpa pemeriksaan jarak GPS.'
+        : order.paymentMethod === 'saldo'
         ? 'Dana akan otomatis masuk ke dompet driver.'
         : 'Pastikan kamu sudah membayar tunai ke driver.',
       icon: 'question',
@@ -2329,6 +2339,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         transaction.update(orderRef, {
           status: 'completed',
           completedAt: serverTimestamp(),
+          completionMethod: remoteTesting ? 'development_override' : 'gps',
           netIncome,
           appFee,
           driverCredited: isDigital ? isOrderDriver : true
@@ -2365,6 +2376,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             orderId: order.id,
             date: new Date(nowMs).toISOString().split('T')[0],
             completedAt: nowMs,
+            completionMethod: remoteTesting ? 'development_override' : 'gps',
             price: order.price,
             netIncome,
             appFee,
@@ -4022,6 +4034,15 @@ const NiagaGo = ({ onOpenProfile }) => {
                             >
                               <CheckSquare size={17} /> {canFinish ? 'Selesaikan Perjalanan' : 'Selesaikan saat Tiba'}
                             </button>
+                            {allowRemoteTripCompletionForTesting && (
+                              <button
+                                type="button"
+                                onClick={() => handleFinishTrip(order, { remoteTesting: true })}
+                                className="w-full rounded-xl border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950/30 dark:text-amber-300"
+                              >
+                                Selesaikan untuk Testing (tanpa GPS)
+                              </button>
+                            )}
                             <p className="text-[11px] text-center text-gray-500">
                               {distance === null || !isFresh
                                 ? 'Aktifkan GPS agar jarak ke tujuan bisa diperiksa.'

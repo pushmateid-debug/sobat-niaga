@@ -387,7 +387,8 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     isMaintenance: false,
     autoExpireOjekOrders: true,
     niagaGoOrderExpiryValue: 10,
-    niagaGoOrderExpiryUnit: 'minutes'
+    niagaGoOrderExpiryUnit: 'minutes',
+    allowRemoteTripCompletionForTesting: false
   });
   const [adminSettingsLoaded, setAdminSettingsLoaded] = useState(false);
   const [settingsView, setSettingsView] = useState('menu'); // 'menu', 'flash_deal', 'rekber', 'niagago'
@@ -913,7 +914,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
 
     const activeOrdersQuery = queryFirestore(
       collection(dbFirestore, 'ojek_orders'),
-      where('status', 'in', ['pending', 'accepting', 'accepted', 'paid'])
+      where('status', '==', 'pending')
     );
     let activeOrders = [];
     const expiringOrderIds = new Set();
@@ -3431,6 +3432,21 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                                 className={`w-12 h-6 rounded-full transition-colors relative ${adminSettings.autoExpireOjekOrders !== false ? 'bg-green-500' : 'bg-gray-300'}`}
                             >
                                 <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${adminSettings.autoExpireOjekOrders !== false ? 'left-7' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                        <div className="flex items-start justify-between gap-3 border-b pb-4 dark:border-slate-700">
+                            <div>
+                                <p className="text-sm font-semibold">Mode testing: selesaikan tanpa GPS</p>
+                                <p className="mt-1 max-w-md text-xs text-gray-500">Saat aktif, driver pesanan bisa menuntaskan perjalanan dari mana saja. Gunakan hanya untuk pengujian; pembayaran dan pendapatan tetap diproses.</p>
+                            </div>
+                            <button
+                                type="button"
+                                aria-label="Aktifkan penyelesaian perjalanan tanpa GPS untuk testing"
+                                aria-pressed={adminSettings.allowRemoteTripCompletionForTesting === true}
+                                onClick={() => setAdminSettings({ ...adminSettings, allowRemoteTripCompletionForTesting: adminSettings.allowRemoteTripCompletionForTesting !== true })}
+                                className={`w-12 h-6 shrink-0 rounded-full transition-colors relative ${adminSettings.allowRemoteTripCompletionForTesting === true ? 'bg-amber-500' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${adminSettings.allowRemoteTripCompletionForTesting === true ? 'left-7' : 'left-1'}`}></div>
                             </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
