@@ -6,6 +6,7 @@ import { updateProfile } from 'firebase/auth';
 import { ref as dbRef, set, get, update, onValue } from 'firebase/database';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
+import { addIntegerValues, formatRupiah } from '../utils/formatIdNumber';
 
 const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -30,12 +31,12 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
           if (data.username) setUsername(data.username);
           if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
           
-          const nSaldo = parseInt(data.balance || 0);
-          const sBalance = parseInt(data.sellerInfo?.balance || 0);
+          const nSaldo = data.balance ?? 0;
+          const sBalance = data.sellerInfo?.balance ?? 0;
           
           setNiagaSaldo(nSaldo);
           setSellerBalance(sBalance);
-          setSaldo(nSaldo + sBalance); // Total saldo gabungan
+          setSaldo(addIntegerValues(nSaldo, sBalance)); // Total saldo gabungan
         }
       });
       return () => unsubscribe(); // Cleanup listener biar gak berat
@@ -157,18 +158,18 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
                 <span class="text-lg">🏪</span>
                 <span class="text-sm font-bold text-gray-700">Hasil Penjualan</span>
             </div>
-            <span class="text-sm font-bold text-blue-600">Rp ${sellerBalance.toLocaleString('id-ID')}</span>
+            <span class="text-sm font-bold text-blue-600">${formatRupiah(sellerBalance)}</span>
           </div>
           <div class="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
             <div class="flex items-center gap-2">
                 <span class="text-lg">🛵</span>
                 <span class="text-sm font-bold text-gray-700">Saldo Niaga Go</span>
             </div>
-            <span class="text-sm font-bold text-green-600">Rp ${niagaSaldo.toLocaleString('id-ID')}</span>
+            <span class="text-sm font-bold text-green-600">${formatRupiah(niagaSaldo)}</span>
           </div>
           <div class="border-t border-dashed border-gray-300 pt-3 mt-2 flex justify-between items-center">
             <span class="text-sm font-bold text-gray-800">Total Aset</span>
-            <span class="text-xl font-extrabold text-gray-900">Rp ${(sellerBalance + niagaSaldo).toLocaleString('id-ID')}</span>
+            <span class="text-xl font-extrabold text-gray-900">${formatRupiah(addIntegerValues(sellerBalance, niagaSaldo))}</span>
           </div>
         </div>
       `,
@@ -220,11 +221,11 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory }) => {
                 onClick={handleShowBalanceDetail}
                 className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:bg-opacity-80 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-green-50 border-green-200'}`}
             >
-              <div className="flex items-center gap-3">
+              <div className="min-w-0 flex flex-1 items-center gap-3">
                 <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-600'}`}><Wallet size={20} /></div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className={`text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo SobatNiaga <Info size={10} /></p>
-                  <p className={`text-lg font-bold font-price ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {saldo.toLocaleString('id-ID')}</p>
+                  <p className={`min-w-0 flex-1 text-right text-sm sm:text-lg font-bold font-price leading-tight [overflow-wrap:anywhere] ${isDarkMode ? 'text-white' : 'text-gray-800'}`} title={formatRupiah(saldo)}>{formatRupiah(saldo)}</p>
                 </div>
               </div>
               <button onClick={handleTopUpSaldo} className={`flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg transition-colors ${isDarkMode ? 'bg-sky-500 text-white hover:bg-sky-600' : 'bg-sky-600 text-white hover:bg-sky-700'}`}>

@@ -5,6 +5,7 @@ import Swal from 'sweetalert2';
 import { db, dbFirestore } from '../config/firebase';
 import { ref, onValue, runTransaction } from 'firebase/database';
 import { collection, addDoc } from 'firebase/firestore';
+import { formatRupiah } from '../utils/formatIdNumber';
 
 export const TopUpModal = ({ game, user, onClose }) => {
   const { theme } = useTheme();
@@ -18,7 +19,7 @@ export const TopUpModal = ({ game, user, onClose }) => {
     if (!user?.uid) return undefined;
     const balanceRef = ref(db, `users/${user.uid}/balance`);
     return onValue(balanceRef, (snapshot) => {
-      setWalletBalance(Number(snapshot.val()) || 0);
+      setWalletBalance(snapshot.val() ?? 0);
     });
   }, [user?.uid]);
 
@@ -124,12 +125,12 @@ export const TopUpModal = ({ game, user, onClose }) => {
         <div className="flex items-center gap-4 mb-6"><img src={game.logo} alt={game.name} className="w-16 h-16 rounded-lg" /><div><h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Top Up {game.name}</h3><p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Proses instan 24 jam.</p></div></div>
         <div className={`flex-1 overflow-y-auto pr-2 space-y-6 scrollbar-thin scrollbar-thumb-rounded-full ${isDarkMode ? 'scrollbar-thumb-slate-600' : 'scrollbar-thumb-gray-300'}`}>
           <div className="space-y-2"><label className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Lengkapi Data</label><div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{(game.fields || []).map(field => renderField(field))}</div></div>
-          <div className="space-y-2"><label className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Pilih Nominal</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{(game.denominations || []).map(denom => (<div key={denom.id} onClick={() => setSelectedDenom(denom)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${selectedDenom?.id === denom.id ? 'border-sky-500 bg-sky-500/10' : (isDarkMode ? 'border-slate-700 hover:border-slate-600' : 'border-gray-200 hover:border-gray-300')}`}><p className={`font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{denom.label}</p><p className={`text-sm font-bold font-price ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>Rp {denom.price.toLocaleString('id-ID')}</p></div>))}</div></div>
+          <div className="space-y-2"><label className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Pilih Nominal</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{(game.denominations || []).map(denom => (<div key={denom.id} onClick={() => setSelectedDenom(denom)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${selectedDenom?.id === denom.id ? 'border-sky-500 bg-sky-500/10' : (isDarkMode ? 'border-slate-700 hover:border-slate-600' : 'border-gray-200 hover:border-gray-300')}`}><p className={`font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{denom.label}</p><p className={`text-sm font-bold font-price ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{formatRupiah(denom.price)}</p></div>))}</div></div>
         </div>
         <div className={`mt-6 pt-4 border-t ${isDarkMode ? 'border-slate-700' : 'border-gray-200'}`}>
           <div className="flex justify-between items-center mb-4">
-            <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}><Wallet size={18} className="text-green-500" /><span>Saldo Utama:</span><span className="font-bold font-price">Rp {walletBalance.toLocaleString('id-ID')}</span></div>
-            <div className="text-right"><p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Bayar</p><p className={`text-xl font-bold font-price ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedDenom ? `Rp ${selectedDenom.price.toLocaleString('id-ID')}` : 'Rp 0'}</p></div>
+            <div className={`flex min-w-0 flex-1 flex-wrap items-center gap-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}><Wallet size={18} className="shrink-0 text-green-500" /><span>Saldo Utama:</span><span className="min-w-0 font-bold font-price tabular-nums [overflow-wrap:anywhere]">{formatRupiah(walletBalance)}</span></div>
+            <div className="min-w-0 text-right"><p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Bayar</p><p className={`text-xl font-bold font-price tabular-nums [overflow-wrap:anywhere] ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedDenom ? formatRupiah(selectedDenom.price) : formatRupiah(0)}</p></div>
           </div>
           <button onClick={handleSubmit} disabled={isLoading || !selectedDenom} className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading || !selectedDenom ? (isDarkMode ? 'bg-slate-700 text-gray-500 cursor-not-allowed' : 'bg-gray-300 cursor-not-allowed') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>{isLoading ? <Loader2 size={20} className="animate-spin" /> : 'Beli Sekarang'}</button>
         </div>

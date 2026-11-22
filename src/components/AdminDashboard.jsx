@@ -22,6 +22,7 @@ import {
   Filler,
 } from 'chart.js';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
+import { formatRupiah } from '../utils/formatIdNumber';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -1226,14 +1227,14 @@ const AdminDashboard = ({ onBack }) => {
                 </td>
                 <td className="px-6 py-4">
                     <div>
-                        <p className="font-bold text-green-600">Rp {(seller.sellerInfo.balance || 0).toLocaleString('id-ID')}</p>
+                        <p className="font-bold text-green-600">{formatRupiah(seller.sellerInfo.balance || 0)}</p>
                         {pendingOrders.length > 0 && (
                             <p className="text-xs text-gray-400">{pendingOrders.length} Order Pending</p>
                         )}
                     </div>
                 </td>
                 <td className="px-6 py-4">
-                  <p className="font-bold text-sky-600">Rp {(seller.saldo || 0).toLocaleString('id-ID')}</p>
+                  <p className="font-bold text-sky-600">{formatRupiah(seller.saldo || 0)}</p>
                 </td>
                 <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                   {(pendingOrders.length > 0 || (seller.sellerInfo.balance || 0) > 0) && (
@@ -2052,7 +2053,7 @@ const AdminDashboard = ({ onBack }) => {
                   placeholder="Masukkan nominal"
                 />
                 <p className="text-[10px] text-gray-500 mt-1">
-                  Sisa Saldo: Rp {(bulkPayoutData.currentBalance - (parseInt(payoutAmount) || 0)).toLocaleString('id-ID')}
+                  Sisa Saldo: {formatRupiah(bulkPayoutData.currentBalance - (parseInt(payoutAmount) || 0))}
                 </p>
               </div>
 

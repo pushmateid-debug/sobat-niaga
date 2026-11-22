@@ -30,6 +30,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
+import { formatRupiah } from '../utils/formatIdNumber';
 import ImageWithFallback from '../components/ImageWithFallback';
 
 ChartJS.register(
@@ -1250,7 +1251,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
           });
         }
 
-        Swal.fire('Berhasil', `Pembayaran diverifikasi. Saldo Rp ${netIncome.toLocaleString()} masuk ke driver.`, 'success');
+        Swal.fire('Berhasil', `Pembayaran diverifikasi. Saldo ${formatRupiah(netIncome)} masuk ke driver.`, 'success');
       } else {
         // Reject
         await updateDoc(doc(dbFirestore, 'ojek_orders', order.id), { 
@@ -1425,7 +1426,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
         });
 
         setPayoutModal(null);
-        Swal.fire('Berhasil', `Pencairan sukses. Sisa saldo: Rp ${remainingBalance.toLocaleString('id-ID')}`, 'success');
+        Swal.fire('Berhasil', `Pencairan sukses. Sisa saldo: ${formatRupiah(remainingBalance)}`, 'success');
     } catch (error) {
         console.error(error);
         Swal.fire('Error', 'Gagal memproses pencairan.', 'error');
@@ -1503,13 +1504,12 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
         return;
     }
 
-    const currentBalance = Number(matchedUser.balance) || 0;
     const accountType = matchedUser.role === 'driver' ? 'Driver' : 'User';
 
     // Konfirmasi Top Up (Fix UI & Transparansi Tombol)
     const confirmResult = await Swal.fire({
         title: 'Konfirmasi Top Up',
-        text: `${accountType}: ${matchedUser.displayName || matchedUser.name || 'Tanpa Nama'} (${normalizedEmail}). Saldo sekarang Rp ${currentBalance.toLocaleString('id-ID')}. Tambahkan Rp ${amount.toLocaleString('id-ID')}?`,
+        text: `${accountType}: ${matchedUser.displayName || matchedUser.name || 'Tanpa Nama'} (${normalizedEmail}). Saldo sekarang ${formatRupiah(matchedUser.balance || 0)}. Tambahkan ${formatRupiah(amount)}?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Ya, Proses',
@@ -1560,7 +1560,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
             await push(ref(realDb, 'notifications'), {
                 userId: matchedUser.uid,
                 title: 'Top Up Berhasil',
-                message: `Saldo sebesar Rp ${amount.toLocaleString('id-ID')} telah ditambahkan oleh Admin.`,
+                message: `Saldo sebesar ${formatRupiah(amount)} telah ditambahkan oleh Admin.`,
                 type: 'success',
                 image: proofUrl,
                 createdAt: serverTimestamp(),
@@ -1572,7 +1572,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
 
             Swal.fire({
                 title: 'Berhasil',
-                text: `Rp ${amount.toLocaleString('id-ID')} masuk ke saldo ${accountType.toLowerCase()} ${normalizedEmail}. Saldo sekarang Rp ${Number(balanceResult.snapshot.val()).toLocaleString('id-ID')}.`,
+                text: `${formatRupiah(amount)} masuk ke saldo ${accountType.toLowerCase()} ${normalizedEmail}. Saldo sekarang ${formatRupiah(balanceResult.snapshot.val())}.`,
                 icon: 'success',
                     iconColor: '#8b5cf6',
                 confirmButtonText: 'OK',
@@ -3037,7 +3037,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
                             <div className="text-xs text-gray-500">{item.email}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-green-600">
-                            Rp {(item.balance || 0).toLocaleString('id-ID')}
+                            {formatRupiah(item.balance || 0)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {sellerTabMode === 'sellers' ? (
@@ -3992,7 +3992,7 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
             <form onSubmit={handleProcessPayout} className="p-5 space-y-3">
               <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
                 <p className="text-[10px] text-gray-500 mb-0.5 font-bold uppercase tracking-wider">Saldo Tersedia</p>
-                <p className="text-xl font-bold font-mono text-green-600">Rp {(payoutModal.balance || 0).toLocaleString('id-ID')}</p>
+                <p className="text-xl font-bold font-mono text-green-600 tabular-nums [overflow-wrap:anywhere]">{formatRupiah(payoutModal.balance || 0)}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5 truncate">{payoutModal.storeName || payoutModal.displayName}</p>
               </div>
 

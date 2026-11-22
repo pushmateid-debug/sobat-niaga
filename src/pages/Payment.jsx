@@ -6,6 +6,7 @@ import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext';
 import { toPng } from 'html-to-image';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
+import { formatRupiah } from '../utils/formatIdNumber';
 
 const calculateAdminFee = (amount) => {
   if (amount < 15000) return 500;
@@ -613,8 +614,8 @@ const Payment = ({ order, onBack, onPaymentSuccess }) => {
               <div className="text-center animate-in zoom-in duration-300 w-full">
                 <div className={`p-4 rounded-2xl border-2 border-dashed ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-sky-100 shadow-inner'}`}>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Saldo Kamu Saat Ini</p>
-                  <h3 className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                    Rp {(userProfile?.balance || 0).toLocaleString('id-ID')}
+                  <h3 className={`text-xl sm:text-2xl font-black tabular-nums [overflow-wrap:anywhere] ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatRupiah(userProfile?.balance || 0)}
                   </h3>
                 </div>
                 {parseInt(userProfile?.balance || 0) < parseInt(orderData?.totalPrice || 0) ? (

@@ -12,6 +12,7 @@ import SellerVerification from './SellerVerification';
 import Swal from 'sweetalert2';
 import { Line } from 'react-chartjs-2';
 import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
+import { formatRupiah } from '../utils/formatIdNumber';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -846,7 +847,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             // Saldo Kurang -> Arahkan Top Up
             Swal.fire({
                 title: 'Saldo Tidak Cukup',
-                text: `Saldo tokomu kurang (Rp ${currentBalance.toLocaleString()}). Biaya pendaftaran Rp ${ticketPrice.toLocaleString()}.`,
+                text: `Saldo tokomu kurang (${formatRupiah(currentBalance)}). Biaya pendaftaran ${formatRupiah(ticketPrice)}.`,
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonText: 'Top Up Saldo',
@@ -1064,7 +1065,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       title: 'Tarik Saldo',
       html: `
         <div class="text-left font-sans">
-            <p class="text-xs text-gray-500 mb-2">Saldo Tersedia: <span class="font-bold text-green-600">Rp ${currentBalance.toLocaleString('id-ID')}</span></p>
+            <p class="text-xs text-gray-500 mb-2">Saldo Tersedia: <span class="font-bold text-green-600">${formatRupiah(currentBalance)}</span></p>
             <label class="text-xs font-bold text-gray-700">Nominal Penarikan</label>
             <div class="relative mt-1">
                 <span class="absolute left-3 top-2.5 text-gray-500 text-xs font-bold">Rp</span>
@@ -1621,7 +1622,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       Swal.fire({
         title: 'Voucher Valid! ✅',
-        text: `Paket ${vData.packageType} berhasil diklaim. Saldo Anda bertambah Rp ${vData.price.toLocaleString()}`,
+        text: `Paket ${vData.packageType} berhasil diklaim. Saldo Anda bertambah ${formatRupiah(vData.price)}`,
         icon: 'success'
       });
 
@@ -1760,8 +1761,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                     <div className={`p-6 rounded-2xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Saldo Virtual (Rekber)</p>
                        <div className="space-y-2">
-                          <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Tertahan:</span> <span className="font-bold text-orange-500 text-sm">Rp {saldoTertahan.toLocaleString()}</span></div>
-                          <div className="flex justify-between items-end"><span className="text-xs text-gray-500">Siap Cair:</span> <span className="font-black text-green-600 text-xl">Rp {saldoSiapCair.toLocaleString()}</span></div>
+                          <div className="flex justify-between items-center gap-2"><span className="shrink-0 text-xs text-gray-500">Tertahan:</span> <span className="min-w-0 break-words text-right font-bold text-orange-500 text-sm [overflow-wrap:anywhere]">{formatRupiah(saldoTertahan)}</span></div>
+                          <div className="flex justify-between items-end gap-2"><span className="shrink-0 text-xs text-gray-500">Siap Cair:</span> <span className="min-w-0 break-words text-right font-black text-green-600 text-xl [overflow-wrap:anywhere]">{formatRupiah(saldoSiapCair)}</span></div>
                        </div>
                        <button onClick={handleRequestWithdrawal} className="w-full mt-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-none">Tarik Saldo</button>
                     </div>
@@ -2616,11 +2617,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                   <div className="flex flex-col mt-4 space-y-4">
                     <div className="flex justify-between items-center border-b border-dashed border-gray-100 dark:border-slate-700 pb-2">
                         <span className="text-xs font-bold text-gray-400">Tertahan</span>
-                        <span className="font-price text-sm md:text-lg font-bold text-orange-500 tracking-wide whitespace-nowrap">Rp {saldoTertahan.toLocaleString('id-ID')}</span>
+                        <span className="min-w-0 font-price text-sm md:text-lg font-bold text-orange-500 tracking-wide [overflow-wrap:anywhere]">{formatRupiah(saldoTertahan)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-xs font-bold text-gray-400">Siap Cair</span>
-                        <span className="font-price text-lg md:text-2xl font-bold text-green-600 tracking-wide whitespace-nowrap">Rp {saldoSiapCair.toLocaleString('id-ID')}</span>
+                        <span className="min-w-0 font-price text-lg md:text-2xl font-bold text-green-600 tracking-wide [overflow-wrap:anywhere]">{formatRupiah(saldoSiapCair)}</span>
                     </div>
                     {/* Pending Withdrawal Indicator */}
                     {pendingWithdrawals.length > 0 && (

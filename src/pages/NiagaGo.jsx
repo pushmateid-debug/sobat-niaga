@@ -13,6 +13,7 @@ import { collection, addDoc, query, where, onSnapshot, updateDoc, getDoc, getDoc
 import { httpsCallable } from 'firebase/functions';
 import NiagaGoChat from '../components/NiagaGoChat';
 import { getNiagaGoFare, getOsrmRoute } from '../utils/niagaGoPricing';
+import { formatRupiah } from '../utils/formatIdNumber';
 // import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
@@ -1433,7 +1434,7 @@ const NiagaGo = ({ onOpenProfile }) => {
           : `<div class="text-left"><p class="text-sm text-gray-600 mb-3">Tarif rute ${routeDistanceKm.toFixed(1)} km: <b class="text-gray-800">Rp ${numericPrice.toLocaleString('id-ID')}</b>. Driver mengonfirmasi tarif yang sama saat mengirim penawaran.</p></div>`,
         input: 'radio',
         inputOptions: {
-          saldo: `Saldo SobatNiaga (Sisa: Rp ${(userProfile?.balance || 0).toLocaleString('id-ID')})`,
+          saldo: `Saldo SobatNiaga (Sisa: ${formatRupiah(userProfile?.balance || 0)})`,
           cash: 'Tunai / Cash (Bayar ke Driver)'
         },
         inputValue: 'saldo',
@@ -1449,7 +1450,7 @@ const NiagaGo = ({ onOpenProfile }) => {
         if (userBalance < numericPrice) {
           Swal.fire({
             title: 'Saldo Tidak Cukup',
-            text: `Saldo Anda (Rp ${userBalance.toLocaleString('id-ID')}) tidak mencukupi untuk tarif perjalanan Rp ${numericPrice.toLocaleString('id-ID')}. Silakan isi saldo atau pilih metode tunai.`,
+            text: `Saldo Anda (${formatRupiah(userBalance)}) tidak mencukupi untuk tarif perjalanan ${formatRupiah(numericPrice)}. Silakan isi saldo atau pilih metode tunai.`,
             icon: 'error',
             confirmButtonText: 'Mengerti'
           });
@@ -1799,7 +1800,7 @@ const NiagaGo = ({ onOpenProfile }) => {
       if (!paymentMethod) {
         const currentBalance = Number(userProfile?.balance || 0);
         const inputOptions = {};
-        if (currentBalance >= agreedPrice) inputOptions.saldo = `Saldo (Rp ${currentBalance.toLocaleString('id-ID')})`;
+        if (currentBalance >= agreedPrice) inputOptions.saldo = `Saldo (${formatRupiah(currentBalance)})`;
         inputOptions.manual = 'Transfer Manual';
         const { value: selected } = await Swal.fire({
           title: 'Pilih Pembayaran',
@@ -1947,7 +1948,7 @@ const NiagaGo = ({ onOpenProfile }) => {
           notifications.push(push(ref(realDb, 'notifications'), {
             userId: userProfile.uid,
             title: 'Pembayaran Berhasil',
-            message: `Saldo terpotong Rp ${agreedPrice.toLocaleString('id-ID')} untuk pembayaran NiagaGo.`,
+            message: `Saldo terpotong ${formatRupiah(agreedPrice)} untuk pembayaran NiagaGo.`,
             type: 'success',
             createdAt: new Date().toISOString()
           }));
@@ -3483,7 +3484,7 @@ const NiagaGo = ({ onOpenProfile }) => {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <p className="text-sky-100 text-xs font-medium">Saldo Niaga (Virtual)</p>
-                <h2 className="text-2xl font-bold">Rp {(userProfile?.balance || 0).toLocaleString()}</h2>
+                <h2 className="text-2xl font-bold tabular-nums [overflow-wrap:anywhere]">{formatRupiah(userProfile?.balance || 0)}</h2>
               </div>
               <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                 <Wallet size={24} className="text-white" />
@@ -3521,7 +3522,7 @@ const NiagaGo = ({ onOpenProfile }) => {
                   </div>
                   <div>
                      <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saldo Anda</p>
-                     <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {(userProfile?.balance || 0).toLocaleString('id-ID')}</p>
+                     <p className={`font-bold text-lg tabular-nums [overflow-wrap:anywhere] ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{formatRupiah(userProfile?.balance || 0)}</p>
                   </div>
                </div>
             </div>

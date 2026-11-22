@@ -7,6 +7,7 @@ import { ref as dbRef, set, get, update, onValue, query as dbQuery, orderByChild
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
+import { addIntegerValues, formatRupiah } from '../utils/formatIdNumber';
 
 const PHONE_REGEX = /^(08|\+628)[0-9]{8,11}$/;
 
@@ -43,12 +44,12 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
           if (data.username) setUsername(data.username);
           if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
           
-          const nSaldo = parseInt(data.balance || 0);
-          const sBalance = parseInt(data.sellerInfo?.balance || 0);
+          const nSaldo = data.balance ?? 0;
+          const sBalance = data.sellerInfo?.balance ?? 0;
           
           setNiagaSaldo(nSaldo);
           setSellerBalance(sBalance);
-          setSaldo(nSaldo + sBalance);
+          setSaldo(addIntegerValues(nSaldo, sBalance));
 
           // Metrik Performa Driver & Penumpang
           setDriverMetrics({
@@ -208,18 +209,18 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
                 <span class="text-lg">🏪</span>
                 <span class="text-sm font-bold text-gray-700">Hasil Penjualan</span>
             </div>
-            <span class="text-sm font-bold text-blue-600">Rp ${sellerBalance.toLocaleString('id-ID')}</span>
+            <span class="text-sm font-bold text-blue-600">${formatRupiah(sellerBalance)}</span>
           </div>
           <div class="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
             <div class="flex items-center gap-2">
                 <span class="text-lg">🛵</span>
                 <span class="text-sm font-bold text-gray-700">Saldo Niaga Go</span>
             </div>
-            <span class="text-sm font-bold text-green-600">Rp ${niagaSaldo.toLocaleString('id-ID')}</span>
+            <span class="text-sm font-bold text-green-600">${formatRupiah(niagaSaldo)}</span>
           </div>
           <div class="border-t border-dashed border-gray-300 pt-3 mt-2 flex justify-between items-center">
             <span class="text-sm font-bold text-gray-800">Total Aset</span>
-            <span class="text-xl font-extrabold text-gray-900">Rp ${(sellerBalance + niagaSaldo).toLocaleString('id-ID')}</span>
+            <span class="text-xl font-extrabold text-gray-900">${formatRupiah(addIntegerValues(sellerBalance, niagaSaldo))}</span>
           </div>
         </div>
       `,
@@ -310,7 +311,7 @@ const Profile = ({ user, onBack, onUpdateUser, onViewHistory, onViewSellerDashbo
                   <p className={`text-[10px] font-bold flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     Saldo SobatNiaga <Info size={10} />
                   </p>
-                  <p className={`text-base font-bold font-price truncate ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Rp {saldo.toLocaleString('id-ID')}</p>
+                  <p className={`min-w-0 flex-1 text-right text-sm sm:text-base font-bold font-price leading-tight [overflow-wrap:anywhere] ${isDarkMode ? 'text-white' : 'text-gray-800'}`} title={formatRupiah(saldo)}>{formatRupiah(saldo)}</p>
                 </div>
               </div>
               <button 
