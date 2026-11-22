@@ -1541,7 +1541,6 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
 
   // Logic Saklar Otomatis (Date Range + Active Status)
   const statusKompetisi = useMemo(() => isCompetitionVisible(compSettings), [compSettings]);
-  const isCompetitionEnabled = useMemo(() => compSettings.isActive, [compSettings]);
 
   // Helper Status Badge (Biar warna-warni sesuai status)
   const getOrderStatusBadge = (status) => {
@@ -1731,16 +1730,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
               {/* 1. DASHBOARD VIEW */}
               {activeTab === 'dashboard' && (
                 <div className="space-y-8 animate-in fade-in duration-500">
-                  {compSettings.isActive && compSettings.startDate && compSettings.endDate && !eventDismissed && (() => {
-                    const now = new Date();
-                    const start = new Date(compSettings.startDate);
-                    const end = new Date(compSettings.endDate);
-                    if (!(now >= start && now <= end)) return null;
+                    {statusKompetisi && !eventDismissed && (() => {
                     return (
                       <div className={`p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                         <div className="min-w-0">
                           <h3 className="font-bold text-lg">Sobat Juara — Event</h3>
-                          <p className="text-sm text-gray-500 mt-1">Biaya Tiket: {compSettings.ticketPrice ? `Rp ${parseInt(compSettings.ticketPrice).toLocaleString('id-ID')}` : '-'} • Kuota: {compSettings.quota || '-'}</p>
+                          <p className="text-sm text-gray-500 mt-1">Kompetisi ini opsional dan tidak memengaruhi akses Upload Video atau Poin Seller.</p>
+                          <p className="text-xs text-gray-500 mt-1">Biaya tiket: {compSettings.ticketPrice ? `Rp ${parseInt(compSettings.ticketPrice).toLocaleString('id-ID')}` : '-'} • Kuota: {compSettings.quota || '-'}</p>
                           <p className="text-sm text-gray-500">Hadiah: 1) {compSettings.prizes?.first ? `Rp ${parseInt(compSettings.prizes.first).toLocaleString('id-ID')}` : '-'} • 2) {compSettings.prizes?.second ? `Rp ${parseInt(compSettings.prizes.second).toLocaleString('id-ID')}` : '-'} • 3) {compSettings.prizes?.third ? `Rp ${parseInt(compSettings.prizes.third).toLocaleString('id-ID')}` : '-'}</p>
                           <p className="text-xs text-gray-400 mt-2">Periode: {compSettings.startDate} — {compSettings.endDate}</p>
                         </div>
@@ -1753,6 +1749,30 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                       </div>
                     );
                   })()}
+
+                  {/* Video & Live tools are available from the desktop dashboard too. */}
+                  <section className={`rounded-2xl border p-5 shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <div className="mb-4">
+                      <h3 className="font-bold text-lg">Konten Toko</h3>
+                      <p className="mt-1 text-sm text-gray-500">Upload video ke Niaga Video atau lihat informasi fitur Live.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsVideoModalOpen(true)}
+                        className="min-h-14 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 px-4 py-3 text-white font-bold flex items-center justify-center gap-2 shadow-md hover:brightness-110 transition-all"
+                      >
+                        <Video size={19} /> Upload Video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => Swal.fire('Segera Hadir', 'Fitur Live Streaming sedang disiapkan.', 'info')}
+                        className="min-h-14 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 px-4 py-3 text-white font-bold flex items-center justify-center gap-2 opacity-90 hover:brightness-110 transition-all"
+                      >
+                        <Radio size={19} /> Mulai Live <span className="text-[10px] font-medium">(Segera Hadir)</span>
+                      </button>
+                    </div>
+                  </section>
 
                   {/* Row 1: Ringkasan Hari Ini */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1776,6 +1796,19 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Poin Seller</p>
                        <h3 className="text-3xl font-black text-sky-500 mt-2">{points}</h3>
                        <div className="w-full bg-gray-100 dark:bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-yellow-400 h-full" style={{width: `${Math.min(points, 100)}%`}}></div></div>
+                       <p className="text-[11px] leading-relaxed text-gray-500 mt-3">+10 poin setiap pesanan toko selesai diproses. 50 poin membuka video produk; tukarkan di sini. Poin tidak berkurang.</p>
+                       {!sellerInfo?.canUploadVideo ? (
+                         <button
+                           type="button"
+                           onClick={handleRedeemVideo}
+                           disabled={points < 50}
+                           className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-bold transition-colors ${points >= 50 ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-slate-700'}`}
+                         >
+                           {points >= 50 ? 'Tukarkan Fitur Video' : `Butuh ${Math.max(0, 50 - points)} poin lagi`}
+                         </button>
+                       ) : (
+                         <p className="mt-3 flex items-center justify-center gap-1 rounded-lg bg-green-50 py-2 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-300"><CheckCircle size={14} /> Video produk terbuka</p>
+                       )}
                     </div>
                     {/* Card Pengunjung */}
                     <div className={`p-6 rounded-2xl border shadow-sm flex flex-col justify-between ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
@@ -1850,6 +1883,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                           <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 h-36 cursor-not-allowed ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
                             <Lock size={28} className="mb-2" />
                             <span className="text-xs font-bold">Video Terkunci</span>
+                            <span className="mt-1 text-center text-[10px]">Perlu 50 Poin Seller. Tukarkan di kartu Poin Seller.</span>
                           </div>
                         )}
                       </div>
@@ -2389,11 +2423,11 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
           {/* Gue tambahin pengecekan agar mobile tetap dapet Shopee-style lo yang keren */}
           <div className="max-w-7xl mx-auto px-6 py-4 space-y-6">
             {/* Banner Join Competition (Jika Belum Join) */}
-            {isCompetitionEnabled && !sellerInfo?.isCompetitor && (
+            {statusKompetisi && !sellerInfo?.isCompetitor && (
               <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-700">
                 <div className="relative z-10">
                   <h2 className="text-lg font-bold mb-1 flex items-center gap-2"><Trophy className="text-yellow-400" size={20} /> SobatJuara Event Aktif</h2>
-                  <p className="text-indigo-200 text-xs md:text-sm">Event 'Sobat Juara' sedang berlangsung. Bergabung sekarang untuk kesempatan hadiah dan promosi toko.</p>
+                  <p className="text-indigo-200 text-xs md:text-sm">Event ini opsional dan terpisah dari reward Poin Seller atau fitur Upload Video.</p>
                 </div>
                 <button onClick={handleJoinCompetition} className="relative z-10 bg-yellow-400 text-indigo-900 px-5 py-2 rounded-xl font-bold text-sm hover:bg-yellow-300 transition-all shadow-lg shadow-yellow-400/20 whitespace-nowrap active:scale-95">
                   Join Kompetisi
@@ -2834,6 +2868,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                       <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 h-32 cursor-not-allowed ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
                         <Lock size={24} className="mb-2" />
                         <span className="text-xs font-bold">Video Terkunci</span>
+                        <span className="mt-1 text-center text-[10px]">Perlu 50 Poin Seller. Tukarkan di kartu Poin Seller.</span>
                       </div>
                     )}
                   </div>
