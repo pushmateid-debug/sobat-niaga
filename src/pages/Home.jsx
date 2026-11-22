@@ -1017,7 +1017,7 @@ const Home = () => {
       case 'terms': return renderStaticPage('terms', 'Syarat & Ketentuan');
       case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
       case 'help': return renderStaticPage('help', 'Pusat Bantuan');
-      case 'niagago': return <NiagaGo user={user} onBack={() => startTransition(() => setCurrentView('home'))} onOpenProfile={() => startTransition(() => setCurrentView('profile'))} />;
+      case 'niagago': return <NiagaGo user={user} onBack={() => startTransition(() => setCurrentView('home'))} onOpenProfile={() => startTransition(() => setCurrentView('profile'))} playCustomNotificationSound={playCustomNotificationSound} />;
       case 'all-categories': return <AllCategories onBack={() => startTransition(() => setCurrentView('home'))} onNavigate={(view) => startTransition(() => setCurrentView(view))} />;
       case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => startTransition(() => setCurrentView('all-categories'))} />;
       

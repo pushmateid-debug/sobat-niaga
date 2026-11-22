@@ -501,7 +501,7 @@ const OfferCard = ({ offer, expiresAt: offerExpiresAt, onAccept, onReject, onTim
   );
 };
 
-const NiagaGo = ({ onOpenProfile }) => {
+const NiagaGo = ({ onOpenProfile, playCustomNotificationSound }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const navigate = useNavigate();
@@ -578,6 +578,13 @@ const NiagaGo = ({ onOpenProfile }) => {
   const expiringOrderIdsRef = useRef(new Set());
   const [activeChat, setActiveChat] = useState(null);
   const [openingChatOrderId, setOpeningChatOrderId] = useState(null);
+  const [unreadChatCounts, setUnreadChatCounts] = useState({});
+  const activeChatRef = useRef(null);
+  const seenNiagaGoMessagesRef = useRef(new Map());
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
 
   // Keep each account's selected NiagaGo role after a tab reload or return from
   // another app. The UID in the key prevents accounts on a shared browser from
@@ -1004,6 +1011,60 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [isDriverMode, userProfile?.uid]);
+
+  // Listen to the signed-in participant's active NiagaGo chats. The unread
+  // badge is derived from incoming messages still marked unread; sound plays
+  // only for newly added messages, never for the initial history snapshot.
+  useEffect(() => {
+    const uid = userProfile?.uid || auth.currentUser?.uid;
+    if (!uid) {
+      setUnreadChatCounts({});
+      seenNiagaGoMessagesRef.current.clear();
+      return undefined;
+    }
+
+    const activeStatuses = new Set(['accepted', 'paid', 'verified', 'ongoing']);
+    const chatOrders = orders.filter((order) =>
+      activeStatuses.has(order.status)
+      && order.driverId
+      && (isDriverMode ? order.driverId === uid : order.userId === uid)
+    );
+    const orderIds = new Set(chatOrders.map((order) => order.id));
+    setUnreadChatCounts((current) => Object.fromEntries(
+      Object.entries(current).filter(([orderId]) => orderIds.has(orderId))
+    ));
+
+    const unsubscribers = chatOrders.map((order) => {
+      const roomKey = `${uid}:${order.id}`;
+      return onValue(ref(realDb, `niagago_chats/${order.id}/messages`), (snapshot) => {
+        const messages = snapshot.val() || {};
+        const entries = Object.entries(messages);
+        const previousIds = seenNiagaGoMessagesRef.current.get(roomKey);
+
+        if (previousIds) {
+          const hasNewIncomingMessage = entries.some(([messageId, message]) =>
+            !previousIds.has(messageId) && message?.senderId && message.senderId !== uid
+          );
+          if (hasNewIncomingMessage && playCustomNotificationSound) {
+            Promise.resolve(playCustomNotificationSound()).catch((soundError) => {
+              console.debug('Suara notifikasi chat NiagaGo tidak dapat diputar:', soundError);
+            });
+          }
+        }
+
+        seenNiagaGoMessagesRef.current.set(roomKey, new Set(entries.map(([messageId]) => messageId)));
+        const isChatOpen = activeChatRef.current?.orderId === order.id;
+        const unreadCount = isChatOpen ? 0 : entries.filter(([, message]) =>
+          message?.senderId !== uid && message?.status !== 'read'
+        ).length;
+        setUnreadChatCounts((current) => ({ ...current, [order.id]: unreadCount }));
+      }, (listenerError) => {
+        console.warn('Gagal memantau pesan NiagaGo:', listenerError);
+      });
+    });
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [orders, isDriverMode, userProfile?.uid, playCustomNotificationSound]);
 
   useEffect(() => {
     if (!searchExpiryLoaded || isDriverMode || !dbFirestore || !userProfile?.uid || !Number.isFinite(searchExpiryMs)) return undefined;
@@ -3842,9 +3903,17 @@ const NiagaGo = ({ onOpenProfile }) => {
                     <button
                       type="button"
                       onClick={() => handleOpenNiagaGoChat(order)}
+                      aria-label={`Chat${unreadChatCounts[order.id] ? `, ${unreadChatCounts[order.id]} pesan belum dibaca` : ''}`}
                       className="mb-3 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95"
                     >
-                      <MessageCircle size={16} />
+                      <span className="relative inline-flex">
+                        <MessageCircle size={16} />
+                        {unreadChatCounts[order.id] > 0 && (
+                          <span className="absolute -right-3 -top-2 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[9px] leading-[17px] text-center font-black shadow">
+                            {unreadChatCounts[order.id] > 99 ? '99+' : unreadChatCounts[order.id]}
+                          </span>
+                        )}
+                      </span>
                       Chat
                     </button>
                   )}
