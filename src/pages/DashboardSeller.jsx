@@ -733,13 +733,13 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             </ul>
             </div>
 
-            <!-- Cara Main -->
+            <!-- Poin Kompetisi -->
             <div class="px-1">
-            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">🎮 Cara Main & Kumpulkan Poin:</h4>
+            <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">🎮 Poin Event Sobat Juara:</h4>
             <ul class="list-disc pl-5 space-y-1 text-xs text-gray-700">
-                <li><b>Poin Penjualan:</b> Setiap 1 produk laku (Min. harga Rp10.000), kamu dapat 10 Poin.</li>
-                <li><b>Poin Omzet:</b> Setiap total penjualan mencapai kelipatan Rp50.000, kamu dapat tambahan 5 Poin.</li>
-                <li><b>Poin Pelayanan:</b> Berikan pelayanan terbaik! Setiap ulasan Bintang 5 dari pembeli bernilai 2 Poin.</li>
+                <li>Poin event berbeda dari Poin Seller yang dipakai untuk membuka reward toko.</li>
+                <li>Selama event aktif, poin event dihitung dari omzet dan jumlah produk pada pesanan yang sudah selesai.</li>
+                <li>Hanya pesanan yang selesai diproses selama periode event yang dihitung.</li>
             </ul>
             </div>
 
@@ -748,8 +748,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             <h4 class="font-bold text-gray-800 flex items-center gap-2 mb-2 text-sm">📜 Syarat & Ketentuan Penting:</h4>
             <ul class="list-disc pl-5 space-y-1 text-xs text-gray-600">
                 <li><b>Biaya Kepesertaan:</b> Rp25.000/bulan (Berlaku untuk 30 hari periode event).</li>
-                <li><b>Produk Valid:</b> Poin hanya dihitung untuk produk dengan harga di atas Rp10.000.</li>
-                <li><b>Status Transaksi:</b> Poin hanya akan masuk jika pesanan telah Diterima oleh Pembeli (Selesai).</li>
+                <li><b>Status Transaksi:</b> Poin event dihitung setelah pesanan selesai diproses saat event aktif.</li>
                 <li><b>Sportivitas:</b> Dilarang keras melakukan manipulasi transaksi (Fake Order). Pelanggaran berakibat diskualifikasi.</li>
             </ul>
             </div>
@@ -2684,6 +2683,15 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                   <p className={`text-[10px] font-bold flex items-center gap-1 ${points >= 100 ? 'text-sky-600' : 'text-gray-400'}`}>
                     {points >= 100 ? <CheckCircle size={10} /> : <Lock size={10} />} 100 Poin: Badge Toko Terpercaya
                   </p>
+                </div>
+
+                <div className={`mt-3 rounded-xl border p-3 text-[11px] leading-relaxed ${isDarkMode ? 'border-slate-700 bg-slate-900/60 text-gray-300' : 'border-sky-100 bg-sky-50 text-slate-600'}`}>
+                  <p className={`mb-1 flex items-center gap-1.5 font-bold ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>
+                    <Info size={13} /> Cara kerja Poin Seller
+                  </p>
+                  <p>Setiap pesanan tokomu yang selesai diproses memberi <b>+10 Poin Seller</b> (satu kali per pesanan, bukan per barang).</p>
+                  <p className="mt-1">Capai 50 poin lalu tekan <b>Tukarkan Fitur Video</b>. Poin tidak berkurang. 100 poin membuka pilihan tukar Badge Terpercaya.</p>
+                  <p className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Poin Seller ini berbeda dari poin Event Sobat Juara.</p>
                 </div>
 
                 {/* Tombol Redeem */}
