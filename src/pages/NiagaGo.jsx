@@ -577,6 +577,14 @@ const NiagaGo = ({ onOpenProfile }) => {
   const [activeChat, setActiveChat] = useState(null);
   const [openingChatOrderId, setOpeningChatOrderId] = useState(null);
 
+  // Keep each account's selected NiagaGo role after a tab reload or return from
+  // another app. The UID in the key prevents accounts on a shared browser from
+  // inheriting one another's passenger/driver mode.
+  useEffect(() => {
+    if (!userProfile?.uid) return;
+    setIsDriverMode(localStorage.getItem(`niagaGoDriverMode:${userProfile.uid}`) === 'true');
+  }, [userProfile?.uid]);
+
   // --- STATE PERFORMA DRIVER ---
   const [driverEarnings, setDriverEarnings] = useState({}); // { orderId: {...} }
   const [driverReviews, setDriverReviews] = useState({}); // { orderId: {...} }
@@ -610,7 +618,11 @@ const NiagaGo = ({ onOpenProfile }) => {
   };
 
   const handleOpenDriverNavigation = async (order, target) => {
+    let mapsWindow = null;
     try {
+      // Open immediately during the click so mobile popup blockers allow the
+      // Maps handoff and keep the NiagaGo order screen mounted in its tab.
+      mapsWindow = window.open('about:blank', '_blank');
       if (order.driverId !== userProfile?.uid) {
         throw new Error('Navigasi hanya tersedia untuk pesanan milik Anda.');
       }
@@ -630,8 +642,21 @@ const NiagaGo = ({ onOpenProfile }) => {
           : 'Koordinat tujuan tidak tersedia pada pesanan ini.');
       }
 
-      window.location.assign(getGoogleMapsDirectionsUrl(coordinates));
+      const mapsUrl = getGoogleMapsDirectionsUrl(coordinates);
+      if (!mapsWindow) {
+        // If the browser blocks a new tab, keep the current app usable and offer
+        // the URL through a normal link opened by the user.
+        await Swal.fire({
+          title: 'Izinkan Google Maps',
+          text: 'Browser memblokir tab baru. Izinkan pop-up lalu tekan navigasi lagi.',
+          icon: 'info'
+        });
+        return;
+      }
+      mapsWindow.opener = null;
+      mapsWindow.location.replace(mapsUrl);
     } catch (error) {
+      if (mapsWindow && !mapsWindow.closed) mapsWindow.close();
       console.error('Gagal membuka navigasi NiagaGo:', error);
       Swal.fire('Navigasi Tidak Tersedia', error.message || 'Gagal membuka navigasi.', 'error');
     }
@@ -982,7 +1007,10 @@ const NiagaGo = ({ onOpenProfile }) => {
 
     const expireOwnInactiveOrders = () => {
       orders.forEach((order) => {
-        if (!['pending', 'accepting', 'accepted', 'paid'].includes(order.status)) return;
+        // Search expiry applies only while a driver is still being searched.
+        // Accepted, paid, verified and ongoing orders must remain recoverable
+        // no matter how long the passenger or driver is away from the app.
+        if (order.status !== 'pending') return;
         if (expiringOrderIdsRef.current.has(order.id)) return;
         const createdAt = getTimestampMillis(order.createdAt);
         if (!createdAt || Date.now() - createdAt < searchExpiryMs) return;
@@ -1263,6 +1291,7 @@ const NiagaGo = ({ onOpenProfile }) => {
   const handleToggleDriverMode = async () => {
     if (isDriverMode) {
       setIsDriverMode(false);
+      if (userProfile?.uid) localStorage.setItem(`niagaGoDriverMode:${userProfile.uid}`, 'false');
       // Set offline di DB
       if (userProfile?.uid) {
         update(ref(realDb, `drivers_locations/${userProfile.uid}`), { status: 'offline' });
@@ -1334,6 +1363,7 @@ const NiagaGo = ({ onOpenProfile }) => {
     if (value) {
       setActiveVehicle(value);
       setIsDriverMode(true);
+      if (userProfile?.uid) localStorage.setItem(`niagaGoDriverMode:${userProfile.uid}`, 'true');
     }
   };
 
