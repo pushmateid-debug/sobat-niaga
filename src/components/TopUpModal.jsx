@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, Wallet } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Swal from 'sweetalert2';
-import { dbFirestore as db } from '../config/firebase';
-import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
+import { db, dbFirestore } from '../config/firebase';
+import { ref, onValue, runTransaction } from 'firebase/database';
+import { collection, addDoc } from 'firebase/firestore';
 
 export const TopUpModal = ({ game, user, onClose }) => {
   const { theme } = useTheme();
@@ -11,12 +12,25 @@ export const TopUpModal = ({ game, user, onClose }) => {
   const [formData, setFormData] = useState({});
   const [selectedDenom, setSelectedDenom] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    const balanceRef = ref(db, `users/${user.uid}/balance`);
+    return onValue(balanceRef, (snapshot) => {
+      setWalletBalance(Number(snapshot.val()) || 0);
+    });
+  }, [user?.uid]);
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async () => {
+    if (!user?.uid) {
+      Swal.fire('Akun Belum Siap', 'Silakan masuk kembali sebelum melakukan pembelian.', 'warning');
+      return;
+    }
     // Validasi
     for (const field of (game.fields || [])) {
       if (!formData[field] || formData[field].trim() === '') {
@@ -28,7 +42,7 @@ export const TopUpModal = ({ game, user, onClose }) => {
       Swal.fire('Pilih Nominal', 'Mohon pilih nominal top up.', 'warning');
       return;
     }
-    if ((user.saldo || 0) < selectedDenom.price) {
+    if (walletBalance < selectedDenom.price) {
       Swal.fire('Saldo Tidak Cukup', 'Saldo Anda tidak mencukupi. Silakan top up dulu di menu Profil.', 'error');
       return;
     }
@@ -38,6 +52,7 @@ export const TopUpModal = ({ game, user, onClose }) => {
     // --- SIMULASI LOGIKA BACKEND ---
     // Di aplikasi nyata, bagian ini akan memanggil API backend Anda.
     // Backend kemudian akan memanggil API VocaGame/Digiflazz.
+    let walletDebited = false;
     try {
       // 1. Panggil API (Simulasi)
       console.log('Mencoba top up:', { game: game.id, ...formData, item: selectedDenom.id });
@@ -49,10 +64,15 @@ export const TopUpModal = ({ game, user, onClose }) => {
       await new Promise(resolve => setTimeout(resolve, 2000)); // Delay simulasi
 
       // 2. Jika API sukses, potong saldo user & catat transaksi
-      const newSaldo = (user.saldo || 0) - selectedDenom.price;
-      const userUpdate = { saldo: newSaldo };
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, userUpdate);
+      const debitResult = await runTransaction(ref(db, `users/${user.uid}/balance`), (currentBalance) => {
+        const current = Number(currentBalance) || 0;
+        if (current < selectedDenom.price) return;
+        return current - selectedDenom.price;
+      });
+      if (!debitResult.committed) {
+        throw new Error('Saldo tidak cukup. Saldo terbaru sudah berubah, silakan coba lagi.');
+      }
+      walletDebited = true;
 
       const transactionData = {
         userId: user.uid,
@@ -62,14 +82,26 @@ export const TopUpModal = ({ game, user, onClose }) => {
         status: 'completed',
         createdAt: new Date().toISOString(),
       };
-      await addDoc(collection(db, 'transactions'), transactionData);
+      await addDoc(collection(dbFirestore, 'transactions'), transactionData);
 
       Swal.fire('Top Up Berhasil!', `${selectedDenom.label} untuk ${game.name} akan segera masuk.`, 'success');
       onClose();
 
     } catch (error) {
       console.error("Top up error:", error);
-      Swal.fire('Error', 'Terjadi kesalahan saat memproses transaksi.', 'error');
+      if (walletDebited) {
+        try {
+          await runTransaction(ref(db, `users/${user.uid}/balance`), (currentBalance) =>
+            (Number(currentBalance) || 0) + selectedDenom.price
+          );
+        } catch (refundError) {
+          console.error('Gagal mengembalikan saldo setelah pembelian gagal:', refundError);
+          Swal.fire('Hubungi Admin', 'Pembelian gagal setelah saldo terpotong. Hubungi admin untuk pemulihan saldo.', 'error');
+          setIsLoading(false);
+          return;
+        }
+      }
+      Swal.fire('Error', error.message || 'Terjadi kesalahan saat memproses transaksi.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +128,7 @@ export const TopUpModal = ({ game, user, onClose }) => {
         </div>
         <div className={`mt-6 pt-4 border-t ${isDarkMode ? 'border-slate-700' : 'border-gray-200'}`}>
           <div className="flex justify-between items-center mb-4">
-            <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}><Wallet size={18} className="text-green-500" /><span>Saldo Anda:</span><span className="font-bold font-price">Rp {(user.saldo || 0).toLocaleString('id-ID')}</span></div>
+            <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}><Wallet size={18} className="text-green-500" /><span>Saldo Utama:</span><span className="font-bold font-price">Rp {walletBalance.toLocaleString('id-ID')}</span></div>
             <div className="text-right"><p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Bayar</p><p className={`text-xl font-bold font-price ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>{selectedDenom ? `Rp ${selectedDenom.price.toLocaleString('id-ID')}` : 'Rp 0'}</p></div>
           </div>
           <button onClick={handleSubmit} disabled={isLoading || !selectedDenom} className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg ${isLoading || !selectedDenom ? (isDarkMode ? 'bg-slate-700 text-gray-500 cursor-not-allowed' : 'bg-gray-300 cursor-not-allowed') : (isDarkMode ? 'bg-sky-500 hover:bg-sky-600 shadow-none' : 'bg-sky-600 hover:bg-sky-700 shadow-sky-200')}`}>{isLoading ? <Loader2 size={20} className="animate-spin" /> : 'Beli Sekarang'}</button>

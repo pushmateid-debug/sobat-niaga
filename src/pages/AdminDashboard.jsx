@@ -1462,6 +1462,13 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     e.preventDefault();
     if (!topUpForm.email || !topUpForm.amount) return;
 
+    const normalizedEmail = topUpForm.email.trim().toLowerCase();
+    const amount = Number(topUpForm.amount);
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+        Swal.fire('Nominal Tidak Valid', 'Masukkan jumlah saldo berupa angka bulat lebih dari Rp 0.', 'warning');
+        return;
+    }
+
     // Cek Auth Admin
     if (!auth.currentUser) {
         Swal.fire('Error', 'Sesi admin kadaluarsa. Silakan refresh halaman.', 'error');
@@ -1473,15 +1480,36 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
         return;
     }
 
+    let matchedUser;
+    try {
+        const usersRef = ref(realDb, 'users');
+        const q = realQuery(usersRef, orderByChild('email'), equalTo(normalizedEmail));
+        const snapshot = await get(q);
+        if (!snapshot.exists()) {
+            Swal.fire('Akun Tidak Ditemukan', `Tidak ada akun dengan email ${normalizedEmail}.`, 'error');
+            return;
+        }
+
+        const matches = Object.entries(snapshot.val());
+        if (matches.length !== 1) {
+            Swal.fire('Email Tidak Unik', 'Ada lebih dari satu akun dengan email tersebut. Periksa data akun sebelum top up.', 'error');
+            return;
+        }
+        const [uid, user] = matches[0];
+        matchedUser = { uid, ...user };
+    } catch (error) {
+        console.error('Gagal mencari akun untuk top up:', error);
+        Swal.fire('Gagal Mencari Akun', error.message || 'Coba periksa koneksi lalu ulangi.', 'error');
+        return;
+    }
+
+    const currentBalance = Number(matchedUser.balance) || 0;
+    const accountType = matchedUser.role === 'driver' ? 'Driver' : 'User';
+
     // Konfirmasi Top Up (Fix UI & Transparansi Tombol)
     const confirmResult = await Swal.fire({
         title: 'Konfirmasi Top Up',
-        html: `
-            <div class="text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}">
-                Top up saldo ke <b>${topUpForm.email}</b><br/>
-                Sebesar: <b class="text-green-600">Rp ${parseInt(topUpForm.amount).toLocaleString('id-ID')}</b>?
-            </div>
-        `,
+        text: `${accountType}: ${matchedUser.displayName || matchedUser.name || 'Tanpa Nama'} (${normalizedEmail}). Saldo sekarang Rp ${currentBalance.toLocaleString('id-ID')}. Tambahkan Rp ${amount.toLocaleString('id-ID')}?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Ya, Proses',
@@ -1502,47 +1530,49 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
     try {
         Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
         
-        const proofUrl = await uploadToCloudinary(topUpProof); // Upload bukti dulu
+        const proofUrl = await uploadToCloudinary(topUpProof);
 
-        // Cari User by Email di Realtime DB
-        const usersRef = ref(realDb, 'users');
-        const q = realQuery(usersRef, orderByChild('email'), equalTo(topUpForm.email));
-        const snapshot = await get(q);
+        // User and driver balances use the same wallet field: users/{uid}/balance.
+        // The RTDB transaction prevents concurrent wallet updates from overwriting each other.
+        const balanceResult = await runTransaction(ref(realDb, `users/${matchedUser.uid}/balance`), (balance) => {
+            const current = Number(balance) || 0;
+            if (!Number.isSafeInteger(current) || !Number.isSafeInteger(current + amount)) return;
+            return current + amount;
+        });
+        if (!balanceResult.committed) throw new Error('Saldo tidak berhasil diperbarui. Periksa saldo akun lalu coba lagi.');
 
-        if (snapshot.exists()) {
-            const data = snapshot.val();
-            const uid = Object.keys(data)[0];
-            const amount = parseInt(topUpForm.amount);
+        // Arsipkan bukti dan mutasi saldo untuk jejak audit admin.
+        await push(ref(realDb, 'admin/topup_logs'), {
+            userId: matchedUser.uid,
+            userEmail: normalizedEmail,
+            userName: matchedUser.displayName || matchedUser.name || '',
+            userRole: matchedUser.role || 'user',
+            amount,
+            balanceBefore: Number(balanceResult.snapshot.val()) - amount,
+            balanceAfter: Number(balanceResult.snapshot.val()),
+            proofUrl,
+            adminId: auth.currentUser.uid,
+            createdAt: serverTimestamp()
+        });
 
-            // Gunakan Transaction untuk update saldo (Lebih aman & atomik)
-            await runTransaction(ref(realDb, `users/${uid}/balance`), (currentBalance) => {
-                return (currentBalance || 0) + amount;
-            });
-
-            // Log Transaksi (Arsip Admin)
-            await push(ref(realDb, 'admin/topup_logs'), {
-                userId: uid,
-                userEmail: topUpForm.email,
-                amount: amount,
-                proofUrl: proofUrl,
-                adminId: auth.currentUser.uid, // Fix Permission Denied (Use Real UID)
-                createdAt: serverTimestamp()
-            });
-
-            // Kirim Notifikasi ke User (In-App)
+        // Notifikasi tidak membatalkan top up yang sudah berhasil.
+        try {
             await push(ref(realDb, 'notifications'), {
-                userId: uid,
+                userId: matchedUser.uid,
                 title: 'Top Up Berhasil',
-                message: `Top Up Berhasil! Saldo sebesar Rp ${amount.toLocaleString('id-ID')} telah ditambahkan oleh Admin.`,
+                message: `Saldo sebesar Rp ${amount.toLocaleString('id-ID')} telah ditambahkan oleh Admin.`,
                 type: 'success',
                 image: proofUrl,
                 createdAt: serverTimestamp(),
                 isRead: false
             });
+        } catch (notificationError) {
+            console.warn('Saldo berhasil ditambah, tetapi notifikasi gagal dikirim:', notificationError);
+        }
 
             Swal.fire({
                 title: 'Berhasil',
-                text: `Saldo masuk & Email notifikasi terkirim ke ${topUpForm.email}`,
+                text: `Rp ${amount.toLocaleString('id-ID')} masuk ke saldo ${accountType.toLowerCase()} ${normalizedEmail}. Saldo sekarang Rp ${Number(balanceResult.snapshot.val()).toLocaleString('id-ID')}.`,
                 icon: 'success',
                     iconColor: '#8b5cf6',
                 confirmButtonText: 'OK',
@@ -1556,9 +1586,6 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
             });
             setTopUpForm({ email: '', amount: '' });
             setTopUpProof(null);
-        } else {
-            Swal.fire('Gagal', 'User dengan email tersebut tidak ditemukan.', 'error');
-        }
     } catch (error) {
         console.error(error);
         Swal.fire('Error', error.message, 'error');
@@ -2954,15 +2981,16 @@ Jika informasi tidak tersedia, katakan belum bisa dipastikan dan sarankan Custom
 
               {/* Form Manual Top Up (Inject Saldo) */}
               <div className={`p-5 rounded-2xl border mb-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <h3 className="font-bold text-sm mb-4 flex items-center gap-2"><DollarSign className="text-green-500" size={18}/> Inject Saldo User (Manual Top Up)</h3>
+                <h3 className="font-bold text-sm mb-1 flex items-center gap-2"><DollarSign className="text-green-500" size={18}/> Top Up Saldo Utama User / Driver</h3>
+                <p className="text-xs text-gray-500 mb-4">Saldo masuk ke dompet utama akun dan dapat dipakai untuk pembayaran yang mendukung Saldo Profil.</p>
                 <form onSubmit={handleManualTopUp} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                     <div className="w-full">
-                        <label className={labelClass}>Email User</label>
-                        <input type="email" placeholder="user@example.com" value={topUpForm.email} onChange={e => setTopUpForm({...topUpForm, email: e.target.value})} className={inputClass} required />
+                        <label className={labelClass}>Email akun user atau driver</label>
+                        <input type="email" placeholder="akun@gmail.com" value={topUpForm.email} onChange={e => setTopUpForm({...topUpForm, email: e.target.value})} className={inputClass} required />
                     </div>
                     <div className="w-full">
                         <label className={labelClass}>Jumlah (Rp)</label>
-                        <input type="number" placeholder="50000" value={topUpForm.amount} onChange={e => setTopUpForm({...topUpForm, amount: e.target.value})} className={inputClass} required />
+                        <input type="number" min="1" step="1" placeholder="50000" value={topUpForm.amount} onChange={e => setTopUpForm({...topUpForm, amount: e.target.value})} className={inputClass} required />
                     </div>
                     <div className="w-full">
                         <label className={labelClass}>Bukti Transfer</label>
