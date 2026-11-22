@@ -138,6 +138,72 @@ service cloud.firestore {
       allow write: if isAuth() && (uid() == userId || isAdmin());
     }
 
+    // ─── NIAGA LIVE (uji WebRTC langsung antar-browser) ─────────────────────
+    match /live_streams/{streamId} {
+      // Daftar siaran aktif dapat dilihat oleh pengguna yang sudah login.
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.hostId == uid()
+        && request.resource.data.status == 'live'
+        && request.resource.data.sellerName is string
+        && request.resource.data.description is string
+        && request.resource.data.viewerLimit == 2;
+      allow update: if isAuth()
+        && resource.data.hostId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt'])
+        && request.resource.data.status == 'ended';
+      allow delete: if isAuth() && resource.data.hostId == uid();
+
+      match /viewers/{viewerId} {
+        function isStreamHost() {
+          return isAuth()
+            && get(/databases/$(database)/documents/live_streams/$(streamId)).data.hostId == uid();
+        }
+        function isThisViewer() {
+          return isAuth() && resource.data.userId == uid();
+        }
+
+        allow read: if isStreamHost() || isThisViewer();
+        allow create: if isAuth()
+          && request.resource.data.userId == uid()
+          && request.resource.data.status == 'waiting'
+          && request.resource.data.offer is map;
+        allow update: if isStreamHost()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer', 'status'])
+          || isThisViewer()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'leftAt']);
+        allow delete: if isStreamHost() || isThisViewer();
+
+        match /callerCandidates/{candidateId} {
+          function ownsViewerRequest() {
+            return isAuth()
+              && get(/databases/$(database)/documents/live_streams/$(streamId)/viewers/$(viewerId)).data.userId == uid();
+          }
+          function ownsLiveSession() {
+            return isAuth()
+              && get(/databases/$(database)/documents/live_streams/$(streamId)).data.hostId == uid();
+          }
+          allow create: if ownsViewerRequest();
+          allow read: if ownsViewerRequest() || ownsLiveSession();
+          allow update, delete: if false;
+        }
+
+        match /calleeCandidates/{candidateId} {
+          function ownsViewerRequest() {
+            return isAuth()
+              && get(/databases/$(database)/documents/live_streams/$(streamId)/viewers/$(viewerId)).data.userId == uid();
+          }
+          function ownsLiveSession() {
+            return isAuth()
+              && get(/databases/$(database)/documents/live_streams/$(streamId)).data.hostId == uid();
+          }
+          allow create: if ownsLiveSession();
+          allow read: if ownsViewerRequest() || ownsLiveSession();
+          allow update, delete: if false;
+        }
+      }
+    }
+
     // ─── SEMUA KOLEKSI LAIN (fallback: hanya admin) ─────────────────────────
     match /{document=**} {
       allow read, write: if isAdmin();

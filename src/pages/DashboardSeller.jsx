@@ -9,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { ref, get, set, push, remove, onValue, query as realQuery, orderByChild, equalTo, update, serverTimestamp } from 'firebase/database';
 import confetti from 'canvas-confetti';
 import SellerVerification from './SellerVerification';
+import NiagaLiveStudio from '../components/NiagaLiveStudio';
 import Swal from 'sweetalert2';
 import { Line } from 'react-chartjs-2';
 import { normalizeCompetitionSettings, isCompetitionVisible } from '../utils/competitionUtils';
@@ -174,6 +175,7 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [sharingHistory, setSharingHistory] = useState([]);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [isLiveStudioOpen, setIsLiveStudioOpen] = useState(false);
   const [chatRooms, setChatRooms] = useState([]); // State List Chat Pelanggan
   const [selectedBuyer, setSelectedBuyer] = useState(null); // Chat yang sedang dibuka
   const [chatMessages, setChatMessages] = useState([]); // Isi pesan room
@@ -1766,10 +1768,10 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                       </button>
                       <button
                         type="button"
-                        onClick={() => Swal.fire('Segera Hadir', 'Fitur Live Streaming sedang disiapkan.', 'info')}
-                        className="min-h-14 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 px-4 py-3 text-white font-bold flex items-center justify-center gap-2 opacity-90 hover:brightness-110 transition-all"
+                        onClick={() => setIsLiveStudioOpen(true)}
+                        className="min-h-14 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 px-4 py-3 text-white font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all"
                       >
-                        <Radio size={19} /> Mulai Live <span className="text-[10px] font-medium">(Segera Hadir)</span>
+                        <Radio size={19} /> Mulai Live
                       </button>
                     </div>
                   </section>
@@ -2516,8 +2518,8 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
                         <span className="text-[10px] font-bold uppercase tracking-tight">Upload Video</span>
                     </button>
                     <button 
-                        onClick={() => Swal.fire('Coming Soon', 'Fitur Live Streaming lagi kita siapin nih Bro!', 'info')}
-                        className="flex-1 py-4 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-lg flex flex-col items-center justify-center gap-1 opacity-80 cursor-not-allowed"
+                        onClick={() => setIsLiveStudioOpen(true)}
+                        className="flex-1 py-4 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-lg flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
                     >
                         <Radio size={24} />
                         <span className="text-[10px] font-bold uppercase tracking-tight">Mulai Live</span>
@@ -3444,6 +3446,14 @@ const DashboardSeller = ({ user, onBack, playCustomNotificationSound, onViewInbo
             </div>
           </div>
         </div>
+      )}
+
+      {isLiveStudioOpen && (
+        <NiagaLiveStudio
+          user={user}
+          storeName={sellerInfo?.storeName || storeForm.storeName}
+          onClose={() => setIsLiveStudioOpen(false)}
+        />
       )}
 
       {/* Modal Pemilihan Produk untuk Tagging */}

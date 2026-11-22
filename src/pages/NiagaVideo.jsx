@@ -135,7 +135,121 @@ const CommentSheet = ({ videoId, onClose, isDarkMode }) => {
   );
 };
 
+const NiagaLiveViewer = ({ stream, onClose }) => {
+  const videoRef = useRef(null);
+  const peerRef = useRef(null);
+  const viewerRef = useRef(null);
+  const unsubscribersRef = useRef([]);
+  const [connecting, setConnecting] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const queuedCandidates = [];
+    let remoteReady = false;
+    peerRef.current = pc;
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.ontrack = (event) => {
+      if (videoRef.current && event.streams[0]) videoRef.current.srcObject = event.streams[0];
+    };
+    const connect = async () => {
+      if (!auth.currentUser) throw new Error('Login dulu untuk menonton live.');
+      const streamRef = doc(dbFirestore, 'live_streams', stream.id);
+      const candidateRef = collection(streamRef, 'viewers');
+      const viewerDoc = doc(candidateRef);
+      viewerRef.current = viewerDoc;
+      const callerCandidates = collection(viewerDoc, 'callerCandidates');
+      const calleeCandidates = collection(viewerDoc, 'calleeCandidates');
+      const queuedCallerCandidates = [];
+      let viewerDocReady = false;
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        const candidate = event.candidate.toJSON();
+        if (viewerDocReady) addDoc(callerCandidates, candidate).catch((candidateError) => setError(candidateError.message));
+        else queuedCallerCandidates.push(candidate);
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') setConnecting(false);
+        if (['failed', 'disconnected'].includes(pc.connectionState)) setError('Koneksi video terputus. Coba gabung lagi atau gunakan jaringan lain.');
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await setDoc(viewerDoc, {
+        userId: auth.currentUser.uid,
+        userName: auth.currentUser.displayName || 'Penonton',
+        status: 'waiting',
+        offer: { type: offer.type, sdp: offer.sdp },
+        createdAt: serverTimestamp()
+      });
+      viewerDocReady = true;
+      await Promise.all(queuedCallerCandidates.splice(0).map((candidate) => addDoc(callerCandidates, candidate)));
+      unsubscribersRef.current.push(onSnapshot(viewerDoc, async (snapshot) => {
+        const data = snapshot.data();
+        if (!snapshot.exists() || !data) return;
+        if (data.status === 'full') setError('Live sedang penuh. Maksimal dua penonton untuk uji coba ini.');
+        if (data.status === 'ended') setError('Siaran sudah berakhir.');
+        if (data.answer && !pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          remoteReady = true;
+          await Promise.all(queuedCandidates.splice(0).map((candidate) => pc.addIceCandidate(candidate)));
+        }
+      }));
+      unsubscribersRef.current.push(onSnapshot(calleeCandidates, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            if (remoteReady) pc.addIceCandidate(candidate).catch(console.error);
+            else queuedCandidates.push(candidate);
+          }
+        });
+      }));
+    };
+    connect().catch((connectError) => {
+      console.error('Gagal bergabung live:', connectError);
+      if (!cancelled) {
+        setConnecting(false);
+        setError(connectError.code === 'permission-denied'
+          ? 'Akses live ditolak oleh aturan Firestore. Aturan live perlu dipublikasikan dulu.'
+          : connectError.message || 'Tidak bisa bergabung ke live.');
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribersRef.current.forEach((unsub) => unsub());
+      unsubscribersRef.current = [];
+      peerRef.current?.close();
+      const currentViewerRef = viewerRef.current;
+      if (currentViewerRef) updateDoc(currentViewerRef, { status: 'left' }).catch(() => {});
+    };
+  }, [stream.id]);
+
+  const leave = async () => {
+    if (viewerRef.current) {
+      try { await updateDoc(viewerRef.current, { status: 'left', leftAt: serverTimestamp() }); } catch (_) {}
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/95 flex flex-col items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-4xl flex items-center justify-between text-white py-3">
+        <div><p className="font-black">{stream.sellerName} <span className="ml-2 bg-red-600 px-2 py-0.5 rounded text-[10px]">LIVE</span></p><p className="text-xs text-white/60">{stream.description || 'Siaran langsung toko'}</p></div>
+        <button onClick={leave} className="p-2 rounded-full bg-white/10" aria-label="Keluar dari live"><X size={22}/></button>
+      </div>
+      <div className="relative w-full max-w-4xl aspect-video bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
+        <video ref={videoRef} autoPlay playsInline controls className="w-full h-full object-contain" />
+        {connecting && !error && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 text-white"><Loader2 className="animate-spin"/><p className="text-sm">Menghubungkan ke siaran…</p></div>}
+        {error && <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/75 text-white p-6 text-center"><Radio size={32} className="text-red-500"/><p className="text-sm">{error}</p><button onClick={leave} className="rounded-lg bg-white px-5 py-2 text-sm font-bold text-black">Tutup</button></div>}
+      </div>
+      <p className="max-w-4xl w-full text-left text-xs text-white/50 mt-3">Mode uji langsung antar-browser. Jika perangkat/jaringan tidak dapat terhubung langsung, video mungkin tidak tampil.</p>
+    </div>
+  );
+};
+
 const NiagaLiveCard = ({ stream, onProfileClick, onStoreClick }) => {
+  const [joining, setJoining] = useState(false);
   return (
     <div className="h-screen w-screen video-slide relative bg-slate-900 flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 z-0"></div>
@@ -149,8 +263,9 @@ const NiagaLiveCard = ({ stream, onProfileClick, onStoreClick }) => {
         </div>
         <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">{stream.sellerName} Sedang Live!</h2>
         <p className="text-white/70 text-sm mb-8">{stream.description || 'Yuk gabung sekarang dan serbu promonya!'}</p>
-        <button onClick={() => Swal.fire('Coming Soon', 'Fitur Join Live segera hadir!', 'info')} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-transform active:scale-95">GABUNG LIVE</button>
+        <button onClick={() => setJoining(true)} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-transform active:scale-95">GABUNG LIVE</button>
       </div>
+      {joining && <NiagaLiveViewer stream={stream} onClose={() => setJoining(false)} />}
 
       {/* Live Stats Overlay */}
       <div className="absolute top-24 left-4 z-10 flex items-center gap-2">
@@ -754,12 +869,18 @@ const NiagaVideo = ({ onBack, onProfileClick, onStoreClick, onProductClick, init
             </div>
           )
         ) : (
-          <div className="h-full w-full flex flex-col items-center justify-center text-white bg-slate-900 px-10 text-center">
-            <Radio size={64} className="mb-4 text-red-500 animate-pulse" />
-            <h2 className="text-2xl font-black italic uppercase tracking-tighter">Live Shopping 📡</h2>
-            <p className="text-white/60 text-sm mt-2">Segera hadir! Kamu bisa jualan langsung lewat live streaming bareng mahasiswa lainnya.</p>
-            <button onClick={onBack} className="mt-8 px-8 py-3 bg-white text-black font-black rounded-full text-sm">Kembali Ke Home</button>
-          </div>
+          liveStreams.length > 0 ? (
+            liveStreams.map((stream) => (
+              <NiagaLiveCard key={stream.id} stream={stream} onProfileClick={onProfileClick} onStoreClick={onStoreClick} />
+            ))
+          ) : (
+            <div className="h-full w-full flex flex-col items-center justify-center text-white bg-slate-900 px-10 text-center">
+              <Radio size={64} className="mb-4 text-red-500" />
+              <h2 className="text-2xl font-black italic uppercase tracking-tighter">Live Shopping 📡</h2>
+              <p className="text-white/60 text-sm mt-2">Belum ada toko yang sedang live. Coba cek lagi nanti.</p>
+              <button onClick={onBack} className="mt-8 px-8 py-3 bg-white text-black font-black rounded-full text-sm">Kembali Ke Home</button>
+            </div>
+          )
         )}
       </div>
     </div>
