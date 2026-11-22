@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { X, Star, ShoppingCart, MessageCircle, Loader2, Store, User, ShoppingBag, Check, Heart, Bookmark, Copy, Flag, ZoomIn, Send, ChevronRight, BadgeCheck } from 'lucide-react';
+import { X, Star, ShoppingCart, MessageCircle, Loader2, Store, User, ShoppingBag, Check, Heart, Bookmark, Copy, Flag, ZoomIn, Send, ChevronRight, BadgeCheck, ArrowLeft, Share2 } from 'lucide-react';
 import { db, dbFirestore, auth } from '../config/firebase';
-import { ref, get, push, set, remove } from 'firebase/database';
+import { ref, get, push, set, remove, onValue } from 'firebase/database';
 import { doc, onSnapshot, writeBatch, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import Swal from 'sweetalert2';
@@ -82,6 +82,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const [touchStartX, setTouchStartX] = useState(null);
   const allImages = [...new Set([product?.mediaUrl || product?.image, ...(product?.gallery || [])].filter(Boolean))];
   const selectedImage = allImages[currentImageIndex] || allImages[0] || '';
   const sellerPhoto = sellerProfile?.photoURL ||
@@ -100,6 +102,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) { setCartCount(0); return undefined; }
+    return onValue(ref(db, `users/${user.uid}/cart`), (snapshot) => {
+      const cart = snapshot.val() || {};
+      setCartCount(Object.values(cart).reduce((sum, item) => sum + Number(item?.quantity || 1), 0));
+    });
+  }, [user?.uid]);
 
   useEffect(() => {
     let active = true;
@@ -532,8 +542,16 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
   }
 
   const productContent = (
-    <div className={`transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'}`}`}>
-      <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-200'}`}>
+    <div className={`product-detail-page transition-colors duration-300 ${isModal ? 'min-h-0 pb-0' : `min-h-screen ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-gray-900'} max-md:bg-slate-950 max-md:text-white max-md:pb-24`}`}>
+      {!isModal && <header className="product-mobile-header sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-800 bg-slate-950/95 px-3 text-white backdrop-blur-md md:hidden">
+        <button type="button" onClick={onBack} aria-label="Kembali" className="flex h-10 w-10 items-center justify-center rounded-full text-slate-200"><ArrowLeft size={21} /></button>
+        <span className="text-base font-black tracking-tight"><span className="text-cyan-400">Sobat</span><span className="text-amber-300">Niaga</span></span>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={handleShareOptions} aria-label="Bagikan produk" className="flex h-10 w-10 items-center justify-center rounded-full text-slate-200"><Share2 size={19} /></button>
+          <button type="button" onClick={() => onGoToCart?.()} aria-label={`Keranjang, ${cartCount} produk`} className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-200"><ShoppingCart size={20} />{cartCount > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-cyan-400 px-1 text-[10px] font-bold leading-4 text-slate-950">{cartCount > 99 ? '99+' : cartCount}</span>}</button>
+        </div>
+      </header>}
+      <header className={`hidden border-b backdrop-blur-md md:sticky md:top-0 md:z-30 md:block ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-gray-200'}`}>
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => (isModal ? onBack?.() : navigate('/'))} className="flex shrink-0 items-center gap-2 text-lg font-black tracking-tight text-sky-500">
             <span>SobatNiaga</span>
@@ -579,9 +597,14 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
               ))}
               </div>
             )}
-            <div className="group relative order-1 flex aspect-square min-w-0 flex-1 items-center justify-center overflow-hidden md:order-2">
+            <div className="group relative order-1 flex aspect-square min-w-0 flex-1 touch-pan-y items-center justify-center overflow-hidden md:order-2" onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)} onTouchEnd={(event) => {
+              if (touchStartX === null || allImages.length < 2) return;
+              const delta = event.changedTouches[0].clientX - touchStartX;
+              if (Math.abs(delta) > 40) setCurrentImageIndex((index) => (index + (delta < 0 ? 1 : allImages.length - 1)) % allImages.length);
+              setTouchStartX(null);
+            }}>
               {selectedImage ? (
-                <img src={selectedImage} className="h-full w-full rounded-2xl object-contain" alt={product?.name || 'Foto produk'} />
+                <img src={selectedImage} onClick={() => setIsZoomOpen(true)} className="h-full w-full rounded-2xl object-contain md:cursor-zoom-in" alt={product?.name || 'Foto produk'} />
               ) : (
                 <div className="text-sm text-slate-400">Foto produk belum tersedia</div>
               )}
@@ -595,7 +618,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                   <ZoomIn size={19} />
                 </button>
               )}
-              {allImages.length > 1 && (
+              {allImages.length > 0 && (
                 <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/75 px-3 py-1 text-xs font-semibold text-white">
                   {currentImageIndex + 1} / {allImages.length}
                 </span>
@@ -608,7 +631,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           <div className="space-y-4">
             <div>
               <span className="inline-flex rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-500">{product?.category || 'Produk SobatNiaga'}</span>
-              <h1 className={`mt-3 text-2xl font-bold leading-tight md:text-3xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{product?.name || 'Nama Produk'}</h1>
+              <h1 className={`mt-3 text-2xl font-bold leading-tight max-md:text-white md:text-3xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{product?.name || 'Nama Produk'}</h1>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
                 {hasProductRating && (
                   <span className="inline-flex items-center gap-1.5 font-semibold text-amber-500">
@@ -628,7 +651,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
             </div>
 
             <div className="flex flex-wrap items-baseline gap-2">
-              <span className={`text-3xl font-black ${isDarkMode ? 'text-amber-300' : 'text-sky-700'}`}>Rp {Number(product?.price || 0).toLocaleString('id-ID')}</span>
+              <span className={`text-3xl font-black max-md:text-2xl max-md:text-amber-300 ${isDarkMode ? 'text-amber-300' : 'text-sky-700'}`}>Rp {Number(product?.price || 0).toLocaleString('id-ID')}</span>
               {Number(product?.originalPrice) > Number(product?.price) && (
                 <>
                   <span className="text-sm text-slate-400 line-through">Rp {Number(product.originalPrice).toLocaleString('id-ID')}</span>
@@ -636,6 +659,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                 </>
               )}
             </div>
+
+            <p className={`text-xs font-medium ${availableStock > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{Number.isFinite(availableStock) ? `Stok: ${availableStock}` : 'Stok tersedia'}</p>
 
             <div className="flex flex-wrap gap-2">
               <button
@@ -685,7 +710,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
               {Number.isFinite(availableStock) && availableStock > 0 && <span className="text-xs text-slate-500">Stok {availableStock}</span>}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-md:hidden">
               <button 
                 onClick={() => handleAddToCart(false)}
                 disabled={isAdding}
@@ -704,8 +729,8 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           </div>
         </div>
 
-        <section className={`min-w-0 overflow-hidden rounded-2xl border md:col-span-2 ${isDarkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
-          <div className={`flex border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`} role="tablist" aria-label="Detail produk">
+        <section className={`min-w-0 overflow-hidden rounded-2xl border md:col-span-2 max-md:rounded-none max-md:border-x-0 max-md:border-slate-800 max-md:bg-slate-950 ${isDarkMode ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
+          <div className={`sticky top-14 z-20 flex border-b bg-slate-950 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`} role="tablist" aria-label="Detail produk">
             {['about', 'review'].map((tab) => (
               <button
                 key={tab}
@@ -713,20 +738,20 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                 role="tab"
                 aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
-                className={`relative px-5 py-3 text-sm font-bold transition ${activeTab === tab ? 'text-sky-500' : 'text-slate-500 hover:text-sky-500'}`}
+                className={`relative min-h-12 flex-1 px-5 py-3 text-sm font-bold transition ${activeTab === tab ? 'text-cyan-400' : 'text-slate-400 hover:text-sky-500'}`}
               >
                 {tab === 'about' ? 'Tentang' : `Ulasan${reviewCount ? ` (${formatReviewCount(reviewCount)})` : ''}`}
-                {activeTab === tab && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-sky-500" />}
+                {activeTab === tab && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-cyan-400" />}
               </button>
             ))}
           </div>
-          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+          <div className="grid gap-6 p-5 max-md:px-4 md:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
             <div className="min-w-0">
             {activeTab === 'about' ? (
               <div className="space-y-4">
                 <section>
                   <h2 className="mb-2 text-base font-bold">Deskripsi Produk</h2>
-                  <p className={`whitespace-pre-line text-sm leading-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'} ${!isDescExpanded ? 'line-clamp-5' : ''}`}>
+                  <p className={`whitespace-pre-line text-sm leading-6 max-md:text-slate-300 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'} ${!isDescExpanded ? 'line-clamp-5' : ''}`}>
                     {product?.description || 'Tidak ada deskripsi untuk produk ini.'}
                   </p>
                   {(product?.description || '').length > 260 && (
@@ -755,7 +780,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                   <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{reviewError}</p>
                 ) : (
                   <>
-                    <section className={`flex flex-col gap-4 rounded-xl p-4 sm:flex-row sm:items-center ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
+                    <section className={`flex flex-col gap-4 rounded-xl p-4 max-md:bg-slate-900 sm:flex-row sm:items-center ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
                       <div className="min-w-32 text-center">
                         <p className="text-3xl font-black">{reviewAverage > 0 ? reviewAverage.toFixed(1) : '—'}</p>
                         <div className="my-1 flex justify-center text-amber-400">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(reviewAverage) ? 'currentColor' : 'none'} />)}</div>
@@ -782,7 +807,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
                         ...(Array.isArray(review.photos) ? review.photos : [])
                       ].filter(Boolean);
                       return (
-                        <article key={review.id} className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                        <article key={review.id} className={`rounded-xl border p-4 max-md:border-slate-800 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                           <div className="flex items-center gap-3">
                             {review.buyerPhoto ? <img src={review.buyerPhoto} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600"><User size={17} /></div>}
                             <div className="min-w-0 flex-1">
@@ -806,7 +831,7 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
               </div>
             )}
             </div>
-            <section className={`min-w-0 self-start rounded-2xl border p-4 ${isDarkMode ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'}`}>
+            <section className={`min-w-0 self-start rounded-2xl border p-4 max-md:border-slate-800 max-md:bg-slate-900 ${isDarkMode ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'}`}>
               <h2 className="text-base font-bold">Informasi Penjual</h2>
               <div className="mt-3 flex min-w-0 items-center gap-3">
                 {sellerPhoto && (
@@ -845,6 +870,10 @@ const ProductDetail = ({ product: suppliedProduct, productId, isModal = false, i
           </div>
         </section>
       </div>
+      {!isModal && <div className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-2 gap-2 border-t border-slate-800 bg-slate-950/95 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur-md md:hidden">
+        <button type="button" onClick={() => handleAddToCart(false)} disabled={isAdding} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-cyan-400 px-2 text-center text-xs font-bold leading-tight text-cyan-300 disabled:opacity-60"><ShoppingCart size={17} />{isAdding ? 'Memproses…' : <>Tambah ke<br />Keranjang</>}</button>
+        <button type="button" onClick={() => handleAddToCart(true)} disabled={isAdding} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-2 text-center text-xs font-black leading-tight text-slate-950 disabled:opacity-60"><ShoppingBag size={17} />Pesan Sekarang</button>
+      </div>}
     </div>
   );
   const shareModal = isShareOpen && createPortal(

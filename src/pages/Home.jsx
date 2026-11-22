@@ -575,8 +575,23 @@ const Home = () => {
 
   const handleProductClick = (product) => {
     if (!product?.id) return;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      const from = `${location.pathname}${location.search}`;
+      sessionStorage.setItem('sobatniaga-product-return-scroll', String(window.scrollY));
+      navigate(`/product/${encodeURIComponent(product.id)}`, { state: { from } });
+      return;
+    }
     setSelectedProductId(String(product.id));
   };
+
+  useEffect(() => {
+    if (location.pathname !== '/') return;
+    const savedScroll = sessionStorage.getItem('sobatniaga-product-return-scroll');
+    if (savedScroll === null) return;
+    sessionStorage.removeItem('sobatniaga-product-return-scroll');
+    const restoreFrame = window.requestAnimationFrame(() => window.scrollTo(0, Number(savedScroll) || 0));
+    return () => window.cancelAnimationFrame(restoreFrame);
+  }, [location.pathname]);
 
   const handleCheckout = (orderId) => {
     if (!requireLogin()) return;

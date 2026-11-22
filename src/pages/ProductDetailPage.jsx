@@ -15,7 +15,8 @@ const ProductDetailPage = () => {
       && !from.includes('\\')
       ? from
       : '/';
-    navigate(safeFrom);
+    if (window.history.state?.idx > 0 && location.state?.from) navigate(-1);
+    else navigate(safeFrom);
   };
 
   const returnToHome = (productDetailAction) => {
