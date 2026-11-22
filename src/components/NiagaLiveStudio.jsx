@@ -17,6 +17,8 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
   const [viewerCount, setViewerCount] = useState(0);
   const [starting, setStarting] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
+  const [audioReady, setAudioReady] = useState(false);
+  const [audioError, setAudioError] = useState('');
   const [error, setError] = useState('');
 
   const stopLive = async () => {
@@ -115,11 +117,23 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
     setError('');
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser ini tidak menyediakan akses kamera. Buka situs melalui HTTPS dan izinkan kamera serta mikrofon.');
-      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
       mediaRef.current?.getTracks().forEach((track) => track.stop());
       mediaRef.current = media;
       if (videoRef.current) videoRef.current.srcObject = media;
       setMediaReady(true);
+      setError('');
+      try {
+        const audioOnlyStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        audioOnlyStream.getAudioTracks().forEach((track) => media.addTrack(track));
+        setAudioReady(true);
+        setAudioError('');
+      } catch (microphoneError) {
+        setAudioReady(false);
+        setAudioError(microphoneError.name === 'NotFoundError'
+          ? 'Mikrofon tidak ditemukan. Live tetap bisa dimulai tanpa suara.'
+          : 'Mikrofon belum diizinkan. Live tetap bisa dimulai tanpa suara; kamu bisa izinkan mikrofon secara terpisah.');
+      }
     } catch (permissionError) {
       const denied = permissionError.name === 'NotAllowedError' || permissionError.name === 'PermissionDeniedError';
       setError(denied
@@ -127,6 +141,23 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
         : permissionError.name === 'NotFoundError'
           ? 'Kamera atau mikrofon tidak ditemukan. Sambungkan perangkat lalu coba lagi.'
           : permissionError.message || 'Akses kamera belum tersedia.');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const requestMicrophonePermission = async () => {
+    setStarting(true);
+    setAudioError('');
+    try {
+      if (!mediaRef.current || !navigator.mediaDevices?.getUserMedia) throw new Error('Nyalakan kamera terlebih dahulu.');
+      const audioOnlyStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      audioOnlyStream.getAudioTracks().forEach((track) => mediaRef.current.addTrack(track));
+      setAudioReady(true);
+    } catch (microphoneError) {
+      setAudioError(microphoneError.name === 'NotFoundError'
+        ? 'Mikrofon tidak ditemukan. Live tetap bisa dimulai tanpa suara.'
+        : 'Mikrofon masih diblokir. Izinkan Mikrofon di setelan situs dan setelan perangkat, lalu coba lagi.');
     } finally {
       setStarting(false);
     }
@@ -199,9 +230,10 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
             </label>
             <div className="rounded-xl bg-slate-900 p-3 text-xs text-white/65 leading-relaxed">
               <p className="font-bold text-white mb-1">Sebelum mulai</p>
-              <p>Gunakan situs HTTPS. Tekan tombol izin di bawah dan pilih Izinkan pada pop-up browser. Setelah kamera siap, tekan Mulai Siaran. Biarkan halaman tetap terbuka selama live.</p>
+              <p>Gunakan situs HTTPS. Izin kamera dan mikrofon diminta terpisah. Setelah kamera siap, siaran video bisa dimulai; mikrofon boleh diizinkan terpisah untuk menambahkan suara.</p>
             </div>
             {error && <div className="rounded-lg bg-red-950/70 border border-red-500/30 p-3 text-xs text-red-200">{error}</div>}
+            {audioError && <div className="rounded-lg border border-amber-500/30 bg-amber-950/40 p-3 text-xs text-amber-100">{audioError}</div>}
             {error.toLowerCase().includes('diblokir') && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-950/40 p-3 text-xs leading-relaxed text-amber-100">
                 <p className="font-bold mb-1">Cara membuka izin kamera</p>
@@ -211,9 +243,12 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
             )}
             {!sessionId ? (
               mediaReady ? (
-                <button onClick={startLive} disabled={starting} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-60">
-                  {starting ? <Loader2 size={18} className="animate-spin" /> : <Radio size={18} />}{starting ? 'Menyiapkan siaran…' : 'Mulai Siaran'}
-                </button>
+                <div className="mt-auto space-y-2">
+                  {!audioReady && <button onClick={requestMicrophonePermission} disabled={starting} className="w-full rounded-xl border border-white/15 bg-slate-800 py-2.5 text-sm font-bold hover:bg-slate-700 disabled:opacity-60">{starting ? 'Meminta izin mikrofon…' : 'Izinkan Mikrofon (Opsional)'}</button>}
+                  <button onClick={startLive} disabled={starting} className="w-full flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-60">
+                    {starting ? <Loader2 size={18} className="animate-spin" /> : <Radio size={18} />}{starting ? 'Menyiapkan siaran…' : audioReady ? 'Mulai Siaran' : 'Mulai Siaran Tanpa Suara'}
+                  </button>
+                </div>
               ) : (
                 <button onClick={requestCameraPermission} disabled={starting} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-sky-600 py-3 font-black hover:bg-sky-500 disabled:opacity-60">
                   {starting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}{starting ? 'Meminta izin kamera…' : error.toLowerCase().includes('diblokir') ? 'Coba Lagi Setelah Mengizinkan' : 'Izinkan Kamera & Mikrofon'}
