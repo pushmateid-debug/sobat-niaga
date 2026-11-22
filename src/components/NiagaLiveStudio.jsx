@@ -16,6 +16,7 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
   const [sessionId, setSessionId] = useState(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [starting, setStarting] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
   const [error, setError] = useState('');
 
   const stopLive = async () => {
@@ -109,6 +110,28 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
     }, (snapshotError) => setError(snapshotError.message));
   }, [sessionId]);
 
+  const requestCameraPermission = async () => {
+    setStarting(true);
+    setError('');
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser ini tidak menyediakan akses kamera. Buka situs melalui HTTPS dan izinkan kamera serta mikrofon.');
+      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+      mediaRef.current?.getTracks().forEach((track) => track.stop());
+      mediaRef.current = media;
+      if (videoRef.current) videoRef.current.srcObject = media;
+      setMediaReady(true);
+    } catch (permissionError) {
+      const denied = permissionError.name === 'NotAllowedError' || permissionError.name === 'PermissionDeniedError';
+      setError(denied
+        ? 'Izin kamera/mikrofon diblokir. Ubah izin situs ke Izinkan di browser, lalu tekan tombol coba lagi di bawah.'
+        : permissionError.name === 'NotFoundError'
+          ? 'Kamera atau mikrofon tidak ditemukan. Sambungkan perangkat lalu coba lagi.'
+          : permissionError.message || 'Akses kamera belum tersedia.');
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const startLive = async () => {
     if (!auth.currentUser || auth.currentUser.uid !== user?.uid) {
       setError('Sesi akun tidak valid. Muat ulang lalu coba lagi.');
@@ -117,10 +140,7 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
     setStarting(true);
     setError('');
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser ini tidak menyediakan akses kamera. Buka situs melalui HTTPS dan izinkan kamera serta mikrofon.');
-      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
-      mediaRef.current = media;
-      if (videoRef.current) videoRef.current.srcObject = media;
+      if (!mediaRef.current) throw new Error('Izinkan kamera dan mikrofon terlebih dahulu.');
       const streamDoc = await addDoc(collection(dbFirestore, 'live_streams'), {
         hostId: user.uid,
         sellerName: storeName || user.displayName || 'Toko SobatNiaga',
@@ -131,13 +151,8 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
       });
       setSessionId(streamDoc.id);
     } catch (startError) {
-      mediaRef.current?.getTracks().forEach((track) => track.stop());
-      mediaRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
       const message = startError.code === 'permission-denied'
         ? 'Akses database live ditolak. Aturan Firestore lokal perlu dipublikasikan terlebih dahulu.'
-        : startError.name === 'NotAllowedError'
-          ? 'Izin kamera atau mikrofon ditolak. Izinkan dari ikon kamera di bilah alamat browser.'
           : startError.message || 'Live belum dapat dimulai.';
       setError(message);
     } finally {
@@ -165,6 +180,8 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
                 <span className="rounded bg-red-600 px-2 py-1 text-xs font-black animate-pulse">LIVE</span>
                 <span className="rounded bg-black/60 px-2 py-1 text-xs flex items-center gap-1"><Users size={13} /> {viewerCount}/2</span>
               </div>
+            ) : mediaReady ? (
+              <div className="absolute left-3 top-3 rounded bg-emerald-700 px-2 py-1 text-xs font-bold">Kamera siap</div>
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/60 text-sm px-6 text-center">
                 <Camera size={36} />
@@ -182,13 +199,26 @@ const NiagaLiveStudio = ({ user, storeName, onClose }) => {
             </label>
             <div className="rounded-xl bg-slate-900 p-3 text-xs text-white/65 leading-relaxed">
               <p className="font-bold text-white mb-1">Sebelum mulai</p>
-              <p>Gunakan situs HTTPS, izinkan kamera/mikrofon, dan jangan menutup halaman selama live. Video dikirim langsung dari perangkat ke penonton; Firestore hanya membantu koneksi awal.</p>
+              <p>Gunakan situs HTTPS. Tekan tombol izin di bawah dan pilih Izinkan pada pop-up browser. Setelah kamera siap, tekan Mulai Siaran. Biarkan halaman tetap terbuka selama live.</p>
             </div>
             {error && <div className="rounded-lg bg-red-950/70 border border-red-500/30 p-3 text-xs text-red-200">{error}</div>}
+            {error.toLowerCase().includes('diblokir') && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-950/40 p-3 text-xs leading-relaxed text-amber-100">
+                <p className="font-bold mb-1">Cara membuka izin kamera</p>
+                <p><b>Laptop:</b> klik ikon pengaturan di kiri alamat situs → Setelan situs → Kamera dan Mikrofon → Izinkan, lalu muat ulang halaman.</p>
+                <p className="mt-2"><b>HP:</b> buka menu browser → Setelan situs/Izin → Kamera dan Mikrofon → Izinkan. Jika masih ditolak, izinkan juga aplikasi browser di Setelan HP.</p>
+              </div>
+            )}
             {!sessionId ? (
-              <button onClick={startLive} disabled={starting} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-60">
-                {starting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}{starting ? 'Menyiapkan kamera…' : 'Mulai Siaran'}
-              </button>
+              mediaReady ? (
+                <button onClick={startLive} disabled={starting} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-60">
+                  {starting ? <Loader2 size={18} className="animate-spin" /> : <Radio size={18} />}{starting ? 'Menyiapkan siaran…' : 'Mulai Siaran'}
+                </button>
+              ) : (
+                <button onClick={requestCameraPermission} disabled={starting} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-sky-600 py-3 font-black hover:bg-sky-500 disabled:opacity-60">
+                  {starting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}{starting ? 'Meminta izin kamera…' : error.toLowerCase().includes('diblokir') ? 'Coba Lagi Setelah Mengizinkan' : 'Izinkan Kamera & Mikrofon'}
+                </button>
+              )
             ) : (
               <button onClick={handleClose} className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-slate-700 py-3 font-black hover:bg-slate-600"><CameraOff size={18} /> Akhiri Siaran</button>
             )}
