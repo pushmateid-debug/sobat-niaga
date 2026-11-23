@@ -43,6 +43,17 @@ const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
 const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
 const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
 const SellerInbox = React.lazy(() => import('./SellerInbox'));
+const PRODUCTS_CACHE_KEY = 'sobat-niaga:home-products:v1';
+const readCachedProducts = () => {
+  try {
+    const cached = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    const parsed = cached ? JSON.parse(cached) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -59,7 +70,7 @@ const Home = () => {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
   const [previousView, setPreviousView] = useState('home');
   const [selectedProductId, setSelectedProductId] = useState(null);
-  const [products, setProducts] = useState([]); // Real Products State
+  const [products, setProducts] = useState(readCachedProducts); // Tampilkan katalog tersimpan sebelum jaringan merespons
   const [cartCount, setCartCount] = useState(0);
   const [currentOrder, setCurrentOrder] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -317,14 +328,22 @@ const Home = () => {
   // Fetch Real Products from Firebase
   useEffect(() => {
     const productsRef = ref(db, 'products');
-    onValue(productsRef, (snapshot) => {
+    const unsubscribe = onValue(productsRef, (snapshot) => {
       const data = snapshot.val();
       const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
       // Filter Produk Aktif (isActive !== false) agar produk arsip tidak muncul
       const activeProducts = loadedProducts.filter(p => p.isActive !== false);
       // Sort by createdAt descending (Terbaru paling atas/kiri)
-      setProducts(activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      const sortedProducts = activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setProducts(sortedProducts);
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(sortedProducts));
+      } catch (error) {
+        // Cache hanya akselerasi; katalog realtime tetap berfungsi bila penyimpanan penuh/dinonaktifkan.
+        console.warn('Katalog home tidak dapat disimpan ke cache lokal:', error);
+      }
     });
+    return () => unsubscribe();
   }, []);
 
   // Effect untuk Sliding Capsule Animation
@@ -1532,7 +1551,7 @@ const Home = () => {
             <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products && products.length > 0 ? products.slice(0, 12).map((product) => (
+            {products && products.length > 0 ? products.map((product) => (
               <ProductCard 
                 key={product.id} 
                 product={{...product, image: product.mediaUrl || 'https://via.placeholder.com/150', price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}}
