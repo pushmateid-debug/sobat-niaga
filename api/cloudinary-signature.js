@@ -67,8 +67,10 @@ module.exports = async (request, response) => {
   const isAllowedFolder = isAdmin
     ? ADMIN_FOLDERS.has(folder) || USER_FOLDERS.has(folder)
     : USER_FOLDERS.has(folder);
-  const allowedResourceType = resourceType === 'image'
-    || (resourceType === 'video' && ['sobatniaga/login', 'sobatniaga/products', 'sobatniaga/reviews'].includes(folder));
+  // Image uploads must go through /api/image-upload so scanning and WebP
+  // conversion cannot be bypassed with a client-side Cloudinary signature.
+  const allowedResourceType = resourceType === 'video'
+    && ['sobatniaga/login', 'sobatniaga/products', 'sobatniaga/reviews'].includes(folder);
 
   if (!isAllowedFolder || !allowedResourceType) {
     return response.status(403).json({ error: 'Akses upload tidak diizinkan.' });

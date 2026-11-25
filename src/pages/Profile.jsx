@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, Save, User, Mail, Phone, AtSign, Loader2, ShoppingBag, Moon, Sun, Wallet, PlusCircle, Info, ChevronRight, Store, AlertCircle, Star, Bike } from 'lucide-react';
-import { auth, db, storage } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { uploadToCloudinary as uploadCloudinaryFile } from '../utils/cloudinaryUpload';
 import { updateProfile, signOut } from 'firebase/auth';
 import { ref as dbRef, set, get, update, onValue, query as dbQuery, orderByChild, equalTo } from 'firebase/database';
-import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Swal from 'sweetalert2';
 import { useTheme } from '../context/ThemeContext'; // Import Context
 import { addIntegerValues, formatRupiah } from '../utils/formatIdNumber';

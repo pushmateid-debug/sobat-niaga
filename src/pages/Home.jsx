@@ -1,2213 +1,2251 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense, useTransition, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
-import { Swiper, SwiperSlide } from 'swiper/react';
-import { Autoplay, Pagination, EffectCoverflow, Navigation } from 'swiper/modules';
-import Swal from 'sweetalert2';
-import 'swiper/css';
-import 'swiper/css/navigation';
-import 'swiper/css/pagination';
-import 'swiper/css/effect-coverflow';
-import ProductCard from '../components/ProductCard';
-import { ChatLayout } from '../components/ChatLayout'; // Import ChatLayout
-import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
-import { auth, db, dbFirestore, messaging } from '../config/firebase';
-import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
-import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { getToken, onMessage } from 'firebase/messaging';
-import { useTheme } from '../context/ThemeContext'; // Import Context
-import ImageWithFallback from '../components/ImageWithFallback';
-
-// Lazy Load Pages untuk Optimasi Bundle Size
-const TopUp = React.lazy(() => import('./TopUp'));
-const FoodOrder = React.lazy(() => import('./FoodOrder'));
-const SkinCare = React.lazy(() => import('./SkinCare'));
-const Fashion = React.lazy(() => import('./Fashion'));
-const Jasa = React.lazy(() => import('./Jasa'));
-const Cart = React.lazy(() => import('./Cart'));
-const Profile = React.lazy(() => import('./Profile'));
-const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
-const Address = React.lazy(() => import('./Address'));
-const ProductDetail = React.lazy(() => import('./ProductDetail'));
-const Payment = React.lazy(() => import('./Payment'));
-const TransactionHistory = React.lazy(() => import('./TransactionHistory'));
-const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
-const StoreProfile = React.lazy(() => import('./StoreProfile'));
-const DigitalCenter = React.lazy(() => import('./DigitalCenter'));
-const NiagaGo = React.lazy(() => import('./NiagaGo'));
-const SearchResults = React.lazy(() => import('./SearchResults'));
-const SearchPage = React.lazy(() => import('./SearchPage'));
-const AllCategories = React.lazy(() => import('./AllCategories'));
-const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
-const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
-const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
-const SellerInbox = React.lazy(() => import('./SellerInbox'));
-const PRODUCTS_CACHE_KEY = 'sobat-niaga:home-products:v1';
-const readCachedProducts = () => {
-  try {
-    const cached = localStorage.getItem(PRODUCTS_CACHE_KEY);
-    const parsed = cached ? JSON.parse(cached) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const Home = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const dropdownRef = useRef(null);
-  const notificationRef = useRef(null);
-  const searchRef = useRef(null);
-  const chatMenuRef = useRef(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
-  const [previousView, setPreviousView] = useState('home');
-  const [selectedProductId, setSelectedProductId] = useState(null);
-  const [products, setProducts] = useState(readCachedProducts); // Tampilkan katalog tersimpan sebelum jaringan merespons
-  const [cartCount, setCartCount] = useState(0);
-  const [currentOrder, setCurrentOrder] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [historyTab, setHistoryTab] = useState('waiting_payment');
-  const [highlightOrderId, setHighlightOrderId] = useState(null);
-  const [bannerImages, setBannerImages] = useState({}); // State buat nampung URL banner dari database
-  const [selectedSellerId, setSelectedSellerId] = useState(null); // ID Toko yang sedang dilihat
-  const [searchQuery, setSearchQuery] = useState(''); // State untuk input pencarian
-  const [activeSearchQuery, setActiveSearchQuery] = useState(''); // State untuk query yang aktif dicari
-  const [selectedGame, setSelectedGame] = useState(null); // State untuk modal top up game
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
-  const [capsuleStyle, setCapsuleStyle] = useState({ left: 0, width: 0, opacity: 0 });
-  const tabsRef = useRef([]);
-  const [selectedUserProfileId, setSelectedUserProfileId] = useState(null); // State baru
-  const { theme } = useTheme() || { theme: 'light' }; // 🛡️ Safety check biar gak crash pas toggle theme
-  const isDarkMode = theme === 'dark';
-  const [flashDeal, setFlashDeal] = useState(null);
-  const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 });
-  const [isExpired, setIsExpired] = useState(true); // Default true biar gak flicker
-  const [pagesContent, setPagesContent] = useState({}); // Konten Halaman Statis
-  const [chatTab, setChatTab] = useState('admin'); // 'admin' | 'seller'
-  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
-  const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop (Floating)
-  const [chatSellerId, setChatSellerId] = useState(null); // ID Seller untuk chat aktif
-  const [activeChatBuyerId, setActiveChatBuyerId] = useState(null); // ID Buyer untuk chat aktif (Sisi Seller)
-
-  // --- LAYANAN CHATBOT ADMIN (BOT RESPONSE LOGIC) ---
-  const chatbotMenu = [
-    { label: "💸 Saldo Top Up belum masuk", botResponse: "Halo Sobat! Untuk melakukan Top Up Saldo SobatNiaga, kamu bisa langsung menghubungi admin keuangan kami via WhatsApp di nomor 089517587498. Proses cepat dan aman!" },
-    { label: "📦 Cek status transaksi Rekber", botResponse: "Halo! Jika kamu ingin mengecek status pencairan dana Rekber atau verifikasi pembayaran QRIS, mohon kirimkan ID Transaksi atau Screenshot Bukti Transfer di sini ya. Admin akan segera memproses dalam 5-10 menit." },
-    { label: "🛡️ Laporkan kendala transaksi / penipuan", botResponse: "SobatNiaga sangat menjaga keamanan bertransaksi. Jika kamu menemukan indikasi penipuan, akun palsu, atau masalah transaksi, harap lampirkan kronologi singkat dan bukti foto. Laporanmu akan langsung ditangani tim keamanan kami." },
-    { label: "🤝 Cara daftar menjadi penjual (Seller)", botResponse: "Tertarik buka toko sendiri di SobatNiaga? Caranya gampang banget! Cukup masuk ke menu 'Profil', klik 'Buka Toko Gratis', lalu lengkapi data tokomu. Yuk, mulai jualan dan sukses bareng SobatNiaga!" }
-  ];
-
-  const [isInstantMenuOpen, setIsInstantMenuOpen] = useState(false);
-
-  const handleChatBotClick = async (option) => {
-    if (!requireLogin()) return;
-    const messagesRef = ref(db, `chats/${user.uid}/messages`);
-    const chatRef = ref(db, `chats/${user.uid}`);
-    
-    try {
-      // 1. Pesan User (Pilihan yang diklik)
-      await push(messagesRef, {
-        text: option.label,
-        sender: 'user',
-        timestamp: serverTimestamp(),
-        status: 'sent'
-      });
-
-      // 2. Pesan Balasan Otomatis Admin (Bot)
-      setTimeout(async () => {
-        await push(messagesRef, {
-          text: option.botResponse,
-          sender: 'admin',
-          timestamp: serverTimestamp(),
-          status: 'sent',
-          isBot: true
-        });
-        // Update Metadata Chat agar Admin di Dashboard tau ada aktifitas
-        await update(chatRef, { lastMessageText: option.botResponse, lastMessageTime: serverTimestamp(), hasUnreadAdmin: true });
-      }, 600);
-      setIsInstantMenuOpen(false); // Otomatis tutup menu setelah pilih
-    } catch (error) { console.error("Chatbot Error:", error); }
-  };
-
-  useEffect(() => {
-    if ((currentView === 'chat' || isDesktopChatOpen) && chatTab === 'admin') {
-      setIsInstantMenuOpen(true);
-    }
-  }, [currentView, isDesktopChatOpen, chatTab]);
-
-  // --- WEB PUSH NOTIFICATION (FCM) LOGIC ---
-  const requestPermission = async (userId) => {
-    console.log('Meminta izin notifikasi...');
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        const token = await getToken(messaging, { 
-          vapidKey: 'BIBHwt4wNcjkNxMT0KmI_babges5K0R7GQS9AcEMP61_6XXHFUfvUlAPIQ3bCR93mbELRgzWaySglN-QCYVlDcE' 
-        });
-        
-        if (token) {
-          console.log('FCM Token didapat:', token);
-          // Simpan ke Realtime DB (utama, selalu berhasil untuk user login)
-          const userRtdbRef = ref(db, `users/${userId}`);
-          await update(userRtdbRef, { fcmToken: token });
-
-          // Simpan ke Firestore juga (untuk push background) — tangkap error secara terpisah
-          // agar kegagalan Firestore tidak membatalkan penyimpanan ke Realtime DB
-          try {
-            const userFirestoreRef = doc(dbFirestore, 'users', userId);
-            await setDoc(userFirestoreRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
-          } catch (firestoreError) {
-            // Tidak kritis — FCM token sudah tersimpan di Realtime DB
-            console.warn('FCM token tidak tersimpan ke Firestore (akan dicoba ulang berikutnya):', firestoreError.code);
-          }
-        }
-      } else {
-        console.warn('Izin notifikasi ditolak oleh user.');
-      }
-    } catch (error) {
-      console.error('Error saat setup messaging:', error);
-    }
-  };
-
-  // Listener untuk pesan masuk saat App sedang terbuka (Foreground)
-  useEffect(() => {
-    if (!messaging) return;
-    const unsubscribe = onMessage(messaging, (payload) => {
-      console.log('Pesan diterima di foreground:', payload);
-      // Tampilkan toast notifikasi manual jika user sedang tidak di halaman chat
-      if (currentView !== 'chat') {
-        Swal.fire({
-          title: payload.notification.title,
-          text: payload.notification.body,
-          icon: 'info',
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 4000
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, [currentView]);
-
-  const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
-  const desktopChatRef = useRef(null);
-  const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
-  const openLogin = useCallback((mode = 'login') => {
-    navigate(`/login?mode=${mode}`, { state: { from: location.pathname } });
-  }, [location.pathname, navigate]);
-  const requireLogin = useCallback(() => {
-    if (user?.uid) return true;
-    openLogin();
-    return false;
-  }, [openLogin, user?.uid]);
-  const openCart = useCallback(() => {
-    if (!requireLogin()) return;
-    startTransition(() => setCurrentView('cart'));
-  }, [requireLogin, startTransition]);
-
-  // State Global Config dari DB
-  const [globalNotifSound, setGlobalNotifSound] = useState('');
-  useEffect(() => {
-    // Get dari dokumen global settings di Realtime/Firestore (Saya buat di Firestore sesuai request)
-    // Menggunakan getDoc sekali saja di awal home mount
-    const fetchGlobalConfig = async () => {
-        const snap = await get(child(ref(db), 'app_config/settings'));
-        if (snap.exists()) setGlobalNotifSound(snap.val().notificationSoundUrl);
-    };
-    fetchGlobalConfig();
-  }, []);
-
-  // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
-  const playCustomNotificationSound = useCallback(async () => {
-    try {
-      // Update: Ambil dari Realtime Database sesuai instruksi Dani
-      const dbRef = ref(db);
-      const snapshot = await get(child(dbRef, "app_config/settings"));
-      let targetUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-
-      if (snapshot.exists() && snapshot.val().notificationSoundUrl) {
-        targetUrl = snapshot.val().notificationSoundUrl;
-      }
-
-      const audio = new Audio(`${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${new Date().getTime()}`);
-      audio.crossOrigin = "anonymous";
-      await audio.play();
-    } catch (error) {
-      console.error("Gagal putar audio:", error);
-    }
-  }, []);
-
-  // --- CLEANUP LOCALSTORAGE ---
-  useEffect(() => {
-    // Hapus sisa-sisa key lama agar tidak mengganggu logika baru
-    localStorage.removeItem('notif_sound');
-    localStorage.removeItem('custom_notif_sound');
-  }, []);
-
-  // Refs for Auto-Scroll Sections
-  const populerRef = useRef(null);
-  const pulsaRef = useRef(null);
-  const makanRef = useRef(null);
-  const skincareRef = useRef(null);
-  const fashionRef = useRef(null);
-  const jasaRef = useRef(null);
-  const gameRef = useRef(null);
-  const niagaGoRef = useRef(null);
-
-  // Helper: validasi URL gambar agar tidak memicu 404 di konsol
-  const isValidImageUrl = (url) => {
-    if (!url || typeof url !== 'string') return false;
-    try {
-      const parsed = new URL(url);
-      return parsed.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  };
-
-  // Logic Banner Dinamis (Database > Lokal)
-  const banners = useMemo(() => {
-    const slots = [
-      { id: 1, key: 'home_slider_1', alt: "Slide 1" },
-      { id: 2, key: 'home_slider_2', alt: "Slide 2" },
-      { id: 3, key: 'home_slider_3', alt: "Slide 3" },
-      { id: 4, key: 'home_slider_4', alt: "Slide 4" },
-      { id: 5, key: 'home_slider_5', alt: "Slide 5" },
-    ];
-
-    return slots.map(slot => {
-      const data = bannerImages[slot.key];
-      if (!data) return null;
-      
-      const image = (typeof data === 'object' && data !== null) ? data.url : data;
-      const link = (typeof data === 'object' && data !== null) ? data.link : null;
-      
-      // Lewati slot dengan URL tidak valid agar tidak muncul error 404
-      if (!isValidImageUrl(image)) return null;
-
-      return { ...slot, image, link };
-    }).filter(b => b && b.image);
-  }, [bannerImages]);
-
-  const footerBg = useMemo(() => {
-    const data = bannerImages.footer_bg;
-    return (typeof data === 'object' && data !== null) ? data?.url : data;
-  }, [bannerImages]);
-
-  const chatIcon = useMemo(() => {
-    const data = bannerImages.chat_icon;
-    return (typeof data === 'object' && data !== null) ? data?.url : data;
-  }, [bannerImages]);
-
-  const homeBgStatic = useMemo(() => {
-    const data = bannerImages.home_bg_static;
-    return (typeof data === 'object' && data !== null) ? data?.url : data;
-  }, [bannerImages]);
-
-  // Kategori Navigasi Baru (Sticky)
-  const navCategories = [
-    { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
-    { name: 'Sobat Berbagi', icon: <HeartHandshake size={20} />, color: 'shadow-orange-100/50', key: 'icon_sharing' },
-    { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50', key: 'icon_makanan' },
-    { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50', key: 'icon_skincare' },
-    { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
-    { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
-    { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50', key: 'icon_game' },
-    { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50', key: 'icon_lainnya' },
-  ];
-
-  // Fetch Real Products from Firebase
-  useEffect(() => {
-    const productsRef = ref(db, 'products');
-    const unsubscribe = onValue(productsRef, (snapshot) => {
-      const data = snapshot.val();
-      const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-      // Filter Produk Aktif (isActive !== false) agar produk arsip tidak muncul
-      const activeProducts = loadedProducts.filter(p => p.isActive !== false);
-      // Sort by createdAt descending (Terbaru paling atas/kiri)
-      const sortedProducts = activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setProducts(sortedProducts);
-      try {
-        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(sortedProducts));
-      } catch (error) {
-        // Cache hanya akselerasi; katalog realtime tetap berfungsi bila penyimpanan penuh/dinonaktifkan.
-        console.warn('Katalog home tidak dapat disimpan ke cache lokal:', error);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Effect untuk Sliding Capsule Animation
-  useEffect(() => {
-    const updateCapsule = () => {
-      const currentTab = tabsRef.current[activeCategoryIndex];
-      if (currentTab) {
-        setCapsuleStyle({
-          left: currentTab.offsetLeft,
-          width: currentTab.offsetWidth,
-          opacity: 1
-        });
-      }
-    };
-    updateCapsule();
-    window.addEventListener('resize', updateCapsule);
-    return () => window.removeEventListener('resize', updateCapsule);
-  }, [activeCategoryIndex]);
-
-  // Fetch Banner Realtime
-  useEffect(() => {
-    const bannersRef = ref(db, 'admin/banners');
-    const unsubscribe = onValue(bannersRef, (snapshot) => {
-      setBannerImages(snapshot.exists() ? snapshot.val() : {});
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch Flash Deal Data
-  useEffect(() => {
-    const fdRef = ref(db, 'admin/flashDeal');
-    onValue(fdRef, (snap) => {
-        if (snap.exists()) setFlashDeal(snap.val());
-    });
-  }, []);
-
-  // Fetch Pages Content (Tentang Kami, dll)
-  useEffect(() => {
-    const pagesRef = ref(db, 'admin/pages');
-    onValue(pagesRef, (snap) => {
-        if (snap.exists()) setPagesContent(snap.val());
-    });
-  }, []);
-
-  // Countdown Timer Logic
-  useEffect(() => {
-    if (flashDeal?.isActive && flashDeal?.endTime) {
-        const calculateTime = () => {
-            const now = new Date().getTime();
-            const end = new Date(flashDeal.endTime).getTime();
-            const distance = end - now;
-            
-            if (distance <= 0) {
-                setTimeLeft({ h: 0, m: 0, s: 0 });
-                setIsExpired(true); // Waktu habis -> Sembunyikan
-            } else {
-                setIsExpired(false); // Waktu ada -> Tampilkan
-                setTimeLeft({
-                    // Gunakan total jam (tidak di-modulo 24) agar jika > 1 hari tetap terlihat jamnya (misal 30 jam)
-                    h: Math.floor(distance / (1000 * 60 * 60)), 
-                    m: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-                    s: Math.floor((distance % (1000 * 60)) / 1000)
-                });
-            }
-        };
-
-        calculateTime(); // Hitung langsung saat mount biar gak nunggu 1 detik
-        const interval = setInterval(calculateTime, 1000);
-        return () => clearInterval(interval);
-    } else {
-        setTimeLeft({ h: 0, m: 0, s: 0 });
-        setIsExpired(true); // Kalau tidak aktif/tidak ada data -> Sembunyikan
-    }
-  }, [flashDeal]);
-
-  // Listen to Cart Count
-  useEffect(() => {
-    if (user?.uid) {
-      const cartRef = ref(db, `users/${user.uid}/cart`);
-      return onValue(cartRef, (snapshot) => {
-        const data = snapshot.val();
-        setCartCount(data ? Object.keys(data).length : 0);
-      });
-    }
-  }, [user]);
-
-  // Fetch Notifications Realtime
-  const prevNotifCount = useRef(0);
-  const isFirstLoadNotif = useRef(true);
-
-  // --- GLOBAL REAL-TIME NOTIFICATION LISTENER (REALTIME DATABASE) ---
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    // 1. Tentukan apakah user ini admin atau user biasa
-    const isAdmin = user.email === 'pushmate.id@gmail.com'; // Admin Global
-    const notifRef = ref(db, 'notifications');
-    let notifQuery;
-
-    if (isAdmin) {
-      // Jalur Admin: Dengerin seluruh notifikasi unread global
-      notifQuery = dbQuery(notifRef, orderByChild('status'), equalTo('unread'));
-    } else {
-      // Jalur User Biasa: Cuma dengerin notifikasi yang ditujukan buat UID dia (pake recipientId sesuai Rules)
-      notifQuery = dbQuery(notifRef, orderByChild('recipientId'), equalTo(user.uid));
-    }
-
-    // Sync UI (Daftar di Lonceng) via onValue
-    const unsubscribeValue = onValue(notifQuery, (snapshot) => {
-      const data = snapshot.val();
-      const loadedNotifs = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-      
-      // Filter manual unread untuk user biasa karena query RTDB terbatas 1 filter field
-      const finalNotifs = isAdmin ? loadedNotifs : loadedNotifs.filter(n => n.status === 'unread');
-
-      setNotifications(finalNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      
-      // Tandai batch awal selesai diproses (sync burst)
-      isFirstLoadNotif.current = false;
-    });
-
-    // 2. Mainkan suara HANYA saat ada DATA ANAK BARU masuk (realtime)
-    const unsubscribeAdded = onChildAdded(notifQuery, (snapshot) => {
-      // Skip bunyi untuk data lama saat aplikasi baru dibuka
-      if (isFirstLoadNotif.current) return;
-      
-      const data = snapshot.val();
-      if (data && data.status === 'unread') {
-        playCustomNotificationSound();
-      }
-    });
-
-    return () => {
-      unsubscribeValue();
-      unsubscribeAdded();
-    };
-  }, [user?.uid, user?.email, playCustomNotificationSound]);
-
-  // Click Outside & Escape Key Functionality
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsProfileOpen(false);
-      }
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setIsNotificationOpen(false);
-      }
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
-        setShowSuggestions(false);
-      }
-      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target)) {
-        setIsChatMenuOpen(false);
-      }
-      if (desktopChatRef.current && !desktopChatRef.current.contains(event.target)) {
-        setIsDesktopChatOpen(false);
-      }
-    };
-
-    const handleEscapeKey = (event) => {
-      if (event.key === 'Escape') {
-        setIsProfileOpen(false);
-        setIsNotificationOpen(false);
-        setShowSuggestions(false);
-        setIsChatMenuOpen(false);
-        setIsDesktopChatOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscapeKey);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscapeKey);
-    };
-  }, []);
-
-  // Auth Persistence Listener: Cek status login saat refresh
-  useEffect(() => {
-    let dbUnsubscribe; // Simpan fungsi unsubscribe DB
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      // Bersihkan listener DB sebelumnya jika ada (misal ganti akun)
-      if (dbUnsubscribe) dbUnsubscribe();
-
-      if (currentUser) {
-        // Jika user login, ambil data lengkap dari Realtime DB
-        const userRef = ref(db, `users/${currentUser.uid}`);
-        
-        // Gunakan onValue agar data user (saldo, dll) selalu realtime
-        dbUnsubscribe = onValue(userRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const dbUser = snapshot.val();
-            // Gabungkan data Auth dan DB
-            setUser({ ...currentUser, ...dbUser });
-          } else {
-            // User baru, belum ada data di DB
-            setUser(currentUser);
-          }
-
-          // PENTING: Minta izin notifikasi begitu user login
-          requestPermission(currentUser.uid);
-
-          // PENTING: Matikan loading HANYA setelah data user siap
-          setIsLoading(false);
-        });
-      } else {
-        setUser(null);
-        setIsLoading(false);
-      }
-    });
-    
-    // Cleanup saat unmount
-    return () => {
-      unsubscribe();
-      if (dbUnsubscribe) dbUnsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    const privateViews = new Set([
-      'cart', 'payment', 'topup', 'chat', 'seller-chat', 'seller-inbox',
-      'profile', 'history', 'address', 'dashboard-seller', 'admin-dashboard',
-      'niagago', 'sobat-berbagi', 'user-public-profile'
-    ]);
-    if (!isLoading && !user?.uid && privateViews.has(currentView)) {
-      setCurrentView('home');
-      openLogin();
-    }
-  }, [currentView, isLoading, openLogin, user?.uid]);
-
-  // Protected View "Redirect"
-  useEffect(() => {
-    // Jika user mencoba mengakses halaman admin tanpa hak, tendang ke home.
-    if (currentView === 'admin-dashboard' && user?.email !== 'pushmate.id@gmail.com') {
-      console.warn("Access Denied: You are not authorized to view this page. Redirecting to home.");
-      setCurrentView('home');
-    }
-  }, [currentView, user]); // Dijalankan setiap kali view atau user berubah
-
-  const toggleProfileDropdown = () => {
-    setIsProfileOpen(!isProfileOpen);
-  };
-
-  const closeProfileDropdown = () => {
-    setIsProfileOpen(false);
-  };
-
-  const handleProductClick = (product) => {
-    if (!product?.id) return;
-    if (window.matchMedia('(max-width: 767px)').matches) {
-      const from = `${location.pathname}${location.search}`;
-      sessionStorage.setItem('sobatniaga-product-return-scroll', String(window.scrollY));
-      navigate(`/product/${encodeURIComponent(product.id)}`, { state: { from } });
-      return;
-    }
-    setSelectedProductId(String(product.id));
-  };
-
-  useEffect(() => {
-    if (location.pathname !== '/') return;
-    const savedScroll = sessionStorage.getItem('sobatniaga-product-return-scroll');
-    if (savedScroll === null) return;
-    sessionStorage.removeItem('sobatniaga-product-return-scroll');
-    const restoreFrame = window.requestAnimationFrame(() => window.scrollTo(0, Number(savedScroll) || 0));
-    return () => window.cancelAnimationFrame(restoreFrame);
-  }, [location.pathname]);
-
-  const handleCheckout = (orderId) => {
-    if (!requireLogin()) return;
-    startTransition(() => { setCurrentOrder({ id: orderId }); setCurrentView('payment'); });
-  };
-
-  const handleVisitStore = (sellerId) => {
-    startTransition(() => { setSelectedSellerId(sellerId); setPreviousView(currentView); setCurrentView('store-profile'); });
-  };
-
-  // --- LOGIKA PEMISAH CHAT RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
-  const handleChatClick = (sellerId, storeName = null, storePhoto = null, storeEmail = null) => {
-    if (!requireLogin()) return;
-    setChatSellerId(sellerId);
-    // Simpan info toko sementara untuk inisialisasi metadata chat
-    if (storeName) {
-      const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
-      update(ref(db, `seller_chats/${roomId}`), {
-        buyerId: user.uid,
-        userName: user.displayName || '', // Inisialisasi info buyer di room
-        sellerId: sellerId,
-        storeName: storeName,
-        storePhoto: storePhoto || '',
-        storeEmail: storeEmail || ''
-      });
-      // Daftarkan di riwayat chat pembeli (Inbox Index) agar riwayat muncul di tab 'Chat Penjual'
-      update(ref(db, `users/${user.uid}/chat_partners/${sellerId}`), {
-        partnerId: sellerId,
-        partnerName: storeName,
-        partnerPhoto: storePhoto || '',
-        partnerEmail: storeEmail || '',
-        lastMessage: 'Memulai chat...',
-        timestamp: Date.now()
-      });
-    }
-    setChatTab(sellerId ? 'seller' : 'admin'); // Jika ada sellerId, chat seller. Jika tidak, chat admin.
-
-    if (window.innerWidth >= 768) {
-      setIsDesktopChatOpen(true); // Buka floating chat di desktop
-    } else {
-      startTransition(() => {
-        setCurrentView('chat');
-      });
-    }
-  };
-
-  // --- LOGIKA CHAT BAWA PRODUK (ATTACH PRODUCT TO CHAT) ---
-  const handleChatWithProduct = (productData) => {
-    if (!requireLogin()) return;
-
-    const sellerId = productData.sellerId;
-    
-    // Siapkan data produk untuk context chat (Sebagai Draft)
-    const attachedProduct = {
-      id: productData.id,
-      name: productData.name,
-      price: productData.price,
-      image: productData.mediaUrl || productData.image || 'https://via.placeholder.com/150'
-    };
-
-    setPendingProduct(attachedProduct);
-    setChatSellerId(sellerId);
-    setChatTab('seller');
-    
-    if (window.innerWidth >= 768) {
-      setIsDesktopChatOpen(true);
-    } else {
-      startTransition(() => setCurrentView('chat'));
-    }
-  };
-
-  const scrollToSection = (name) => {
-    if (name === 'Lainnya') {
-      startTransition(() => { setCurrentView('all-categories'); });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (name === 'Sobat Berbagi') {
-      startTransition(() => { setCurrentView('sobat-berbagi'); });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (name === 'NiagaGo') { // Ini ada di kategori juga
-      startTransition(() => { setCurrentView('niagago'); });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    let ref = null;
-    switch (name) {
-      case 'Populer': ref = populerRef; break;
-      case 'Isi Pulsa': ref = pulsaRef; break;
-      case 'Niaga Food': ref = makanRef; break;
-      case 'Skin Care': ref = skincareRef; break;
-      case 'Fashion': ref = fashionRef; break;
-      case 'Jasa': ref = jasaRef; break;
-      case 'NiagaGo': ref = niagaGoRef; break;
-      default: ref = null;
-    }
-    if (ref && ref.current) {
-      const offset = 140; // Navbar + Sticky Menu height
-      const top = ref.current.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top, behavior: 'smooth' });
-    }
-  };
-
-  const handleGameSelect = (game) => {
-    if (!requireLogin()) return;
-    startTransition(() => { setSelectedGame(game); });
-  };
-
-  useEffect(() => {
-    const action = location.state?.productDetailAction;
-    if (!action || isLoading) return;
-
-    if ((action.type === 'cart' || action.type === 'chat') && !user?.uid) {
-      openLogin();
-      return;
-    }
-
-    if (action.type === 'cart') {
-      setCurrentView('cart');
-    } else if (action.type === 'store' && action.sellerId) {
-      setSelectedSellerId(action.sellerId);
-      setPreviousView('home');
-      setCurrentView('store-profile');
-    } else if (action.type === 'chat' && action.product?.id) {
-      const product = action.product;
-      setPendingProduct({
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        image: product.mediaUrl || product.image || 'https://via.placeholder.com/150'
-      });
-      setChatSellerId(product.sellerId);
-      setChatTab('seller');
-      if (window.innerWidth >= 768) {
-        setIsDesktopChatOpen(true);
-      } else {
-        setCurrentView('chat');
-      }
-    } else {
-      return;
-    }
-
-    navigate('/', { replace: true, state: null });
-  }, [isLoading, location.state, navigate, openLogin, user?.uid]);
-
-  // Handle Search Input & Auto-Suggestions
-  const handleSearchInput = (e) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-
-    if (query.trim().length > 0) {
-      const filtered = products.filter(p => 
-        (p.name || "").toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 5); // Limit to 5 suggestions
-      setSuggestions(filtered);
-      setShowSuggestions(true);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    }
-  };
-
-  const handleSuggestionClick = (productName) => {
-    startTransition(() => {
-      setSearchQuery(productName); setActiveSearchQuery(productName); setPreviousView(currentView);
-      setCurrentView('search-results'); setShowSuggestions(false);
-    });
-  };
-
-  // Notification Helpers
-  const unreadCount = notifications.length; // Karena query sudah difilter 'unread'
-
-  const handleNotificationClick = (notif) => {
-    if (notif.status === 'unread') {
-      update(ref(db, `notifications/${notif.id}`), { status: 'read' });
-    }
-    
-    // Reset Highlight
-    setHighlightOrderId(null);
-
-    // Handle Deep Link Order (Untuk Payment Rejected dll)
-    if (notif.orderId) {
-      startTransition(() => { setCurrentOrder({ id: notif.orderId }); });
-      setHighlightOrderId(notif.orderId);
-    }
-
-    startTransition(() => { // Logic Dynamic Tab untuk TransactionHistory
-    if (notif.targetView) {
-      setCurrentView(notif.targetView);
-    }
-
-    if (notif.targetView === 'history') {
-      if (notif.targetTab) {
-        setHistoryTab(notif.targetTab);
-      } else if (notif.title.toLowerCase().includes('dikirim')) {
-        setHistoryTab('shipped');
-      } else if (notif.title.toLowerCase().includes('selesai')) {
-        setHistoryTab('completed');
-      }
-    }
-    setIsNotificationOpen(false);
-    });
-  };
-
-  const handleMarkAllRead = () => {
-    notifications.forEach(async (n) => {
-      if (n.status === 'unread') {
-        try {
-          await update(ref(db, `notifications/${n.id}`), { status: 'read' });
-        } catch (e) { console.error("Gagal mark read:", e); }
-      }
-    });
-  };
-
-  const handleClearAllNotifications = () => {
-    notifications.forEach(async (n) => {
-      try {
-        await remove(ref(db, `notifications/${n.id}`));
-      } catch (e) { console.error("Gagal hapus notif:", e); }
-    });
-  };
-
-  const getTimeAgo = (dateString) => {
-    const diff = Math.floor((new Date() - new Date(dateString)) / 1000);
-    if (diff < 60) return 'Baru saja';
-    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
-    return `${Math.floor(diff / 86400)} hari lalu`;
-  };
-
-  const getNotifStyle = (type) => {
-    switch(type) {
-      case 'success': return { icon: <CheckCircle size={16} className="text-white" />, color: 'bg-green-500' };
-      case 'warning': return { icon: <AlertTriangle size={16} className="text-white" />, color: 'bg-yellow-500' };
-      case 'error': return { icon: <XCircle size={16} className="text-white" />, color: 'bg-red-500' };
-      default: return { icon: <Info size={16} className="text-white" />, color: 'bg-blue-500' };
-    }
-  };
-
-  // Render Halaman Statis (Tentang Kami, dll)
-  const renderStaticPage = (pageKey, title) => {
-    const content = pagesContent[pageKey] || '<div class="flex flex-col items-center justify-center py-20 text-gray-400"><p class="text-lg font-medium">Konten belum tersedia.</p><p class="text-sm">Admin sedang menyusun halaman ini.</p></div>';
-    
-    return (
-        <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-            {/* Header Sticky */}
-            <div className={`sticky top-0 z-50 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
-                <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-                    <button onClick={() => startTransition(() => setCurrentView('home'))} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
-                        <ArrowLeft size={24} />
-                    </button>
-                    <h1 className={`text-lg font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>{title}</h1>
-                </div>
-            </div>
-
-            {/* Content Container */}
-            <div className="max-w-4xl mx-auto px-4 py-8 md:py-12">
-                <div className={`rounded-3xl shadow-xl overflow-hidden border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                    
-                    {/* Decorative Header inside Card */}
-                    <div className={`h-32 md:h-48 relative overflow-hidden ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5"></div>
-                        <div className="absolute bottom-0 left-0 p-8">
-                             <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
-                                {title}
-                             </h2>
-                             <div className={`h-1.5 w-20 mt-4 rounded-full ${
-                                 pageKey === 'about' ? 'bg-sky-500' :
-                                 pageKey === 'terms' ? 'bg-orange-500' :
-                                 pageKey === 'privacy' ? 'bg-green-500' : 'bg-purple-500'
-                             }`}></div>
-                        </div>
-                    </div>
-
-                    {/* Body Content */}
-                    <div className="p-8 md:p-12">
-                        <article className={`prose prose-lg max-w-none 
-                            ${isDarkMode ? 'prose-invert prose-p:text-slate-300 prose-headings:text-white prose-strong:text-white' : 'prose-slate prose-p:text-slate-600 prose-headings:text-slate-800 prose-strong:text-slate-800'}
-                            prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl
-                            prose-a:text-sky-600 hover:prose-a:text-sky-500
-                            prose-img:rounded-2xl prose-img:shadow-lg
-                        `}>
-                            <div dangerouslySetInnerHTML={{ __html: content }} />
-                        </article>
-                    </div>
-
-                    {/* Footer of Document */}
-                    <div className={`px-8 py-6 border-t flex flex-col md:flex-row justify-between items-center gap-4 text-sm ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                        <span>&copy; {new Date().getFullYear()} SobatNiaga. {title}.</span>
-                        {pageKey === 'help' && (
-                            <button 
-                                onClick={() => window.open('https://wa.me/6289517587498', '_blank')}
-                                className="px-4 py-2 bg-green-500 text-white rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center gap-2"
-                            >
-                                <MessageCircle size={16} /> Hubungi CS
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-  };
-
-  // --- FITUR SYNC BACK BUTTON HP (HISTORY SINKRONISASI) ---
-  useEffect(() => {
-    const handleBackButton = (event) => {
-      // Jika user sedang tidak di home (misal: di cart, detail produk, atau video)
-      if (currentView !== 'home') {
-        // Hentikan aksi 'keluar dari aplikasi' default browser
-        event.preventDefault();
-        
-        // Logika mundur internal: Balik ke state sebelumnya atau paksa ke home
-        if (currentView === 'search-results') {
-          startTransition(() => setCurrentView(previousView || 'home'));
-        } else {
-          startTransition(() => setCurrentView('home'));
-        }
-      }
-    };
-
-    // 'PushState' setiap kali view berubah (kecuali home) agar ada tumpukan history palsu
-    if (currentView !== 'home') {
-      window.history.pushState(null, null, window.location.pathname);
-    }
-
-    window.addEventListener('popstate', handleBackButton);
-    return () => window.removeEventListener('popstate', handleBackButton);
-  }, [currentView, previousView, window.location.pathname]);
-
-  // Keep the public homepage visible while Firebase restores the user's session.
-  if (isLoading && currentView !== 'home') {
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-               <ShoppingBag size={24} className="text-sky-500" />
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-black tracking-tighter text-sky-600">SobatNiaga</p>
-            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50 animate-pulse">Memuat Sistem...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Render Content Helper
-  const renderContent = () => {
-    switch (currentView) {
-      case 'topup': return <TopUp onBack={() => setCurrentView('home')} />;
-      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'skincare': return <SkinCare onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
-      case 'cart': return <Cart 
-        onBack={() => startTransition(() => setCurrentView('home'))} 
-        user={user} 
-        onCheckout={handleCheckout}
-        onGoToAddress={() => startTransition(() => setCurrentView('address'))}
-      />;
-      case 'niaga-video': return (
-        <NiagaVideo 
-          onBack={() => startTransition(() => setCurrentView('home'))} 
-          onProfileClick={(id) => { 
-            startTransition(() => {
-              setSelectedUserProfileId(id); 
-              setCurrentView('user-public-profile'); 
-            });
-          }} 
-          onStoreClick={(id) => handleVisitStore(id)} 
-          onProductClick={handleProductClick}
-        />
-      );
-      case 'user-public-profile': return (
-        <UserPublicProfile 
-          userId={selectedUserProfileId} 
-          currentUserId={user?.uid}
-          onBack={() => startTransition(() => setCurrentView('niaga-video'))} 
-          onVideoClick={() => startTransition(() => setCurrentView('niaga-video'))} 
-          onProductClick={handleProductClick} 
-          onChatClick={handleChatClick} 
-          // Prop baru untuk navigasi ke profil user sendiri (jika ini toko user)
-          onViewMyProfile={() => {
-            startTransition(() => {
-              setCurrentView('profile');
-            });
-          }}
-        />
-      );
-      case 'profile': return (
-        <Profile 
-          user={user} 
-          onBack={() => startTransition(() => setCurrentView('home'))} 
-          onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })}
-          onViewHistory={() => startTransition(() => setCurrentView('history'))} 
-          onViewSellerDashboard={() => startTransition(() => setCurrentView('dashboard-seller'))}
-        />
-      );
-      case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
-      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} onViewInbox={() => startTransition(() => setCurrentView('seller-inbox'))} />;
-      case 'search-page': return (
-        <SearchPage 
-          onBack={() => startTransition(() => setCurrentView('home'))} 
-          products={products} 
-          onProductClick={handleProductClick} 
-          onSearch={(q) => {
-            startTransition(() => {
-              setSearchQuery(q);
-              setActiveSearchQuery(q);
-              setPreviousView(currentView);
-              setCurrentView('search-results');
-            });
-          }}
-        />
-      );
-      case 'payment': return <Payment order={currentOrder} onBack={openCart} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
-      case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} playCustomNotificationSound={playCustomNotificationSound} />;
-      case 'admin-dashboard': return <AdminDashboard user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
-      case 'store-profile': return (
-        <StoreProfile 
-          sellerId={selectedSellerId} 
-          currentUserId={user?.uid} 
-          onBack={() => startTransition(() => setCurrentView(previousView))} 
-          onProductClick={handleProductClick} 
-          onChatClick={handleChatClick} 
-        />
-      );
-      case 'digital-center': return <DigitalCenter onBack={() => startTransition(() => setCurrentView('home'))} onGameSelect={handleGameSelect} />;
-      case 'search-results': return <SearchResults onBack={() => startTransition(() => setCurrentView(previousView))} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
-      case 'about': return renderStaticPage('about', 'Tentang Kami');
-      case 'terms': return renderStaticPage('terms', 'Syarat & Ketentuan');
-      case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
-      case 'help': return renderStaticPage('help', 'Pusat Bantuan');
-      case 'niagago': return <NiagaGo user={user} onBack={() => startTransition(() => setCurrentView('home'))} onOpenProfile={() => startTransition(() => setCurrentView('profile'))} playCustomNotificationSound={playCustomNotificationSound} />;
-      case 'all-categories': return <AllCategories onBack={() => startTransition(() => setCurrentView('home'))} onNavigate={(view) => startTransition(() => setCurrentView(view))} />;
-      case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => startTransition(() => setCurrentView('all-categories'))} />;
-      
-      // --- HALAMAN KOTAK MASUK PENJUAL ---
-      case 'seller-inbox': return (
-        <SellerInbox 
-            user={user} 
-            onBack={() => startTransition(() => setCurrentView('dashboard-seller'))} 
-            onChatClick={(buyerId) => {
-                setActiveChatBuyerId(buyerId);
-                startTransition(() => setCurrentView('seller-chat'));
-            }}
-        />
-      );
-
-      // --- HALAMAN LIVE CHAT INTERNAL ---
-      case 'chat':
-        return (
-          <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
-              <ChatLayout
-                  isMobile={true}
-                  onClose={() => setCurrentView('home')}
-                  user={user}
-                  isDarkMode={isDarkMode}
-                  chatTab={chatTab}
-                  setChatTab={setChatTab}
-                  chatSellerId={chatSellerId}
-                  setChatSellerId={setChatSellerId}
-                  isChatMenuOpen={isChatMenuOpen}
-                  setIsChatMenuOpen={setIsChatMenuOpen}
-                  playCustomNotificationSound={playCustomNotificationSound}
-                  onViewProfile={(id) => {
-                    startTransition(() => {
-                      setSelectedUserProfileId(id);
-                      setCurrentView('user-public-profile');
-                      setIsChatMenuOpen(false);
-                    });
-                  }}
-              pendingProduct={pendingProduct}
-              setPendingProduct={setPendingProduct}
-              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
-              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
-              />
-
-              {/* Bottom Sheet Pesan Instan (Mobile) */}
-              {isInstantMenuOpen && chatTab === 'admin' && (
-                <div className="absolute inset-0 z-[210] flex flex-col justify-end animate-in fade-in duration-300">
-                    <div className="absolute inset-0 bg-black/40" onClick={() => setIsInstantMenuOpen(false)}></div>
-                    <div className={`relative w-full rounded-t-[2.5rem] p-6 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
-                        <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-6"></div>
-                        
-                        <div className="mb-6">
-                            <h3 className={`text-lg font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan 🤖</h3>
-                            <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
-                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, saya dari Customer Service SobatNiaga siap bantuin kamu. Kamu ada kendala apa?
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            {chatbotMenu.map((option, i) => (
-                                <button 
-                                    key={i} 
-                                    onClick={() => handleChatBotClick(option)}
-                                    className={`w-full text-left p-4 rounded-2xl border font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
-                                >
-                                    <span>{option.label}</span>
-                                    <ChevronRight size={18} className="text-gray-400 group-hover:text-sky-500 transition-colors" />
-                                </button>
-                            ))}
-                        </div>
-                        
-                        <button 
-                            onClick={() => setIsInstantMenuOpen(false)}
-                            className="w-full mt-6 py-4 rounded-2xl font-bold text-gray-400 dark:text-slate-500 text-xs uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                        >
-                            Tutup
-                        </button>
-                    </div>
-                </div>
-              )}
-          </div>
-        );
-      
-      // --- HALAMAN CHAT SISI PENJUAL (MOBILE) ---
-      case 'seller-chat':
-        return (
-          <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
-              <ChatLayout
-                  isMobile={true}
-                  onClose={() => startTransition(() => setCurrentView('seller-inbox'))}
-                  user={user}
-                  isDarkMode={isDarkMode}
-                  chatTab="seller"
-                  chatBuyerId={activeChatBuyerId}
-                  isSellerView={true}
-                  setChatSellerId={() => {}}
-                  isChatMenuOpen={isChatMenuOpen}
-                  setIsChatMenuOpen={setIsChatMenuOpen}
-                  playCustomNotificationSound={playCustomNotificationSound}
-                  onViewProfile={(id) => {
-                    startTransition(() => {
-                      setSelectedUserProfileId(id);
-                      setCurrentView('user-public-profile');
-                      setIsChatMenuOpen(false);
-                    });
-                  }}
-                  onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
-              />
-          </div>
-        );
-
-      // --- HALAMAN MENU PROFIL (MOBILE) ---
-      case 'account-menu': return (
-        <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
-          {/* Header Profil */}
-          <div className={`p-6 mb-4 ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white border-b border-gray-100'}`}>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gray-200 overflow-hidden border-2 border-sky-500 p-0.5">
-                <img src={user?.photoURL || 'https://via.placeholder.com/150'} alt="Profile" className="w-full h-full object-cover rounded-full" />
-              </div>
-              <div>
-                <h2 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{user?.displayName || 'Pengguna'}</h2>
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user?.email}</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full">Member</span>
-                  {user?.role === 'driver' && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">Driver</span>}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Menu List */}
-          <div className={`mx-4 rounded-2xl overflow-hidden shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-            {[
-              { label: 'Profil Saya', icon: <User size={20} />, action: () => startTransition(() => setCurrentView('profile')) },
-              { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => startTransition(() => setCurrentView('dashboard-seller')) },
-              { label: 'Chat Pelanggan', icon: <MessageCircle size={20} />, action: () => startTransition(() => setCurrentView('seller-inbox')), hidden: !user?.sellerInfo?.isVerifiedSeller },
-              { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => startTransition(() => setCurrentView('history')) },
-              { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => startTransition(() => setCurrentView('address')) },
-              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => startTransition(() => setCurrentView('admin-dashboard')), hidden: user?.email !== 'pushmate.id@gmail.com' },
-              { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => startTransition(() => setCurrentView('help')) },
-            ].map((item, idx) => (
-              !item.hidden && (
-                <button 
-                  key={idx} 
-                  onClick={item.action}
-                  className={`w-full flex items-center justify-between p-4 border-b last:border-0 transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-gray-200' : 'border-gray-50 hover:bg-gray-50 text-gray-700'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{item.icon}</div>
-                    <span className="font-medium text-sm">{item.label}</span>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-400" />
-                </button>
-              )
-            ))}
-          </div>
-
-          {/* Logout Button */}
-          <div className="mx-4 mt-6">
-            <button onClick={() => signOut(auth)} className="w-full py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
-              <LogOut size={18} /> Keluar Akun
-            </button>
-          </div>
-        </div>
-      );
-
-      default: return ( 
-        <>
-      {/* 1. Hero Section (Coverflow Effect) */}
-      <div 
-        className="relative w-full overflow-hidden bg-cover bg-center pt-2 pb-4 md:pt-8 md:pb-24"
-        style={{ backgroundImage: homeBgStatic ? `url(${homeBgStatic})` : undefined }}
-      >
-        {/* Overlay Gelap biar konten tetap terbaca di atas background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 dark:from-black/60 dark:to-slate-900/90 pointer-events-none"></div>
-
-        <div className="max-w-6xl mx-auto px-4 relative z-10">
-          <Swiper
-            effect={'coverflow'}
-            modules={[Autoplay, Pagination, EffectCoverflow]}
-            grabCursor={true}
-            centeredSlides={true}
-            loop={banners.length > 2}
-            slidesPerView={'auto'}
-            speed={800}
-            autoplay={{ delay: 3000, disableOnInteraction: false }}
-            slideToClickedSlide={true}
-            coverflowEffect={{
-              rotate: 0,
-              stretch: 0,
-              depth: 250, // Tambah kedalaman biar kartu samping makin mundur
-              modifier: 1, // Pastiin ini 1 biar gak numpuk berlebihan
-              slideShadows: false,
-            }}
-            pagination={{ clickable: true, dynamicBullets: true }}
-          className="w-full py-1 md:py-8"
-          >
-            {banners.map((banner, index) => (
-            <SwiperSlide key={banner.id} className="!w-[75%] md:!w-[700px] lg:!w-[900px] aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
-                {banner.link ? (
-                  banner.link.startsWith('http') ? (
-                    <a 
-                      href={banner.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="block w-full h-full cursor-pointer"
-                    >
-                      <img 
-                        src={banner.image} 
-                        alt={banner.alt} 
-                        className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
-                        loading={index === 0 ? "eager" : "lazy"}
-                        fetchPriority={index === 0 ? "high" : "auto"}
-                        decoding="async"
-                      />
-                    </a>
-                  ) : (
-                    <Link 
-                      to={banner.link}
-                      className="block w-full h-full cursor-pointer"
-                    >
-                      <img 
-                        src={banner.image} 
-                        alt={banner.alt} 
-                        className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
-                        loading={index === 0 ? "eager" : "lazy"}
-                        fetchPriority={index === 0 ? "high" : "auto"}
-                        decoding="async"
-                      />
-                    </Link>
-                  )
-                ) : (
-                  <img 
-                    src={banner.image} 
-                    alt={banner.alt} 
-                    className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
-                    loading={index === 0 ? "eager" : "lazy"}
-                        fetchPriority={index === 0 ? "high" : "auto"}
-                        decoding="async"
-                  />
-                )}
-              </SwiperSlide>
-            ))}
-          </Swiper>
-        </div>
-        
-        {/* Wave SVG Separator */}
-        <div className="absolute -bottom-[1px] left-0 w-full overflow-hidden leading-[0] z-20">
-          <svg 
-            viewBox="0 0 1200 120" 
-            preserveAspectRatio="none" 
-            className="relative block w-full h-[20px] md:h-[100px]"
-          >
-            {/* LAYER 1 (HIJAU): Tetap di atas sebagai frame belakang */}
-            <path 
-              d="M0,30 C200,30 400,110 600,110 C800,110 1000,30 1200,30 L1200,120 L0,120 Z" 
-              className="fill-emerald-500/30" 
-            />
-            
-            {/* LAYER 2 (PUTIH): REVISI - Tengah diturunin, Pinggir dibikin lebih bawah */}
-            <path 
-              d="M0,100 C300,110 400,45 600,45 C800,45 900,110 1200,100 L1200,120 L0,120 Z" 
-              style={{ fill: 'var(--bg-main)' }}
-            />
-          </svg>
-        </div>
-      </div>
-
-      {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
-      
-      {/* MOBILE: NiagaGo Banner (Tetap di Atas Kategori) */}
-      <div className="md:hidden mt-8 mb-6 w-full">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className={`w-full rounded-xl p-2.5 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
-          <div className="relative z-10 text-left flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <Bike className={`w-5 h-5 shrink-0 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
-              <h2 className={`text-sm font-bold whitespace-nowrap ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
-            </div>
-            <p className={`text-[10px] max-w-md leading-tight truncate ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
-              Ojek mahasiswa hemat & aman!
-            </p>
-          </div>
-          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-3 py-1.5 bg-white text-emerald-600 font-bold text-[11px] rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap shrink-0">
-            Buka NiagaGo
-          </button>
-          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
-            <Bike className="w-20 h-20" />
-          </div>
-        </div>
-        </div>
-      </div>
-
-      {/* MOBILE: Grid Menu (4 Columns) */}
-      <div className="md:hidden px-4 mt-6 mb-6">
-        <div className="grid grid-cols-4 gap-4">
-          {navCategories.map((cat, index) => (
-            <button
-              key={cat.name}
-              onClick={() => {
-                setActiveCategoryIndex(index);
-                scrollToSection(cat.name);
-              }}
-              className="flex flex-col items-center gap-2 group"
-            >
-            <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
-                <ImageWithFallback
-                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
-                  alt={cat.name}
-                  className="w-12 h-12 object-contain bg-transparent"
-                  style={{ backgroundColor: 'transparent' }}
-                  fallback={cat.icon}
-                />
-              </div>
-              <span className={`text-[10px] font-medium text-center leading-tight ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{cat.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* DESKTOP: Sticky Horizontal Nav */}
-      <div className="hidden md:block sticky top-[68px] z-40 py-2 mt-6 mb-6">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className={`p-2 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-sky-50 border-sky-100 shadow-sm'}`}>
-            <div 
-              className="relative flex items-center justify-start gap-4 overflow-x-auto p-1 no-scrollbar"
-              style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
-            >
-              <style dangerouslySetInnerHTML={{__html: `
-                .no-scrollbar::-webkit-scrollbar {
-                  display: none;
-                }
-              `}} />
-              {/* Sliding Capsule Background */}
-              <div
-                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out shadow-lg ${isDarkMode ? 'bg-slate-700' : 'bg-white'} ${navCategories[activeCategoryIndex].color}`}
-                style={{
-                  left: capsuleStyle.left,
-                  width: capsuleStyle.width,
-                  opacity: capsuleStyle.opacity,
-                  border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0'
-                }}
-              />
-              
-              {navCategories.map((cat, index) => (
-                <button
-                  key={cat.name}
-                  ref={el => tabsRef.current[index] = el}
-                  onClick={() => {
-                    setActiveCategoryIndex(index);
-                    scrollToSection(cat.name);
-                  }}
-                  className={`relative z-10 px-4 py-2 md:px-6 md:py-3 text-xs md:text-base font-bold whitespace-nowrap transition-colors uppercase tracking-wider font-azonix ${
-                    activeCategoryIndex === index
-                      ? (isDarkMode ? 'text-white' : 'text-sky-600')
-                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
-                  }`}
-                >
-              <div className="flex items-center gap-2">
-                <ImageWithFallback
-                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
-                  alt=""
-                  className="w-5 h-5 object-contain bg-transparent"
-                  style={{ backgroundColor: 'transparent' }}
-                  fallback={cat.icon}
-                />
-                {cat.name}
-              </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* DESKTOP: NiagaGo Banner (Pindah ke Bawah Kategori & Full Width) */}
-      <div ref={niagaGoRef} className="hidden md:block scroll-mt-40 mt-8 w-full">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className={`w-full rounded-2xl p-6 flex flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
-          <div className="relative z-10 text-left flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Bike className={`w-6 h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
-              <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
-            </div> 
-            <p className={`text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
-              Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
-            </p>
-          </div>
-          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold text-base rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
-            Buka NiagaGo
-          </button>
-          {/* Decor */}
-          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
-            <Bike className="w-48 h-48" />
-          </div>
-        </div>
-        </div>
-      </div>
-
-      {/* FLASH DEAL SECTION (New) */}
-      {flashDeal?.isActive && !isExpired && (
-        <div className="w-full max-w-7xl mx-auto px-4 mt-4 md:mt-6 mb-6 md:mb-8 relative z-10">
-            <div className="rounded-xl md:rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-blue-900 to-sky-600 flex flex-row min-h-[160px] md:min-h-[280px]">
-                {/* Left: Banner & Countdown */}
-                <div className="w-[130px] md:w-1/3 relative p-3 md:p-8 flex flex-col justify-center text-white overflow-hidden flex-shrink-0 border-r border-white/10">
-                    {/* Background Image with Overlay */}
-                    <div className="absolute inset-0 z-0">
-                        {flashDeal?.bannerUrl ? (
-                            <img src={flashDeal.bannerUrl} className="w-full h-full object-cover opacity-40" alt="Flash Deal" />
-                        ) : (
-                            <div className="w-full h-full bg-blue-800 opacity-50"></div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/80 to-blue-900/40 md:bg-gradient-to-r md:from-blue-900/90 md:to-transparent"></div>
-                    </div>
-                    
-                    <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
-                        <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-yellow-400 text-blue-900 text-[8px] md:text-xs font-extrabold rounded-full mb-1 md:mb-3 shadow-md">
-                            ⚡ <span className="hidden md:inline">LIMITED OFFER</span><span className="md:hidden">FLASH</span>
-                        </div>
-                        <h3 className="text-xl md:text-4xl font-extrabold italic tracking-tighter mb-1 md:mb-2 text-white drop-shadow-lg leading-none">
-                            <span className="md:hidden">SALE</span>
-                            <span className="hidden md:inline">FLASH <span className="text-yellow-400">SALE</span></span>
-                        </h3>
-                        <p className="hidden md:block text-blue-100 text-sm mb-6 font-medium max-w-[200px]">
-                            Serbu diskon gila-gilaan sebelum waktu habis!
-                        </p>
-                        
-                        {/* Countdown Box */}
-                        <div className="flex flex-col md:flex-row items-center gap-1 md:gap-2 mt-1 md:mt-0">
-                            <p className="text-[10px] md:hidden text-blue-200 mb-0.5">Berakhir dlm:</p>
-                            <div className="flex items-center gap-1">
-                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
-                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.h).padStart(2, '0')}</span>
-                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Jam</span>
-                                </div>
-                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
-                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
-                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.m).padStart(2, '0')}</span>
-                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Mnt</span>
-                                </div>
-                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
-                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
-                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.s).padStart(2, '0')}</span>
-                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Dtk</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right: Product List (Horizontal Scroll) */}
-                <div className={`flex-1 p-3 md:p-6 flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide items-center ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10 backdrop-blur-sm'}`}>
-                    {(!products || products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).length === 0) ? (
-                        <div className="text-white/80 text-xs md:text-sm font-medium w-full text-center">
-                            Produk segera hadir...
-                        </div>
-                    ) : (
-                        products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).map(product => (
-                            <div key={product.id} onClick={() => handleProductClick(product)} className={`min-w-[120px] w-[120px] md:min-w-[160px] md:w-[160px] rounded-lg md:rounded-xl p-2 md:p-3 cursor-pointer transition-all hover:scale-105 hover:shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-white'} shadow-md group`}>
-                                <div className="relative aspect-square rounded-md md:rounded-lg overflow-hidden mb-2 md:mb-3 bg-gray-100">
-                                    <img src={product.mediaUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
-                                    <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] md:text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-bl-lg shadow-sm z-10">
-                                        {flashDeal.discountLabel || '50%'}
-                                    </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <p className={`text-xs md:text-sm font-bold line-clamp-2 leading-snug ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
-                                    <div className={`font-black text-sm md:text-base mt-1 ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
-                                        <span className="text-xs font-medium mr-0.5">Rp</span>
-                                        <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
-                                    </div>
-                                    
-                                    {/* Progress Bar */}
-                                    <div className="w-full bg-gray-200 rounded-full h-1.5 md:h-2 overflow-hidden relative">
-                                        <div className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full" style={{ width: '85%' }}></div>
-                                    </div>
-                                    <div className="flex justify-between text-[8px] md:text-[10px] text-gray-500 font-medium">
-                                        <span>Terjual 85%</span>
-                                        <span className="text-red-500 hidden md:inline">🔥 Segera Habis</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 3. Content Sections */}
-      <div className="max-w-7xl mx-auto px-4 space-y-10 pb-10 mt-6 text-left">
-        
-        {/* SECTION: Populer */}
-        <div ref={populerRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products && products.length > 0 ? products.map((product) => (
-              <ProductCard 
-                key={product.id} 
-                product={{...product, image: product.mediaUrl || 'https://via.placeholder.com/150', price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}}
-                className="product-card-home"
-                onClick={() => handleProductClick(product)}
-              />
-            )) : (
-               <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Isi Pulsa */}
-        <div ref={pulsaRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('topup')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Isi Pulsa & Paket Data
-            </h2>
-            <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Isi Pulsa').slice(0, 6).map((product) => (
-              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
-            ))}
-            {products.filter(p => p.category === 'Isi Pulsa').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Makan */}
-        <div ref={makanRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('food')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Niaga Food
-            </h2>
-            <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Niaga Food').slice(0, 6).map((product) => (
-              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
-            ))}
-            {products.filter(p => p.category === 'Niaga Food').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Skin Care */}
-        <div ref={skincareRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('skincare')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Skin Care Glowing
-            </h2>
-            <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Skin Care').slice(0, 6).map((product) => (
-              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
-            ))}
-            {products.filter(p => p.category === 'Skin Care').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Fashion */}
-        <div ref={fashionRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('fashion')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Fashion Terkini
-            </h2>
-            <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Fashion').slice(0, 6).map((product) => (
-              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
-            ))}
-            {products.filter(p => p.category === 'Fashion').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Jasa */}
-        <div ref={jasaRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('jasa')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Jasa Mahasiswa
-            </h2>
-            <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Jasa').slice(0, 6).map((product) => (
-              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
-            ))}
-            {products.filter(p => p.category === 'Jasa').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: Top Up Game */}
-        <div ref={gameRef} className="scroll-mt-40 home-lazy-section">
-          <div className="flex items-start justify-between mb-6">
-            <h2 
-              onClick={() => setCurrentView('digital-center')}
-              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
-            >
-              Top Up Game
-            </h2>
-            <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {products.filter(p => p.category === 'Game').slice(0, 6).map((product) => (
-              <div 
-                key={product.id}
-                onClick={() => handleGameSelect({ ...product, fields: product.inputFields })}
-                className={`rounded-xl border p-3 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-sky-500' : 'bg-white border-gray-100 hover:border-sky-200'}`}
-              >
-                <div className={`w-full aspect-square rounded-lg overflow-hidden ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
-                  <img src={product.mediaUrl || 'https://via.placeholder.com/150'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                </div>
-                <div className="text-center w-full">
-                  <p className={`text-sm font-bold line-clamp-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
-                  <div className={`font-black text-sm md:text-base mt-1 ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
-                    <span className="text-xs font-medium mr-0.5">Rp</span>
-                    <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {products.filter(p => p.category === 'Game').length === 0 && (
-                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* FOOTER */}
-      <footer className="text-white pt-16 pb-8 mt-auto border-t border-slate-800 relative bg-slate-900 overflow-hidden">
-        {/* Background Image Layer (Saturated) */}
-        {footerBg && (
-            <div 
-                className="absolute inset-0 bg-cover bg-center z-0"
-                style={{ 
-                    backgroundImage: `url(${footerBg})`,
-                    filter: 'saturate(1.5) contrast(1.1)' // Boost warna biar seger
-                }}
-            ></div>
-        )}
-        
-        {/* Gradient Overlay (Premium Look) */}
-        {footerBg && (
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/80 to-transparent z-0"></div>
-        )}
-
-        <div className="max-w-7xl mx-auto px-4 relative z-10" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
-            {/* Kolom 1: Brand */}
-            <div>
-              <h3 className="text-2xl font-bold mb-4 flex items-center gap-2 font-azonix tracking-wider text-white drop-shadow-lg">
-                SobatNiaga
-              </h3>
-              <p className="text-slate-200 text-sm leading-relaxed font-medium">
-                SobatNiaga - Solusi Top Up Game, Voucher, dan Fashion Terlengkap & Terpercaya di Indonesia.
-              </p>
-            </div>
-
-            {/* Kolom 2: Layanan */}
-            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
-              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Layanan Kami</h4>
-              <ul className="space-y-3 text-sm text-slate-200 font-medium">
-                <li><button onClick={() => { startTransition(() => setCurrentView('digital-center')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Top Up Game</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('topup')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pulsa & Data</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('fashion')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Fashion Pria & Wanita</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('food')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Makan Hemat</button></li>
-              </ul>
-            </div>
-
-            {/* Kolom 3: Informasi */}
-            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
-              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Informasi</h4>
-              <ul className="space-y-3 text-sm text-slate-200 font-medium">
-                <li><button onClick={() => { startTransition(() => setCurrentView('about')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Tentang Kami</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('terms')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Syarat & Ketentuan</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('privacy')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Kebijakan Privasi</button></li>
-                <li><button onClick={() => { startTransition(() => setCurrentView('help')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pusat Bantuan</button></li>
-              </ul>
-            </div>
-
-            {/* Kolom 4: Sosmed */}
-            <div className="pb-4 md:pb-0">
-              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Ikuti Kami</h4>
-              <div className="flex gap-4">
-                <a href="https://www.instagram.com/sobatniaga_offic?igsh=cWJrcTNkaXN2dGRx" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-pink-600 hover:border-pink-600 transition-all shadow-lg">
-                  <Instagram size={20} />
-                </a>
-                <a href="https://wa.me/6289517587498" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-green-600 hover:border-green-600 transition-all shadow-lg">
-                  <MessageCircle size={20} />
-                </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-red-600 hover:border-red-600 transition-all shadow-lg">
-                  <Mail size={20} />
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-white/10 pt-8 text-center">
-            <p className="text-slate-300 text-sm font-medium">© 2026 SobatNiaga. All Rights Reserved.</p>
-          </div>
-        </div>
-      </footer>
-        </>
-      );
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
-      {/* Global Header (Sticky) */}
-      <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
-        <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
-          {/* Left: Brand or Back Button */}
-          <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
-            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => startTransition(() => setCurrentView('home'))}>
-              SobatNiaga
-            </h1>
-          </div>
-
-          {/* Center: Search Bar (Hidden on mobile if needed, or simplified) */}
-          <form 
-            className="flex-1 relative" 
-            ref={searchRef}
-            onSubmit={(e) => {
-              e.preventDefault(); // Penahan agar tidak reload!
-              if (searchQuery.trim() !== '') {
-                startTransition(() => {
-                  setActiveSearchQuery(searchQuery.trim());
-                  setPreviousView(currentView);
-                  setCurrentView('search-results');
-                  setShowSuggestions(false);
-                });
-                if (e.target.querySelector('input')) e.target.querySelector('input').blur();
-              }
-            }}
-          >
-            <div className="absolute inset-y-0 left-0 pl-2 md:pl-3 flex items-center pointer-events-none">
-              <Search size={16} className="text-gray-400 md:w-[18px] md:h-[18px]" />
-            </div>
-            <input
-              type="text"
-              enterKeyHint="search" // Ganti tombol Enter di HP jadi ikon Search
-              className="block w-full pl-8 md:pl-10 pr-2 md:pr-3 py-1.5 md:py-2 border rounded-full text-xs md:text-sm focus:ring-2 focus:ring-sky-500 transition-all theme-card theme-text placeholder:text-gray-400"
-              placeholder="Cari di SobatNiaga..."
-              value={searchQuery}
-              onChange={handleSearchInput}
-              onFocus={(e) => {
-                if (window.innerWidth < 768) {
-                  e.target.blur(); // Cegah keyboard muncul di halaman home
-                  startTransition(() => { setCurrentView('search-page'); });
-                } else if (searchQuery.trim().length > 0) {
-                  setShowSuggestions(true);
-                }
-              }}
-            />
-            
-            {/* Auto-Suggestions Dropdown */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 rounded-xl shadow-lg border z-50 overflow-hidden theme-card">
-                {suggestions.map((product) => (
-                  <div
-                    key={product.id}
-                    onClick={() => handleSuggestionClick(product.name)}
-                    className="px-4 py-3 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-slate-700 last:border-0"
-                  >
-                    <Search size={14} className="text-gray-400" />
-                    <span className="text-sm theme-text line-clamp-1 font-medium">{product.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </form>
-
-          {/* Right: Icons */}
-          <div className="flex items-center gap-1.5 md:gap-3 theme-text">
-            {!user ? (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => openLogin('register')}
-                  className="rounded-full border border-sky-500 px-2.5 py-1.5 text-[11px] font-bold text-sky-600 transition-colors hover:bg-sky-50 md:px-4 md:text-sm"
-                >
-                  Daftar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openLogin('login')}
-                  className="rounded-full bg-sky-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-sky-700 md:px-4 md:text-sm"
-                >
-                  Login
-                </button>
-              </div>
-            ) : (
-            <>
-            {/* Notifikasi Dropdown */}
-            <div className="relative">
-              <button 
-                onClick={() => {
-                  setIsNotificationOpen(!isNotificationOpen);
-                  setIsProfileOpen(false);
-                }}
-                className="hover:text-sky-600 relative flex items-center p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
-              >
-                <Bell size={20} className="md:w-[22px] md:h-[22px]" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white animate-in zoom-in">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {isNotificationOpen && (
-                <div ref={notificationRef} className="absolute right-0 mt-2 w-60 md:w-80 rounded-xl shadow-lg border z-50 overflow-hidden theme-card origin-top-right">
-                  <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-white">
-                    <h3 className="font-bold theme-text text-sm">Notifikasi</h3>
-                    <div className="flex gap-2">
-                      <button onClick={handleMarkAllRead} className="text-xs text-sky-600 font-medium hover:underline">Baca Semua</button>
-                      <button onClick={handleClearAllNotifications} className="text-xs text-red-500 font-medium hover:underline"><Trash2 size={12}/></button>
-                    </div>
-                  </div>
-                  
-                  <div className="max-h-[400px] overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-6 text-center text-gray-400 text-sm">Belum ada notifikasi</div>
-                    ) : (
-                      notifications.map((notif) => {
-                        const style = getNotifStyle(notif.type);
-                        return (
-                        <div 
-                          key={notif.id} 
-                          onClick={() => handleNotificationClick(notif)}
-                          className={`px-4 py-3 flex gap-3 border-b hover:opacity-90 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/10' : 'theme-card'}`}
-                        >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${style.color}`}>
-                            {style.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <h4 className={`text-sm ${notif.status === 'unread' ? 'font-bold theme-text' : 'font-medium theme-text-muted'}`}>{notif.title}</h4>
-                              {notif.status === 'unread' && <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5"></div>}
-                            </div>
-                            <p className="text-xs theme-text-muted line-clamp-2 mt-0.5 leading-relaxed">{notif.message}</p>
-                            <p className="text-[10px] text-gray-400 mt-1">{getTimeAgo(notif.createdAt)}</p>
-                          </div>
-                        </div>
-                      )})
-                    )}
-                  </div>
-
-                  <button className="w-full py-3 text-center text-sm font-bold text-sky-600 hover:bg-opacity-10 hover:bg-sky-500 transition-colors border-t theme-card">
-                    Lihat Semua Notifikasi
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Cart Icon with Badge */}
-            <button 
-              onClick={openCart}
-              className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
-            >
-              <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
-              {cartCount > 0 && (
-                <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white">
-                  {cartCount}
-                </span>
-              )}
-            </button>
-            
-            {/* Profil Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="hover:text-sky-600 flex items-center focus:outline-none p-0.5 md:p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
-              >
-                {user?.photoURL ? (
-                  <img src={user.photoURL} alt="Profile" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-gray-200 object-cover" />
-                ) : (
-                  <User size={20} className="md:w-[22px] md:h-[22px]" />
-                )}
-              </button>
-
-              {isProfileOpen && (
-                <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 rounded-xl shadow-lg border py-2 z-50 theme-card">
-                  <div className="px-4 py-2 border-b border-gray-100 mb-1 ">
-                    <p className="text-sm font-bold theme-text">Halo, {user.displayName || 'User'}!</p>
-                  </div>
-                  <button onClick={() => startTransition(() => { setCurrentView('profile'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
-                  <button onClick={() => startTransition(() => { setCurrentView('history'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
-                  {user?.email === 'pushmate.id@gmail.com' && ( // Admin Dashboard
-                    <button onClick={() => startTransition(() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
-                  )}
-                  <button onClick={() => startTransition(() => { setCurrentView('address'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
-                  <div className="border-t border-gray-100 my-1"></div>
-                  <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>
-                </div>
-              )}
-            </div>
-            </>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* MAIN CONTENT AREA - INI YANG TADI ILANG BRO! */}
-      <main className="flex-1">
-        <Suspense fallback={<div className="flex flex-col items-center justify-center py-20 opacity-50"><Loader2 size={40} className="animate-spin text-sky-500 mb-2" /><p className="text-sm">Memuat...</p></div>}>
-          {renderContent()}
-        </Suspense>
-      </main>
-
-      {selectedProductId && (
-        <Suspense fallback={null}>
-          <ProductDetail
-            product={products.find((item) => String(item.id) === selectedProductId) || null}
-            productId={selectedProductId}
-            isModal
-            onBack={() => setSelectedProductId(null)}
-            onRequireLogin={openLogin}
-            onGoToCart={() => {
-              setSelectedProductId(null);
-              openCart();
-            }}
-            onVisitStore={(sellerId) => {
-              setSelectedProductId(null);
-              handleVisitStore(sellerId);
-            }}
-            onChatWithProduct={(product) => {
-              setSelectedProductId(null);
-              handleChatWithProduct(product);
-            }}
-          />
-        </Suspense>
-      )}
-
-      {/* Modal Top Up Game (Global) */}
-      {selectedGame && TopUpModal && (
-        <TopUpModal 
-          game={selectedGame} 
-          user={user} 
-          onClose={() => setSelectedGame(null)} />
-      )}
-
-      {/* Customer Service Chat Widget */}
-      {currentView !== 'chat' && !isDesktopChatOpen && (
-        <DraggableChatWidget
-            onClick={() => {
-              if (!requireLogin()) return;
-              if (window.innerWidth >= 768) setIsDesktopChatOpen(true);
-              else startTransition(() => setCurrentView('chat'));
-            }}
-            icon={chatIcon}
-        />
-      )}
-
-      {/* Desktop Chat Popup */}
-      {isDesktopChatOpen && (
-        <div ref={desktopChatRef} className="hidden md:flex fixed bottom-5 right-5 z-[1100] w-[320px] h-[450px] bg-white dark:bg-slate-900 rounded-none shadow-2xl border border-gray-200 dark:border-slate-700 flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in">
-            <ChatLayout 
-                isMobile={false} 
-                onClose={() => setIsDesktopChatOpen(false)} 
-                user={user}
-                isDarkMode={isDarkMode} 
-                chatTab={chatTab} 
-                setChatTab={setChatTab}
-                chatSellerId={chatSellerId}
-                setChatSellerId={setChatSellerId}
-                isChatMenuOpen={isChatMenuOpen} 
-                setIsChatMenuOpen={setIsChatMenuOpen} 
-                playCustomNotificationSound={playCustomNotificationSound}
-                onViewProfile={(id) => {
-                  startTransition(() => {
-                    setSelectedUserProfileId(id);
-                    setCurrentView('user-public-profile');
-                    setIsChatMenuOpen(false);
-                  });
-                }}
-              pendingProduct={pendingProduct}
-              setPendingProduct={setPendingProduct}
-              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
-              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
-            />
-
-            {/* Desktop Quick Menu Overlay */}
-            {isInstantMenuOpen && chatTab === 'admin' && (
-                <div className="absolute inset-0 z-[10] flex flex-col justify-end animate-in fade-in duration-300">
-                    <div className="absolute inset-0 bg-black/20" onClick={() => setIsInstantMenuOpen(false)}></div>
-                    <div className={`relative w-full rounded-t-2xl p-4 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
-                        <div className="w-10 h-1 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-4"></div>
-                        
-                        <div className="mb-4">
-                            <h3 className={`text-sm font-black mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan</h3>
-                            <p className={`text-[10px] leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
-                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, ada kendala apa?
-                            </p>
-                        </div>
-
-                        <div className="space-y-2">
-                            {chatbotMenu.map((option, i) => (
-                                <button 
-                                    key={i} 
-                                    onClick={() => handleChatBotClick(option)}
-                                    className={`w-full text-left p-2.5 rounded-xl border font-bold text-[10px] transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
-                                >
-                                    <span className="truncate pr-2">{option.label}</span>
-                                    <ChevronRight size={14} className="text-gray-400 shrink-0" />
-                                </button>
-                            ))}
-                        </div>
-                        <button 
-                            onClick={() => setIsInstantMenuOpen(false)}
-                            className="w-full mt-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"
-                        >
-                            Tutup
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-      )}
-
-      {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
-      {!['cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
-        <div className="flex justify-around items-center h-16">
-          <button onClick={() => startTransition(() => setCurrentView('home'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-            <HomeIcon size={24} strokeWidth={currentView === 'home' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Home</span>
-          </button>
-
-          <button onClick={() => startTransition(() => setCurrentView('niaga-video'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'niaga-video' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-            <PlayCircle size={24} strokeWidth={currentView === 'niaga-video' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Video</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              if (!requireLogin()) return;
-              startTransition(() => {
-                setChatSellerId(null); // Reset room aktif pas klik dari bawah
-                setChatTab('admin');
-                setCurrentView('chat');
-              });
-            }}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}
-          >
-            <MessageCircle size={24} />
-            <span className="text-[10px] font-medium">Chat</span>
-          </button>
-
-          <button onClick={() => user ? startTransition(() => setCurrentView('account-menu')) : openLogin('login')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
-            {user?.photoURL ? <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full object-cover" /> : <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />}
-            <span className="text-[10px] font-medium">{user ? 'Profil' : 'Login'}</span>
-          </button>
-        </div>
-      </div>
-      )}
-    </div>
-  );
-};
-
-// --- DRAGGABLE CHAT WIDGET ---
-const DraggableChatWidget = ({ onClick, icon }) => {
-  const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 160 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef(null);
-  const offset = useRef({ x: 0, y: 0 });
-  const isMouseDown = useRef(false); // Track mouse state
-
-  const handleStart = (clientX, clientY) => {
-    isMouseDown.current = true;
-    if (dragRef.current) {
-        const rect = dragRef.current.getBoundingClientRect();
-        offset.current = { x: clientX - rect.left, y: clientY - rect.top };
-    }
-  };
-
-  const handleMove = (clientX, clientY) => {
-    if (!isMouseDown.current) return;
-    setIsDragging(true);
-    setPosition({
-        x: clientX - offset.current.x,
-        y: clientY - offset.current.y
-    });
-  };
-
-  const handleEnd = () => {
-    isMouseDown.current = false;
-    // Delay reset biar onClick ke-trigger duluan (kalau cuma klik) atau ke-block (kalau abis drag)
-    setTimeout(() => setIsDragging(false), 100);
-  };
-
-  // Global Event Listeners untuk Mouse (Desktop)
-  useEffect(() => {
-    const onMouseMove = (e) => {
-        if (isMouseDown.current) {
-            e.preventDefault(); // Prevent text selection
-            handleMove(e.clientX, e.clientY);
-        }
-    };
-    const onMouseUp = () => {
-        if (isMouseDown.current) {
-            handleEnd();
-        }
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    return () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, []);
-
-  return (
-    <div
-        ref={dragRef}
-        style={{ left: position.x, top: position.y, touchAction: 'none' }}
-        className="hidden md:block fixed z-[1100] cursor-move"
-        onTouchStart={(e) => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
-        onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
-        onTouchEnd={handleEnd}
-        onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
-        onClick={() => { if (!isDragging) onClick(); }}
-    >
-        <div className="w-14 h-14 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg hover:bg-sky-700 transition-colors border-2 border-white overflow-hidden">
-            {icon ? <img src={icon} className="w-full h-full object-cover" alt="Chat" /> : <MessageCircle size={28} />}
-        </div>
-    </div>
-  );
-};
-export default Home;
+import React, { useState, useEffect, useRef, useMemo, Suspense, useTransition, useCallback } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Search, Bell, ShoppingCart, User, Utensils, Sparkles, ShoppingBag, ChevronRight, Wrench, Package, CheckCircle, Loader2, ArrowLeft, Info, AlertTriangle, XCircle, Trash2, Gamepad2, Instagram, HelpCircle, MessageCircle, Bike, Smartphone, Star, Home as HomeIcon, Store, MapPin, LogOut, LayoutDashboard, Send, ChevronLeft, MoreVertical, Mail, X, Grid, HeartHandshake, PlayCircle } from 'lucide-react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Autoplay, Pagination, EffectCoverflow, Navigation } from 'swiper/modules';
+import Swal from 'sweetalert2';
+import 'swiper/css';
+import 'swiper/css/navigation';
+import 'swiper/css/pagination';
+import 'swiper/css/effect-coverflow';
+import ProductCard from '../components/ProductCard';
+import { ChatLayout } from '../components/ChatLayout'; // Import ChatLayout
+import { TopUpModal } from '../components/TopUpModal'; // Import modal baru
+import { auth, db, dbFirestore, messaging } from '../config/firebase';
+import { ref, onValue, push, update, serverTimestamp, get, child, onChildAdded, query as dbQuery, orderByChild, equalTo, remove } from 'firebase/database';
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, orderBy, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { getToken, onMessage } from 'firebase/messaging';
+import { useTheme } from '../context/ThemeContext'; // Import Context
+import ImageWithFallback from '../components/ImageWithFallback';
+
+// Lazy Load Pages untuk Optimasi Bundle Size
+const TopUp = React.lazy(() => import('./TopUp'));
+const FoodOrder = React.lazy(() => import('./FoodOrder'));
+const SkinCare = React.lazy(() => import('./SkinCare'));
+const Fashion = React.lazy(() => import('./Fashion'));
+const Jasa = React.lazy(() => import('./Jasa'));
+const Cart = React.lazy(() => import('./Cart'));
+const Profile = React.lazy(() => import('./Profile'));
+const DashboardSeller = React.lazy(() => import('./DashboardSeller'));
+const Address = React.lazy(() => import('./Address'));
+const ProductDetail = React.lazy(() => import('./ProductDetail'));
+const Payment = React.lazy(() => import('./Payment'));
+const TransactionHistory = React.lazy(() => import('./TransactionHistory'));
+const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
+const StoreProfile = React.lazy(() => import('./StoreProfile'));
+const DigitalCenter = React.lazy(() => import('./DigitalCenter'));
+const NiagaGo = React.lazy(() => import('./NiagaGo'));
+const SearchResults = React.lazy(() => import('./SearchResults'));
+const SearchPage = React.lazy(() => import('./SearchPage'));
+const AllCategories = React.lazy(() => import('./AllCategories'));
+const SobatBerbagi = React.lazy(() => import('./SobatBerbagi'));
+const NiagaVideo = React.lazy(() => import('./NiagaVideo'));
+const UserPublicProfile = React.lazy(() => import('./UserPublicProfile'));
+const SellerInbox = React.lazy(() => import('./SellerInbox'));
+const PRODUCTS_CACHE_KEY = 'sobat-niaga:home-products:v1';
+const BANNERS_CACHE_KEY = 'sobat-niaga:home-banners:v1';
+const FLASH_DEAL_CACHE_KEY = 'sobat-niaga:home-flashdeal:v1';
+
+const readCachedProducts = () => {
+  try {
+    const cached = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    const parsed = cached ? JSON.parse(cached) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const readCachedBanners = () => {
+  try {
+    const cached = localStorage.getItem(BANNERS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : {};
+  } catch {
+    return {};
+  }
+};
+
+const readCachedFlashDeal = () => {
+  try {
+    const cached = localStorage.getItem(FLASH_DEAL_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+};
+
+const Home = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const notificationRef = useRef(null);
+  const searchRef = useRef(null);
+  const chatMenuRef = useRef(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'topup' | 'food'
+  const [previousView, setPreviousView] = useState('home');
+  const [selectedProductId, setSelectedProductId] = useState(null);
+  const [products, setProducts] = useState(readCachedProducts); // Tampilkan katalog tersimpan sebelum jaringan merespons
+  const [cartCount, setCartCount] = useState(0);
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [historyTab, setHistoryTab] = useState('waiting_payment');
+  const [highlightOrderId, setHighlightOrderId] = useState(null);
+  const [bannerImages, setBannerImages] = useState(readCachedBanners); // State buat nampung URL banner dari database
+  const [selectedSellerId, setSelectedSellerId] = useState(null); // ID Toko yang sedang dilihat
+  const [searchQuery, setSearchQuery] = useState(''); // State untuk input pencarian
+  const [activeSearchQuery, setActiveSearchQuery] = useState(''); // State untuk query yang aktif dicari
+  const [selectedGame, setSelectedGame] = useState(null); // State untuk modal top up game
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
+  const [capsuleStyle, setCapsuleStyle] = useState({ left: 0, width: 0, opacity: 0 });
+  const tabsRef = useRef([]);
+  const [selectedUserProfileId, setSelectedUserProfileId] = useState(null); // State baru
+  const { theme } = useTheme() || { theme: 'light' }; // 🛡️ Safety check biar gak crash pas toggle theme
+  const isDarkMode = theme === 'dark';
+  const [flashDeal, setFlashDeal] = useState(readCachedFlashDeal);
+  const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 });
+  const [isExpired, setIsExpired] = useState(true); // Default true biar gak flicker
+  const [pagesContent, setPagesContent] = useState({}); // Konten Halaman Statis
+  const [chatTab, setChatTab] = useState('admin'); // 'admin' | 'seller'
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false); // State menu titik tiga di chat
+  const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(false); // State Pop-up Chat Desktop (Floating)
+  const [chatSellerId, setChatSellerId] = useState(null); // ID Seller untuk chat aktif
+  const [activeChatBuyerId, setActiveChatBuyerId] = useState(null); // ID Buyer untuk chat aktif (Sisi Seller)
+
+  // --- LAYANAN CHATBOT ADMIN (BOT RESPONSE LOGIC) ---
+  const chatbotMenu = [
+    { label: "💸 Saldo Top Up belum masuk", botResponse: "Halo Sobat! Untuk melakukan Top Up Saldo SobatNiaga, kamu bisa langsung menghubungi admin keuangan kami via WhatsApp di nomor 089517587498. Proses cepat dan aman!" },
+    { label: "📦 Cek status transaksi Rekber", botResponse: "Halo! Jika kamu ingin mengecek status pencairan dana Rekber atau verifikasi pembayaran QRIS, mohon kirimkan ID Transaksi atau Screenshot Bukti Transfer di sini ya. Admin akan segera memproses dalam 5-10 menit." },
+    { label: "🛡️ Laporkan kendala transaksi / penipuan", botResponse: "SobatNiaga sangat menjaga keamanan bertransaksi. Jika kamu menemukan indikasi penipuan, akun palsu, atau masalah transaksi, harap lampirkan kronologi singkat dan bukti foto. Laporanmu akan langsung ditangani tim keamanan kami." },
+    { label: "🤝 Cara daftar menjadi penjual (Seller)", botResponse: "Tertarik buka toko sendiri di SobatNiaga? Caranya gampang banget! Cukup masuk ke menu 'Profil', klik 'Buka Toko Gratis', lalu lengkapi data tokomu. Yuk, mulai jualan dan sukses bareng SobatNiaga!" }
+  ];
+
+  const [isInstantMenuOpen, setIsInstantMenuOpen] = useState(false);
+
+  const handleChatBotClick = async (option) => {
+    if (!requireLogin()) return;
+    const messagesRef = ref(db, `chats/${user.uid}/messages`);
+    const chatRef = ref(db, `chats/${user.uid}`);
+    
+    try {
+      // 1. Pesan User (Pilihan yang diklik)
+      await push(messagesRef, {
+        text: option.label,
+        sender: 'user',
+        timestamp: serverTimestamp(),
+        status: 'sent'
+      });
+
+      // 2. Pesan Balasan Otomatis Admin (Bot)
+      setTimeout(async () => {
+        await push(messagesRef, {
+          text: option.botResponse,
+          sender: 'admin',
+          timestamp: serverTimestamp(),
+          status: 'sent',
+          isBot: true
+        });
+        // Update Metadata Chat agar Admin di Dashboard tau ada aktifitas
+        await update(chatRef, { lastMessageText: option.botResponse, lastMessageTime: serverTimestamp(), hasUnreadAdmin: true });
+      }, 600);
+      setIsInstantMenuOpen(false); // Otomatis tutup menu setelah pilih
+    } catch (error) { console.error("Chatbot Error:", error); }
+  };
+
+  useEffect(() => {
+    if ((currentView === 'chat' || isDesktopChatOpen) && chatTab === 'admin') {
+      setIsInstantMenuOpen(true);
+    }
+  }, [currentView, isDesktopChatOpen, chatTab]);
+
+  // --- WEB PUSH NOTIFICATION (FCM) LOGIC ---
+  const requestPermission = async (userId) => {
+    console.log('Meminta izin notifikasi...');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await getToken(messaging, { 
+          vapidKey: 'BIBHwt4wNcjkNxMT0KmI_babges5K0R7GQS9AcEMP61_6XXHFUfvUlAPIQ3bCR93mbELRgzWaySglN-QCYVlDcE' 
+        });
+        
+        if (token) {
+          console.log('FCM Token didapat:', token);
+          // Simpan ke Realtime DB (utama, selalu berhasil untuk user login)
+          const userRtdbRef = ref(db, `users/${userId}`);
+          await update(userRtdbRef, { fcmToken: token });
+
+          // Simpan ke Firestore juga (untuk push background) — tangkap error secara terpisah
+          // agar kegagalan Firestore tidak membatalkan penyimpanan ke Realtime DB
+          try {
+            const userFirestoreRef = doc(dbFirestore, 'users', userId);
+            await setDoc(userFirestoreRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
+          } catch (firestoreError) {
+            // Tidak kritis — FCM token sudah tersimpan di Realtime DB
+            console.warn('FCM token tidak tersimpan ke Firestore (akan dicoba ulang berikutnya):', firestoreError.code);
+          }
+        }
+      } else {
+        console.warn('Izin notifikasi ditolak oleh user.');
+      }
+    } catch (error) {
+      console.error('Error saat setup messaging:', error);
+    }
+  };
+
+  // Listener untuk pesan masuk saat App sedang terbuka (Foreground)
+  useEffect(() => {
+    if (!messaging) return;
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log('Pesan diterima di foreground:', payload);
+      // Tampilkan toast notifikasi manual jika user sedang tidak di halaman chat
+      if (currentView !== 'chat') {
+        Swal.fire({
+          title: payload.notification.title,
+          text: payload.notification.body,
+          icon: 'info',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 4000
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [currentView]);
+
+  const [pendingProduct, setPendingProduct] = useState(null); // Produk yang akan ditanyakan
+  const desktopChatRef = useRef(null);
+  const [isPending, startTransition] = useTransition(); // Ini baris yang ditambahkan
+  const openLogin = useCallback((mode = 'login') => {
+    navigate(`/login?mode=${mode}`, { state: { from: location.pathname } });
+  }, [location.pathname, navigate]);
+  const requireLogin = useCallback(() => {
+    if (user?.uid) return true;
+    openLogin();
+    return false;
+  }, [openLogin, user?.uid]);
+  const openCart = useCallback(() => {
+    if (!requireLogin()) return;
+    startTransition(() => setCurrentView('cart'));
+  }, [requireLogin, startTransition]);
+
+  // State Global Config dari DB
+  const [globalNotifSound, setGlobalNotifSound] = useState('');
+  useEffect(() => {
+    // Get dari dokumen global settings di Realtime/Firestore (Saya buat di Firestore sesuai request)
+    // Menggunakan getDoc sekali saja di awal home mount
+    const fetchGlobalConfig = async () => {
+        const snap = await get(child(ref(db), 'app_config/settings'));
+        if (snap.exists()) setGlobalNotifSound(snap.val().notificationSoundUrl);
+    };
+    fetchGlobalConfig();
+  }, []);
+
+  // --- GLOBAL CUSTOM NOTIFICATION SOUND ---
+  const playCustomNotificationSound = useCallback(async () => {
+    try {
+      // Update: Ambil dari Realtime Database sesuai instruksi Dani
+      const dbRef = ref(db);
+      const snapshot = await get(child(dbRef, "app_config/settings"));
+      let targetUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
+      if (snapshot.exists() && snapshot.val().notificationSoundUrl) {
+        targetUrl = snapshot.val().notificationSoundUrl;
+      }
+
+      const audio = new Audio(`${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${new Date().getTime()}`);
+      audio.crossOrigin = "anonymous";
+      await audio.play();
+    } catch (error) {
+      console.error("Gagal putar audio:", error);
+    }
+  }, []);
+
+  // --- CLEANUP LOCALSTORAGE ---
+  useEffect(() => {
+    // Hapus sisa-sisa key lama agar tidak mengganggu logika baru
+    localStorage.removeItem('notif_sound');
+    localStorage.removeItem('custom_notif_sound');
+  }, []);
+
+  // Refs for Auto-Scroll Sections
+  const populerRef = useRef(null);
+  const pulsaRef = useRef(null);
+  const makanRef = useRef(null);
+  const skincareRef = useRef(null);
+  const fashionRef = useRef(null);
+  const jasaRef = useRef(null);
+  const gameRef = useRef(null);
+  const niagaGoRef = useRef(null);
+
+  // Helper: validasi URL gambar agar tidak memicu 404 di konsol
+  const isValidImageUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
+  // Logic Banner Dinamis (Database > Lokal)
+  const banners = useMemo(() => {
+    const slots = [
+      { id: 1, key: 'home_slider_1', alt: "Slide 1" },
+      { id: 2, key: 'home_slider_2', alt: "Slide 2" },
+      { id: 3, key: 'home_slider_3', alt: "Slide 3" },
+      { id: 4, key: 'home_slider_4', alt: "Slide 4" },
+      { id: 5, key: 'home_slider_5', alt: "Slide 5" },
+    ];
+
+    return slots.map(slot => {
+      const data = bannerImages[slot.key];
+      if (!data) return null;
+      
+      const image = (typeof data === 'object' && data !== null) ? data.url : data;
+      const link = (typeof data === 'object' && data !== null) ? data.link : null;
+      
+      // Lewati slot dengan URL tidak valid agar tidak muncul error 404
+      if (!isValidImageUrl(image)) return null;
+
+      return { ...slot, image, link };
+    }).filter(b => b && b.image);
+  }, [bannerImages]);
+
+  const footerBg = useMemo(() => {
+    const data = bannerImages.footer_bg;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
+  }, [bannerImages]);
+
+  const chatIcon = useMemo(() => {
+    const data = bannerImages.chat_icon;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
+  }, [bannerImages]);
+
+  const homeBgStatic = useMemo(() => {
+    const data = bannerImages.home_bg_static;
+    return (typeof data === 'object' && data !== null) ? data?.url : data;
+  }, [bannerImages]);
+
+  // Kategori Navigasi Baru (Sticky)
+  const navCategories = [
+    { name: 'Populer', icon: <Star size={20} />, color: 'shadow-orange-500/50', key: 'icon_populer' },
+    { name: 'Sobat Berbagi', icon: <HeartHandshake size={20} />, color: 'shadow-orange-100/50', key: 'icon_sharing' },
+    { name: 'Niaga Food', icon: <Utensils size={20} />, color: 'shadow-red-500/50', key: 'icon_makanan' },
+    { name: 'Skin Care', icon: <Sparkles size={20} />, color: 'shadow-pink-500/50', key: 'icon_skincare' },
+    { name: 'Fashion', icon: <ShoppingBag size={20} />, color: 'shadow-purple-500/50', key: 'icon_fashion' },
+    { name: 'Jasa', icon: <Wrench size={20} />, color: 'shadow-indigo-500/50', key: 'icon_jasa' },
+    { name: 'Top Up Game', icon: <Gamepad2 size={20} />, color: 'shadow-green-500/50', key: 'icon_game' },
+    { name: 'Lainnya', icon: <Grid size={20} />, color: 'shadow-slate-500/50', key: 'icon_lainnya' },
+  ];
+
+  // Fetch Real Products from Firebase
+  useEffect(() => {
+    const productsRef = ref(db, 'products');
+    const unsubscribe = onValue(productsRef, (snapshot) => {
+      const data = snapshot.val();
+      const loadedProducts = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      // Filter Produk Aktif (isActive !== false) agar produk arsip tidak muncul
+      const activeProducts = loadedProducts.filter(p => p.isActive !== false);
+      // Sort by createdAt descending (Terbaru paling atas/kiri)
+      const sortedProducts = activeProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setProducts(sortedProducts);
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(sortedProducts));
+      } catch (error) {
+        // Cache hanya akselerasi; katalog realtime tetap berfungsi bila penyimpanan penuh/dinonaktifkan.
+        console.warn('Katalog home tidak dapat disimpan ke cache lokal:', error);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Effect untuk Sliding Capsule Animation
+  useEffect(() => {
+    const updateCapsule = () => {
+      const currentTab = tabsRef.current[activeCategoryIndex];
+      if (currentTab) {
+        setCapsuleStyle({
+          left: currentTab.offsetLeft,
+          width: currentTab.offsetWidth,
+          opacity: 1
+        });
+      }
+    };
+    updateCapsule();
+    window.addEventListener('resize', updateCapsule);
+    return () => window.removeEventListener('resize', updateCapsule);
+  }, [activeCategoryIndex]);
+
+  // Fetch Banner Realtime dengan Local Persistence
+  useEffect(() => {
+    const bannersRef = ref(db, 'admin/banners');
+    const unsubscribe = onValue(bannersRef, (snapshot) => {
+      const data = snapshot.exists() ? snapshot.val() : {};
+      setBannerImages(data);
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(data));
+      } catch (err) {
+        console.warn('Gagal menyimpan cache banner:', err);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Flash Deal Data dengan Local Persistence
+  useEffect(() => {
+    const fdRef = ref(db, 'admin/flashDeal');
+    const unsubscribe = onValue(fdRef, (snap) => {
+        if (snap.exists()) {
+          const val = snap.val();
+          setFlashDeal(val);
+          try {
+            localStorage.setItem(FLASH_DEAL_CACHE_KEY, JSON.stringify(val));
+          } catch (err) {
+            console.warn('Gagal menyimpan cache flash deal:', err);
+          }
+        }
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  // Fetch Pages Content (Tentang Kami, dll)
+  useEffect(() => {
+    const pagesRef = ref(db, 'admin/pages');
+    onValue(pagesRef, (snap) => {
+        if (snap.exists()) setPagesContent(snap.val());
+    });
+  }, []);
+
+  // Countdown Timer Logic
+  useEffect(() => {
+    if (flashDeal?.isActive && flashDeal?.endTime) {
+        const calculateTime = () => {
+            const now = new Date().getTime();
+            const end = new Date(flashDeal.endTime).getTime();
+            const distance = end - now;
+            
+            if (distance <= 0) {
+                setTimeLeft({ h: 0, m: 0, s: 0 });
+                setIsExpired(true); // Waktu habis -> Sembunyikan
+            } else {
+                setIsExpired(false); // Waktu ada -> Tampilkan
+                setTimeLeft({
+                    // Gunakan total jam (tidak di-modulo 24) agar jika > 1 hari tetap terlihat jamnya (misal 30 jam)
+                    h: Math.floor(distance / (1000 * 60 * 60)), 
+                    m: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+                    s: Math.floor((distance % (1000 * 60)) / 1000)
+                });
+            }
+        };
+
+        calculateTime(); // Hitung langsung saat mount biar gak nunggu 1 detik
+        const interval = setInterval(calculateTime, 1000);
+        return () => clearInterval(interval);
+    } else {
+        setTimeLeft({ h: 0, m: 0, s: 0 });
+        setIsExpired(true); // Kalau tidak aktif/tidak ada data -> Sembunyikan
+    }
+  }, [flashDeal]);
+
+  // Listen to Cart Count
+  useEffect(() => {
+    if (user?.uid) {
+      const cartRef = ref(db, `users/${user.uid}/cart`);
+      return onValue(cartRef, (snapshot) => {
+        const data = snapshot.val();
+        setCartCount(data ? Object.keys(data).length : 0);
+      });
+    }
+  }, [user]);
+
+  // Fetch Notifications Realtime
+  const prevNotifCount = useRef(0);
+  const isFirstLoadNotif = useRef(true);
+
+  // --- GLOBAL REAL-TIME NOTIFICATION LISTENER (REALTIME DATABASE) ---
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    // 1. Tentukan apakah user ini admin atau user biasa
+    const isAdmin = user.email === 'pushmate.id@gmail.com'; // Admin Global
+    const notifRef = ref(db, 'notifications');
+    let notifQuery;
+
+    if (isAdmin) {
+      // Jalur Admin: Dengerin seluruh notifikasi unread global
+      notifQuery = dbQuery(notifRef, orderByChild('status'), equalTo('unread'));
+    } else {
+      // Jalur User Biasa: Cuma dengerin notifikasi yang ditujukan buat UID dia (pake recipientId sesuai Rules)
+      notifQuery = dbQuery(notifRef, orderByChild('recipientId'), equalTo(user.uid));
+    }
+
+    // Sync UI (Daftar di Lonceng) via onValue
+    const unsubscribeValue = onValue(notifQuery, (snapshot) => {
+      const data = snapshot.val();
+      const loadedNotifs = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      
+      // Filter manual unread untuk user biasa karena query RTDB terbatas 1 filter field
+      const finalNotifs = isAdmin ? loadedNotifs : loadedNotifs.filter(n => n.status === 'unread');
+
+      setNotifications(finalNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      
+      // Tandai batch awal selesai diproses (sync burst)
+      isFirstLoadNotif.current = false;
+    });
+
+    // 2. Mainkan suara HANYA saat ada DATA ANAK BARU masuk (realtime)
+    const unsubscribeAdded = onChildAdded(notifQuery, (snapshot) => {
+      // Skip bunyi untuk data lama saat aplikasi baru dibuka
+      if (isFirstLoadNotif.current) return;
+      
+      const data = snapshot.val();
+      if (data && data.status === 'unread') {
+        playCustomNotificationSound();
+      }
+    });
+
+    return () => {
+      unsubscribeValue();
+      unsubscribeAdded();
+    };
+  }, [user?.uid, user?.email, playCustomNotificationSound]);
+
+  // Click Outside & Escape Key Functionality
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsProfileOpen(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setIsNotificationOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target)) {
+        setIsChatMenuOpen(false);
+      }
+      if (desktopChatRef.current && !desktopChatRef.current.contains(event.target)) {
+        setIsDesktopChatOpen(false);
+      }
+    };
+
+    const handleEscapeKey = (event) => {
+      if (event.key === 'Escape') {
+        setIsProfileOpen(false);
+        setIsNotificationOpen(false);
+        setShowSuggestions(false);
+        setIsChatMenuOpen(false);
+        setIsDesktopChatOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, []);
+
+  // Auth Persistence Listener: Cek status login saat refresh
+  useEffect(() => {
+    let dbUnsubscribe; // Simpan fungsi unsubscribe DB
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      // Bersihkan listener DB sebelumnya jika ada (misal ganti akun)
+      if (dbUnsubscribe) dbUnsubscribe();
+
+      if (currentUser) {
+        // Jika user login, ambil data lengkap dari Realtime DB
+        const userRef = ref(db, `users/${currentUser.uid}`);
+        
+        // Gunakan onValue agar data user (saldo, dll) selalu realtime
+        dbUnsubscribe = onValue(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const dbUser = snapshot.val();
+            // Gabungkan data Auth dan DB
+            setUser({ ...currentUser, ...dbUser });
+          } else {
+            // User baru, belum ada data di DB
+            setUser(currentUser);
+          }
+
+          // PENTING: Minta izin notifikasi begitu user login
+          requestPermission(currentUser.uid);
+
+          // PENTING: Matikan loading HANYA setelah data user siap
+          setIsLoading(false);
+        });
+      } else {
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+    
+    // Cleanup saat unmount
+    return () => {
+      unsubscribe();
+      if (dbUnsubscribe) dbUnsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const privateViews = new Set([
+      'cart', 'payment', 'topup', 'chat', 'seller-chat', 'seller-inbox',
+      'profile', 'history', 'address', 'dashboard-seller', 'admin-dashboard',
+      'niagago', 'sobat-berbagi', 'user-public-profile'
+    ]);
+    if (!isLoading && !user?.uid && privateViews.has(currentView)) {
+      setCurrentView('home');
+      openLogin();
+    }
+  }, [currentView, isLoading, openLogin, user?.uid]);
+
+  // Protected View "Redirect"
+  useEffect(() => {
+    // Jika user mencoba mengakses halaman admin tanpa hak, tendang ke home.
+    if (currentView === 'admin-dashboard' && user?.email !== 'pushmate.id@gmail.com') {
+      console.warn("Access Denied: You are not authorized to view this page. Redirecting to home.");
+      setCurrentView('home');
+    }
+  }, [currentView, user]); // Dijalankan setiap kali view atau user berubah
+
+  const toggleProfileDropdown = () => {
+    setIsProfileOpen(!isProfileOpen);
+  };
+
+  const closeProfileDropdown = () => {
+    setIsProfileOpen(false);
+  };
+
+  const handleProductClick = (product) => {
+    if (!product?.id) return;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      const from = `${location.pathname}${location.search}`;
+      sessionStorage.setItem('sobatniaga-product-return-scroll', String(window.scrollY));
+      navigate(`/product/${encodeURIComponent(product.id)}`, { state: { from } });
+      return;
+    }
+    setSelectedProductId(String(product.id));
+  };
+
+  useEffect(() => {
+    if (location.pathname !== '/') return;
+    const savedScroll = sessionStorage.getItem('sobatniaga-product-return-scroll');
+    if (savedScroll === null) return;
+    sessionStorage.removeItem('sobatniaga-product-return-scroll');
+    const restoreFrame = window.requestAnimationFrame(() => window.scrollTo(0, Number(savedScroll) || 0));
+    return () => window.cancelAnimationFrame(restoreFrame);
+  }, [location.pathname]);
+
+  const handleCheckout = (orderId) => {
+    if (!requireLogin()) return;
+    startTransition(() => { setCurrentOrder({ id: orderId }); setCurrentView('payment'); });
+  };
+
+  const handleVisitStore = (sellerId) => {
+    startTransition(() => { setSelectedSellerId(sellerId); setPreviousView(currentView); setCurrentView('store-profile'); });
+  };
+
+  // --- LOGIKA PEMISAH CHAT RESPONSIVE (DESKTOP MODAL VS MOBILE PAGE) ---
+  const handleChatClick = (sellerId, storeName = null, storePhoto = null, storeEmail = null) => {
+    if (!requireLogin()) return;
+    setChatSellerId(sellerId);
+    // Simpan info toko sementara untuk inisialisasi metadata chat
+    if (storeName) {
+      const roomId = user.uid < sellerId ? `${user.uid}_${sellerId}` : `${sellerId}_${user.uid}`;
+      update(ref(db, `seller_chats/${roomId}`), {
+        buyerId: user.uid,
+        userName: user.displayName || '', // Inisialisasi info buyer di room
+        sellerId: sellerId,
+        storeName: storeName,
+        storePhoto: storePhoto || '',
+        storeEmail: storeEmail || ''
+      });
+      // Daftarkan di riwayat chat pembeli (Inbox Index) agar riwayat muncul di tab 'Chat Penjual'
+      update(ref(db, `users/${user.uid}/chat_partners/${sellerId}`), {
+        partnerId: sellerId,
+        partnerName: storeName,
+        partnerPhoto: storePhoto || '',
+        partnerEmail: storeEmail || '',
+        lastMessage: 'Memulai chat...',
+        timestamp: Date.now()
+      });
+    }
+    setChatTab(sellerId ? 'seller' : 'admin'); // Jika ada sellerId, chat seller. Jika tidak, chat admin.
+
+    if (window.innerWidth >= 768) {
+      setIsDesktopChatOpen(true); // Buka floating chat di desktop
+    } else {
+      startTransition(() => {
+        setCurrentView('chat');
+      });
+    }
+  };
+
+  // --- LOGIKA CHAT BAWA PRODUK (ATTACH PRODUCT TO CHAT) ---
+  const handleChatWithProduct = (productData) => {
+    if (!requireLogin()) return;
+
+    const sellerId = productData.sellerId;
+    
+    // Siapkan data produk untuk context chat (Sebagai Draft)
+    const attachedProduct = {
+      id: productData.id,
+      name: productData.name,
+      price: productData.price,
+      image: productData.mediaUrl || productData.image || 'https://via.placeholder.com/150'
+    };
+
+    setPendingProduct(attachedProduct);
+    setChatSellerId(sellerId);
+    setChatTab('seller');
+    
+    if (window.innerWidth >= 768) {
+      setIsDesktopChatOpen(true);
+    } else {
+      startTransition(() => setCurrentView('chat'));
+    }
+  };
+
+  const scrollToSection = (name) => {
+    if (name === 'Lainnya') {
+      startTransition(() => { setCurrentView('all-categories'); });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (name === 'Sobat Berbagi') {
+      startTransition(() => { setCurrentView('sobat-berbagi'); });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (name === 'NiagaGo') { // Ini ada di kategori juga
+      startTransition(() => { setCurrentView('niagago'); });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    let ref = null;
+    switch (name) {
+      case 'Populer': ref = populerRef; break;
+      case 'Isi Pulsa': ref = pulsaRef; break;
+      case 'Niaga Food': ref = makanRef; break;
+      case 'Skin Care': ref = skincareRef; break;
+      case 'Fashion': ref = fashionRef; break;
+      case 'Jasa': ref = jasaRef; break;
+      case 'NiagaGo': ref = niagaGoRef; break;
+      default: ref = null;
+    }
+    if (ref && ref.current) {
+      const offset = 140; // Navbar + Sticky Menu height
+      const top = ref.current.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  };
+
+  const handleGameSelect = (game) => {
+    if (!requireLogin()) return;
+    startTransition(() => { setSelectedGame(game); });
+  };
+
+  useEffect(() => {
+    const action = location.state?.productDetailAction;
+    if (!action || isLoading) return;
+
+    if ((action.type === 'cart' || action.type === 'chat') && !user?.uid) {
+      openLogin();
+      return;
+    }
+
+    if (action.type === 'cart') {
+      setCurrentView('cart');
+    } else if (action.type === 'store' && action.sellerId) {
+      setSelectedSellerId(action.sellerId);
+      setPreviousView('home');
+      setCurrentView('store-profile');
+    } else if (action.type === 'chat' && action.product?.id) {
+      const product = action.product;
+      setPendingProduct({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.mediaUrl || product.image || 'https://via.placeholder.com/150'
+      });
+      setChatSellerId(product.sellerId);
+      setChatTab('seller');
+      if (window.innerWidth >= 768) {
+        setIsDesktopChatOpen(true);
+      } else {
+        setCurrentView('chat');
+      }
+    } else {
+      return;
+    }
+
+    navigate('/', { replace: true, state: null });
+  }, [isLoading, location.state, navigate, openLogin, user?.uid]);
+
+  // Handle Search Input & Auto-Suggestions
+  const handleSearchInput = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (query.trim().length > 0) {
+      const filtered = products.filter(p => 
+        (p.name || "").toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 5); // Limit to 5 suggestions
+      setSuggestions(filtered);
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSuggestionClick = (productName) => {
+    startTransition(() => {
+      setSearchQuery(productName); setActiveSearchQuery(productName); setPreviousView(currentView);
+      setCurrentView('search-results'); setShowSuggestions(false);
+    });
+  };
+
+  // Notification Helpers
+  const unreadCount = notifications.length; // Karena query sudah difilter 'unread'
+
+  const handleNotificationClick = (notif) => {
+    if (notif.status === 'unread') {
+      update(ref(db, `notifications/${notif.id}`), { status: 'read' });
+    }
+    
+    // Reset Highlight
+    setHighlightOrderId(null);
+
+    // Handle Deep Link Order (Untuk Payment Rejected dll)
+    if (notif.orderId) {
+      startTransition(() => { setCurrentOrder({ id: notif.orderId }); });
+      setHighlightOrderId(notif.orderId);
+    }
+
+    startTransition(() => { // Logic Dynamic Tab untuk TransactionHistory
+    if (notif.targetView) {
+      setCurrentView(notif.targetView);
+    }
+
+    if (notif.targetView === 'history') {
+      if (notif.targetTab) {
+        setHistoryTab(notif.targetTab);
+      } else if (notif.title.toLowerCase().includes('dikirim')) {
+        setHistoryTab('shipped');
+      } else if (notif.title.toLowerCase().includes('selesai')) {
+        setHistoryTab('completed');
+      }
+    }
+    setIsNotificationOpen(false);
+    });
+  };
+
+  const handleMarkAllRead = () => {
+    notifications.forEach(async (n) => {
+      if (n.status === 'unread') {
+        try {
+          await update(ref(db, `notifications/${n.id}`), { status: 'read' });
+        } catch (e) { console.error("Gagal mark read:", e); }
+      }
+    });
+  };
+
+  const handleClearAllNotifications = () => {
+    notifications.forEach(async (n) => {
+      try {
+        await remove(ref(db, `notifications/${n.id}`));
+      } catch (e) { console.error("Gagal hapus notif:", e); }
+    });
+  };
+
+  const getTimeAgo = (dateString) => {
+    const diff = Math.floor((new Date() - new Date(dateString)) / 1000);
+    if (diff < 60) return 'Baru saja';
+    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+    return `${Math.floor(diff / 86400)} hari lalu`;
+  };
+
+  const getNotifStyle = (type) => {
+    switch(type) {
+      case 'success': return { icon: <CheckCircle size={16} className="text-white" />, color: 'bg-green-500' };
+      case 'warning': return { icon: <AlertTriangle size={16} className="text-white" />, color: 'bg-yellow-500' };
+      case 'error': return { icon: <XCircle size={16} className="text-white" />, color: 'bg-red-500' };
+      default: return { icon: <Info size={16} className="text-white" />, color: 'bg-blue-500' };
+    }
+  };
+
+  // Render Halaman Statis (Tentang Kami, dll)
+  const renderStaticPage = (pageKey, title) => {
+    const content = pagesContent[pageKey] || '<div class="flex flex-col items-center justify-center py-20 text-gray-400"><p class="text-lg font-medium">Konten belum tersedia.</p><p class="text-sm">Admin sedang menyusun halaman ini.</p></div>';
+    
+    return (
+        <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+            {/* Header Sticky */}
+            <div className={`sticky top-0 z-50 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+                <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
+                    <button onClick={() => startTransition(() => setCurrentView('home'))} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h1 className={`text-lg font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>{title}</h1>
+                </div>
+            </div>
+
+            {/* Content Container */}
+            <div className="max-w-4xl mx-auto px-4 py-8 md:py-12">
+                <div className={`rounded-3xl shadow-xl overflow-hidden border transition-colors ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                    
+                    {/* Decorative Header inside Card */}
+                    <div className={`h-32 md:h-48 relative overflow-hidden ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+                        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5"></div>
+                        <div className="absolute bottom-0 left-0 p-8">
+                             <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
+                                {title}
+                             </h2>
+                             <div className={`h-1.5 w-20 mt-4 rounded-full ${
+                                 pageKey === 'about' ? 'bg-sky-500' :
+                                 pageKey === 'terms' ? 'bg-orange-500' :
+                                 pageKey === 'privacy' ? 'bg-green-500' : 'bg-purple-500'
+                             }`}></div>
+                        </div>
+                    </div>
+
+                    {/* Body Content */}
+                    <div className="p-8 md:p-12">
+                        <article className={`prose prose-lg max-w-none 
+                            ${isDarkMode ? 'prose-invert prose-p:text-slate-300 prose-headings:text-white prose-strong:text-white' : 'prose-slate prose-p:text-slate-600 prose-headings:text-slate-800 prose-strong:text-slate-800'}
+                            prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl
+                            prose-a:text-sky-600 hover:prose-a:text-sky-500
+                            prose-img:rounded-2xl prose-img:shadow-lg
+                        `}>
+                            <div dangerouslySetInnerHTML={{ __html: content }} />
+                        </article>
+                    </div>
+
+                    {/* Footer of Document */}
+                    <div className={`px-8 py-6 border-t flex flex-col md:flex-row justify-between items-center gap-4 text-sm ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
+                        <span>&copy; {new Date().getFullYear()} SobatNiaga. {title}.</span>
+                        {pageKey === 'help' && (
+                            <button 
+                                onClick={() => window.open('https://wa.me/6289517587498', '_blank')}
+                                className="px-4 py-2 bg-green-500 text-white rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center gap-2"
+                            >
+                                <MessageCircle size={16} /> Hubungi CS
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+  };
+
+  // --- FITUR SYNC BACK BUTTON HP (HISTORY SINKRONISASI) ---
+  useEffect(() => {
+    const handleBackButton = (event) => {
+      // Jika user sedang tidak di home (misal: di cart, detail produk, atau video)
+      if (currentView !== 'home') {
+        // Hentikan aksi 'keluar dari aplikasi' default browser
+        event.preventDefault();
+        
+        // Logika mundur internal: Balik ke state sebelumnya atau paksa ke home
+        if (currentView === 'search-results') {
+          startTransition(() => setCurrentView(previousView || 'home'));
+        } else {
+          startTransition(() => setCurrentView('home'));
+        }
+      }
+    };
+
+    // 'PushState' setiap kali view berubah (kecuali home) agar ada tumpukan history palsu
+    if (currentView !== 'home') {
+      window.history.pushState(null, null, window.location.pathname);
+    }
+
+    window.addEventListener('popstate', handleBackButton);
+    return () => window.removeEventListener('popstate', handleBackButton);
+  }, [currentView, previousView, window.location.pathname]);
+
+  // Keep the public homepage visible while Firebase restores the user's session.
+  if (isLoading && currentView !== 'home') {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+               <ShoppingBag size={24} className="text-sky-500" />
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black tracking-tighter text-sky-600">SobatNiaga</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50 animate-pulse">Memuat Sistem...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Content Helper
+  const renderContent = () => {
+    switch (currentView) {
+      case 'topup': return <TopUp onBack={() => setCurrentView('home')} />;
+      case 'food': return <FoodOrder onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'skincare': return <SkinCare onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'fashion': return <Fashion onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'jasa': return <Jasa onBack={() => setCurrentView('home')} products={products} onProductClick={handleProductClick} />;
+      case 'cart': return <Cart 
+        onBack={() => startTransition(() => setCurrentView('home'))} 
+        user={user} 
+        onCheckout={handleCheckout}
+        onGoToAddress={() => startTransition(() => setCurrentView('address'))}
+      />;
+      case 'niaga-video': return (
+        <NiagaVideo 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
+          onProfileClick={(id) => { 
+            startTransition(() => {
+              setSelectedUserProfileId(id); 
+              setCurrentView('user-public-profile'); 
+            });
+          }} 
+          onStoreClick={(id) => handleVisitStore(id)} 
+          onProductClick={handleProductClick}
+        />
+      );
+      case 'user-public-profile': return (
+        <UserPublicProfile 
+          userId={selectedUserProfileId} 
+          currentUserId={user?.uid}
+          onBack={() => startTransition(() => setCurrentView('niaga-video'))} 
+          onVideoClick={() => startTransition(() => setCurrentView('niaga-video'))} 
+          onProductClick={handleProductClick} 
+          onChatClick={handleChatClick} 
+          // Prop baru untuk navigasi ke profil user sendiri (jika ini toko user)
+          onViewMyProfile={() => {
+            startTransition(() => {
+              setCurrentView('profile');
+            });
+          }}
+        />
+      );
+      case 'profile': return (
+        <Profile 
+          user={user} 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
+          onUpdateUser={(updatedUser) => setUser({ ...user, ...updatedUser })}
+          onViewHistory={() => startTransition(() => setCurrentView('history'))} 
+          onViewSellerDashboard={() => startTransition(() => setCurrentView('dashboard-seller'))}
+        />
+      );
+      case 'address': return <Address user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'dashboard-seller': return <DashboardSeller user={user} onBack={() => startTransition(() => setCurrentView('home'))} playCustomNotificationSound={playCustomNotificationSound} onViewInbox={() => startTransition(() => setCurrentView('seller-inbox'))} />;
+      case 'search-page': return (
+        <SearchPage 
+          onBack={() => startTransition(() => setCurrentView('home'))} 
+          products={products} 
+          onProductClick={handleProductClick} 
+          onSearch={(q) => {
+            startTransition(() => {
+              setSearchQuery(q);
+              setActiveSearchQuery(q);
+              setPreviousView(currentView);
+              setCurrentView('search-results');
+            });
+          }}
+        />
+      );
+      case 'payment': return <Payment order={currentOrder} onBack={openCart} onPaymentSuccess={() => startTransition(() => setCurrentView('history'))} />;
+      case 'history': return <TransactionHistory user={user} onBack={() => startTransition(() => setCurrentView('home'))} onPay={(order) => startTransition(() => { setCurrentOrder(order); setCurrentView('payment'); })} initialTab={historyTab} highlightOrderId={highlightOrderId} playCustomNotificationSound={playCustomNotificationSound} />;
+      case 'admin-dashboard': return <AdminDashboard user={user} onBack={() => startTransition(() => setCurrentView('home'))} />;
+      case 'store-profile': return (
+        <StoreProfile 
+          sellerId={selectedSellerId} 
+          currentUserId={user?.uid} 
+          onBack={() => startTransition(() => setCurrentView(previousView))} 
+          onProductClick={handleProductClick} 
+          onChatClick={handleChatClick} 
+        />
+      );
+      case 'digital-center': return <DigitalCenter onBack={() => startTransition(() => setCurrentView('home'))} onGameSelect={handleGameSelect} />;
+      case 'search-results': return <SearchResults onBack={() => startTransition(() => setCurrentView(previousView))} products={products} query={activeSearchQuery} onProductClick={handleProductClick} />;
+      case 'about': return renderStaticPage('about', 'Tentang Kami');
+      case 'terms': return renderStaticPage('terms', 'Syarat & Ketentuan');
+      case 'privacy': return renderStaticPage('privacy', 'Kebijakan Privasi');
+      case 'help': return renderStaticPage('help', 'Pusat Bantuan');
+      case 'niagago': return <NiagaGo user={user} onBack={() => startTransition(() => setCurrentView('home'))} onOpenProfile={() => startTransition(() => setCurrentView('profile'))} playCustomNotificationSound={playCustomNotificationSound} />;
+      case 'all-categories': return <AllCategories onBack={() => startTransition(() => setCurrentView('home'))} onNavigate={(view) => startTransition(() => setCurrentView(view))} />;
+      case 'sobat-berbagi': return <SobatBerbagi user={user} onBack={() => startTransition(() => setCurrentView('all-categories'))} />;
+      
+      // --- HALAMAN KOTAK MASUK PENJUAL ---
+      case 'seller-inbox': return (
+        <SellerInbox 
+            user={user} 
+            onBack={() => startTransition(() => setCurrentView('dashboard-seller'))} 
+            onChatClick={(buyerId) => {
+                setActiveChatBuyerId(buyerId);
+                startTransition(() => setCurrentView('seller-chat'));
+            }}
+        />
+      );
+
+      // --- HALAMAN LIVE CHAT INTERNAL ---
+      case 'chat':
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
+              <ChatLayout
+                  isMobile={true}
+                  onClose={() => setCurrentView('home')}
+                  user={user}
+                  isDarkMode={isDarkMode}
+                  chatTab={chatTab}
+                  setChatTab={setChatTab}
+                  chatSellerId={chatSellerId}
+                  setChatSellerId={setChatSellerId}
+                  isChatMenuOpen={isChatMenuOpen}
+                  setIsChatMenuOpen={setIsChatMenuOpen}
+                  playCustomNotificationSound={playCustomNotificationSound}
+                  onViewProfile={(id) => {
+                    startTransition(() => {
+                      setSelectedUserProfileId(id);
+                      setCurrentView('user-public-profile');
+                      setIsChatMenuOpen(false);
+                    });
+                  }}
+              pendingProduct={pendingProduct}
+              setPendingProduct={setPendingProduct}
+              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
+              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
+              />
+
+              {/* Bottom Sheet Pesan Instan (Mobile) */}
+              {isInstantMenuOpen && chatTab === 'admin' && (
+                <div className="absolute inset-0 z-[210] flex flex-col justify-end animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/40" onClick={() => setIsInstantMenuOpen(false)}></div>
+                    <div className={`relative w-full rounded-t-[2.5rem] p-6 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
+                        <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-6"></div>
+                        
+                        <div className="mb-6">
+                            <h3 className={`text-lg font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan 🤖</h3>
+                            <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, saya dari Customer Service SobatNiaga siap bantuin kamu. Kamu ada kendala apa?
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            {chatbotMenu.map((option, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => handleChatBotClick(option)}
+                                    className={`w-full text-left p-4 rounded-2xl border font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
+                                >
+                                    <span>{option.label}</span>
+                                    <ChevronRight size={18} className="text-gray-400 group-hover:text-sky-500 transition-colors" />
+                                </button>
+                            ))}
+                        </div>
+                        
+                        <button 
+                            onClick={() => setIsInstantMenuOpen(false)}
+                            className="w-full mt-6 py-4 rounded-2xl font-bold text-gray-400 dark:text-slate-500 text-xs uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                        >
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+              )}
+          </div>
+        );
+      
+      // --- HALAMAN CHAT SISI PENJUAL (MOBILE) ---
+      case 'seller-chat':
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col h-[100dvh] bg-white dark:bg-slate-900 overflow-hidden">
+              <ChatLayout
+                  isMobile={true}
+                  onClose={() => startTransition(() => setCurrentView('seller-inbox'))}
+                  user={user}
+                  isDarkMode={isDarkMode}
+                  chatTab="seller"
+                  chatBuyerId={activeChatBuyerId}
+                  isSellerView={true}
+                  setChatSellerId={() => {}}
+                  isChatMenuOpen={isChatMenuOpen}
+                  setIsChatMenuOpen={setIsChatMenuOpen}
+                  playCustomNotificationSound={playCustomNotificationSound}
+                  onViewProfile={(id) => {
+                    startTransition(() => {
+                      setSelectedUserProfileId(id);
+                      setCurrentView('user-public-profile');
+                      setIsChatMenuOpen(false);
+                    });
+                  }}
+                  onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
+              />
+          </div>
+        );
+
+      // --- HALAMAN MENU PROFIL (MOBILE) ---
+      case 'account-menu': return (
+        <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+          {/* Header Profil */}
+          <div className={`p-6 mb-4 ${isDarkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white border-b border-gray-100'}`}>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-gray-200 overflow-hidden border-2 border-sky-500 p-0.5">
+                <img src={user?.photoURL || 'https://via.placeholder.com/150'} alt="Profile" className="w-full h-full object-cover rounded-full" />
+              </div>
+              <div>
+                <h2 className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{user?.displayName || 'Pengguna'}</h2>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user?.email}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full">Member</span>
+                  {user?.role === 'driver' && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">Driver</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu List */}
+          <div className={`mx-4 rounded-2xl overflow-hidden shadow-sm border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+            {[
+              { label: 'Profil Saya', icon: <User size={20} />, action: () => startTransition(() => setCurrentView('profile')) },
+              { label: user?.sellerInfo?.isVerifiedSeller ? 'Toko Saya (Dashboard)' : 'Mulai Jualan', icon: <Store size={20} />, action: () => startTransition(() => setCurrentView('dashboard-seller')) },
+              { label: 'Chat Pelanggan', icon: <MessageCircle size={20} />, action: () => startTransition(() => setCurrentView('seller-inbox')), hidden: !user?.sellerInfo?.isVerifiedSeller },
+              { label: 'Pesanan Saya', icon: <ShoppingBag size={20} />, action: () => startTransition(() => setCurrentView('history')) },
+              { label: 'Alamat & Lokasi', icon: <MapPin size={20} />, action: () => startTransition(() => setCurrentView('address')) },
+              { label: 'Admin Panel', icon: <LayoutDashboard size={20} />, action: () => startTransition(() => setCurrentView('admin-dashboard')), hidden: user?.email !== 'pushmate.id@gmail.com' },
+              { label: 'Pusat Bantuan', icon: <HelpCircle size={20} />, action: () => startTransition(() => setCurrentView('help')) },
+            ].map((item, idx) => (
+              !item.hidden && (
+                <button 
+                  key={idx} 
+                  onClick={item.action}
+                  className={`w-full flex items-center justify-between p-4 border-b last:border-0 transition-colors ${isDarkMode ? 'border-slate-700 hover:bg-slate-700 text-gray-200' : 'border-gray-50 hover:bg-gray-50 text-gray-700'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{item.icon}</div>
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-400" />
+                </button>
+              )
+            ))}
+          </div>
+
+          {/* Logout Button */}
+          <div className="mx-4 mt-6">
+            <button onClick={() => signOut(auth)} className="w-full py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
+              <LogOut size={18} /> Keluar Akun
+            </button>
+          </div>
+        </div>
+      );
+
+      default: return ( 
+        <>
+      {/* 1. Hero Section (Coverflow Effect) */}
+      <div 
+        className="relative w-full overflow-hidden bg-cover bg-center pt-2 pb-4 md:pt-8 md:pb-24"
+        style={{ backgroundImage: homeBgStatic ? `url(${homeBgStatic})` : undefined }}
+      >
+        {/* Overlay Gelap biar konten tetap terbaca di atas background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 dark:from-black/60 dark:to-slate-900/90 pointer-events-none"></div>
+
+        <div className="max-w-6xl mx-auto px-4 relative z-10">
+          <Swiper
+            effect={'coverflow'}
+            modules={[Autoplay, Pagination, EffectCoverflow]}
+            grabCursor={true}
+            centeredSlides={true}
+            loop={banners.length > 2}
+            slidesPerView={'auto'}
+            speed={800}
+            autoplay={{ delay: 3000, disableOnInteraction: false }}
+            slideToClickedSlide={true}
+            coverflowEffect={{
+              rotate: 0,
+              stretch: 0,
+              depth: 250, // Tambah kedalaman biar kartu samping makin mundur
+              modifier: 1, // Pastiin ini 1 biar gak numpuk berlebihan
+              slideShadows: false,
+            }}
+            pagination={{ clickable: true, dynamicBullets: true }}
+          className="w-full py-1 md:py-8"
+          >
+            {banners.map((banner, index) => (
+            <SwiperSlide key={banner.id} className="!w-[75%] md:!w-[700px] lg:!w-[900px] aspect-[21/9] transition-all duration-500 [&:not(.swiper-slide-active)]:scale-90 [&:not(.swiper-slide-active)]:opacity-70">
+                {banner.link ? (
+                  banner.link.startsWith('http') ? (
+                    <a 
+                      href={banner.link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block w-full h-full cursor-pointer"
+                    >
+                      <img 
+                        src={banner.image} 
+                        alt={banner.alt} 
+                        className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                        loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
+                      />
+                    </a>
+                  ) : (
+                    <Link 
+                      to={banner.link}
+                      className="block w-full h-full cursor-pointer"
+                    >
+                      <img 
+                        src={banner.image} 
+                        alt={banner.alt} 
+                        className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                        loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
+                      />
+                    </Link>
+                  )
+                ) : (
+                  <img 
+                    src={banner.image} 
+                    alt={banner.alt} 
+                    className="w-full h-full object-cover rounded-xl shadow-2xl border border-white/20 dark:border-slate-600"
+                    loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding="async"
+                  />
+                )}
+              </SwiperSlide>
+            ))}
+          </Swiper>
+        </div>
+        
+        {/* Wave SVG Separator */}
+        <div className="absolute -bottom-[1px] left-0 w-full overflow-hidden leading-[0] z-20">
+          <svg 
+            viewBox="0 0 1200 120" 
+            preserveAspectRatio="none" 
+            className="relative block w-full h-[20px] md:h-[100px]"
+          >
+            {/* LAYER 1 (HIJAU): Tetap di atas sebagai frame belakang */}
+            <path 
+              d="M0,30 C200,30 400,110 600,110 C800,110 1000,30 1200,30 L1200,120 L0,120 Z" 
+              className="fill-emerald-500/30" 
+            />
+            
+            {/* LAYER 2 (PUTIH): REVISI - Tengah diturunin, Pinggir dibikin lebih bawah */}
+            <path 
+              d="M0,100 C300,110 400,45 600,45 C800,45 900,110 1200,100 L1200,120 L0,120 Z" 
+              style={{ fill: 'var(--bg-main)' }}
+            />
+          </svg>
+        </div>
+      </div>
+
+      {/* 3. Category Menu (Mobile Grid & Desktop Sticky) */}
+      
+      {/* MOBILE: NiagaGo Banner (Tetap di Atas Kategori) */}
+      <div className="md:hidden mt-8 mb-6 w-full">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={`w-full rounded-xl p-2.5 flex flex-row items-center justify-between gap-3 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+          <div className="relative z-10 text-left flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Bike className={`w-5 h-5 shrink-0 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-sm font-bold whitespace-nowrap ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+            </div>
+            <p className={`text-[10px] max-w-md leading-tight truncate ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+              Ojek mahasiswa hemat & aman!
+            </p>
+          </div>
+          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-3 py-1.5 bg-white text-emerald-600 font-bold text-[11px] rounded-lg shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap shrink-0">
+            Buka NiagaGo
+          </button>
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
+            <Bike className="w-20 h-20" />
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {/* MOBILE: Grid Menu (4 Columns) */}
+      <div className="md:hidden px-4 mt-6 mb-6">
+        <div className="grid grid-cols-4 gap-4">
+          {navCategories.map((cat, index) => (
+            <button
+              key={cat.name}
+              onClick={() => {
+                setActiveCategoryIndex(index);
+                scrollToSection(cat.name);
+              }}
+              className="flex flex-col items-center gap-2 group"
+            >
+            <div className={`p-2 rounded-full overflow-hidden shadow-sm transition-transform group-active:scale-95 ${isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-sky-600 border border-gray-100'}`}>
+                <ImageWithFallback
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
+                  alt={cat.name}
+                  className="w-12 h-12 object-contain bg-transparent"
+                  style={{ backgroundColor: 'transparent' }}
+                  fallback={cat.icon}
+                />
+              </div>
+              <span className={`text-[10px] font-medium text-center leading-tight ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{cat.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* DESKTOP: Sticky Horizontal Nav */}
+      <div className="hidden md:block sticky top-[68px] z-40 py-2 mt-6 mb-6">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={`p-2 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-sky-50 border-sky-100 shadow-sm'}`}>
+            <div 
+              className="relative flex items-center justify-start gap-4 overflow-x-auto p-1 no-scrollbar"
+              style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+            >
+              <style dangerouslySetInnerHTML={{__html: `
+                .no-scrollbar::-webkit-scrollbar {
+                  display: none;
+                }
+              `}} />
+              {/* Sliding Capsule Background */}
+              <div
+                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out shadow-lg ${isDarkMode ? 'bg-slate-700' : 'bg-white'} ${navCategories[activeCategoryIndex].color}`}
+                style={{
+                  left: capsuleStyle.left,
+                  width: capsuleStyle.width,
+                  opacity: capsuleStyle.opacity,
+                  border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0'
+                }}
+              />
+              
+              {navCategories.map((cat, index) => (
+                <button
+                  key={cat.name}
+                  ref={el => tabsRef.current[index] = el}
+                  onClick={() => {
+                    setActiveCategoryIndex(index);
+                    scrollToSection(cat.name);
+                  }}
+                  className={`relative z-10 px-4 py-2 md:px-6 md:py-3 text-xs md:text-base font-bold whitespace-nowrap transition-colors uppercase tracking-wider font-azonix ${
+                    activeCategoryIndex === index
+                      ? (isDarkMode ? 'text-white' : 'text-sky-600')
+                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                  }`}
+                >
+              <div className="flex items-center gap-2">
+                <ImageWithFallback
+                  src={typeof bannerImages[cat.key] === 'object' ? bannerImages[cat.key]?.url : bannerImages[cat.key]}
+                  alt=""
+                  className="w-5 h-5 object-contain bg-transparent"
+                  style={{ backgroundColor: 'transparent' }}
+                  fallback={cat.icon}
+                />
+                {cat.name}
+              </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* DESKTOP: NiagaGo Banner (Pindah ke Bawah Kategori & Full Width) */}
+      <div ref={niagaGoRef} className="hidden md:block scroll-mt-40 mt-8 w-full">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={`w-full rounded-2xl p-6 flex flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden ${isDarkMode ? 'bg-emerald-900/50 border border-emerald-800' : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'}`}>
+          <div className="relative z-10 text-left flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Bike className={`w-6 h-6 ${isDarkMode ? 'text-emerald-400' : 'text-white'}`} />
+              <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-100' : 'text-white'}`}>Butuh Tebengan?</h2>
+            </div> 
+            <p className={`text-sm max-w-md leading-tight ${isDarkMode ? 'text-emerald-200' : 'text-emerald-100'}`}>
+              Cobain <b>NiagaGo</b>! Ojek khusus mahasiswa dengan harga bersahabat. Bisa jadi driver juga lho buat nambah uang jajan.
+            </p>
+          </div>
+          <button onClick={() => startTransition(() => setCurrentView('niagago'))} className="relative z-10 px-6 py-3 bg-white text-emerald-600 font-bold text-base rounded-xl shadow-lg hover:bg-gray-100 transition-all whitespace-nowrap">
+            Buka NiagaGo
+          </button>
+          {/* Decor */}
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
+            <Bike className="w-48 h-48" />
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {/* FLASH DEAL SECTION (New) */}
+      {flashDeal?.isActive && !isExpired && (
+        <div className="w-full max-w-7xl mx-auto px-4 mt-4 md:mt-6 mb-6 md:mb-8 relative z-10">
+            <div className="rounded-xl md:rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-blue-900 to-sky-600 flex flex-row min-h-[160px] md:min-h-[280px]">
+                {/* Left: Banner & Countdown */}
+                <div className="w-[130px] md:w-1/3 relative p-3 md:p-8 flex flex-col justify-center text-white overflow-hidden flex-shrink-0 border-r border-white/10">
+                    {/* Background Image with Overlay */}
+                    <div className="absolute inset-0 z-0">
+                        {flashDeal?.bannerUrl ? (
+                            <img src={flashDeal.bannerUrl} className="w-full h-full object-cover opacity-40" alt="Flash Deal" />
+                        ) : (
+                            <div className="w-full h-full bg-blue-800 opacity-50"></div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/80 to-blue-900/40 md:bg-gradient-to-r md:from-blue-900/90 md:to-transparent"></div>
+                    </div>
+                    
+                    <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
+                        <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-yellow-400 text-blue-900 text-[8px] md:text-xs font-extrabold rounded-full mb-1 md:mb-3 shadow-md">
+                            ⚡ <span className="hidden md:inline">LIMITED OFFER</span><span className="md:hidden">FLASH</span>
+                        </div>
+                        <h3 className="text-xl md:text-4xl font-extrabold italic tracking-tighter mb-1 md:mb-2 text-white drop-shadow-lg leading-none">
+                            <span className="md:hidden">SALE</span>
+                            <span className="hidden md:inline">FLASH <span className="text-yellow-400">SALE</span></span>
+                        </h3>
+                        <p className="hidden md:block text-blue-100 text-sm mb-6 font-medium max-w-[200px]">
+                            Serbu diskon gila-gilaan sebelum waktu habis!
+                        </p>
+                        
+                        {/* Countdown Box */}
+                        <div className="flex flex-col md:flex-row items-center gap-1 md:gap-2 mt-1 md:mt-0">
+                            <p className="text-[10px] md:hidden text-blue-200 mb-0.5">Berakhir dlm:</p>
+                            <div className="flex items-center gap-1">
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.h).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Jam</span>
+                                </div>
+                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.m).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Mnt</span>
+                                </div>
+                                <span className="text-white font-bold text-xs md:text-xl pb-0 md:pb-4">:</span>
+                                <div className="bg-slate-900/80 backdrop-blur-md text-white p-1.5 md:p-3 rounded-lg md:rounded-xl min-w-[24px] md:min-w-[50px] text-center border border-white/10 shadow-lg">
+                                    <span className="text-xs md:text-xl font-bold block leading-none">{String(timeLeft.s).padStart(2, '0')}</span>
+                                    <span className="hidden md:block text-[10px] text-gray-400 uppercase">Dtk</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Product List (Horizontal Scroll) */}
+                <div className={`flex-1 p-3 md:p-6 flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide items-center ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10 backdrop-blur-sm'}`}>
+                    {(!products || products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).length === 0) ? (
+                        <div className="text-white/80 text-xs md:text-sm font-medium w-full text-center">
+                            Produk segera hadir...
+                        </div>
+                    ) : (
+                        products.filter(p => flashDeal?.selectedProducts && flashDeal.selectedProducts[p.id]).map(product => (
+                            <div key={product.id} onClick={() => handleProductClick(product)} className={`min-w-[120px] w-[120px] md:min-w-[160px] md:w-[160px] rounded-lg md:rounded-xl p-2 md:p-3 cursor-pointer transition-all hover:scale-105 hover:shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-white'} shadow-md group`}>
+                                <div className="relative aspect-square rounded-md md:rounded-lg overflow-hidden mb-2 md:mb-3 bg-gray-100">
+                                    <img src={product.mediaUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
+                                    <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] md:text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-bl-lg shadow-sm z-10">
+                                        {flashDeal.discountLabel || '50%'}
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <p className={`text-xs md:text-sm font-bold line-clamp-2 leading-snug ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
+                                    <div className={`font-black text-sm md:text-base mt-1 ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
+                                        <span className="text-xs font-medium mr-0.5">Rp</span>
+                                        <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
+                                    </div>
+                                    
+                                    {/* Progress Bar */}
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 md:h-2 overflow-hidden relative">
+                                        <div className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full" style={{ width: '85%' }}></div>
+                                    </div>
+                                    <div className="flex justify-between text-[8px] md:text-[10px] text-gray-500 font-medium">
+                                        <span>Terjual 85%</span>
+                                        <span className="text-red-500 hidden md:inline">🔥 Segera Habis</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* 3. Content Sections */}
+      <div className="max-w-7xl mx-auto px-4 space-y-10 pb-10 mt-6 text-left">
+        
+        {/* SECTION: Populer */}
+        <div ref={populerRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>Populer & Rekomendasi</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products && products.length > 0 ? products.map((product) => (
+              <ProductCard 
+                key={product.id} 
+                product={{...product, image: product.mediaUrl || 'https://via.placeholder.com/150', price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}}
+                className="product-card-home"
+                onClick={() => handleProductClick(product)}
+              />
+            )) : (
+               <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Isi Pulsa */}
+        <div ref={pulsaRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('topup')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Isi Pulsa & Paket Data
+            </h2>
+            <button onClick={() => setCurrentView('topup')} className="text-sky-600 text-sm font-bold hover:underline">Buka Menu</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Isi Pulsa').slice(0, 6).map((product) => (
+              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
+            ))}
+            {products.filter(p => p.category === 'Isi Pulsa').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Makan */}
+        <div ref={makanRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('food')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Niaga Food
+            </h2>
+            <button onClick={() => setCurrentView('food')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Niaga Food').slice(0, 6).map((product) => (
+              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
+            ))}
+            {products.filter(p => p.category === 'Niaga Food').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Skin Care */}
+        <div ref={skincareRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('skincare')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Skin Care Glowing
+            </h2>
+            <button onClick={() => setCurrentView('skincare')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Skin Care').slice(0, 6).map((product) => (
+              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
+            ))}
+            {products.filter(p => p.category === 'Skin Care').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Fashion */}
+        <div ref={fashionRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('fashion')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Fashion Terkini
+            </h2>
+            <button onClick={() => setCurrentView('fashion')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Fashion').slice(0, 6).map((product) => (
+              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
+            ))}
+            {products.filter(p => p.category === 'Fashion').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Jasa */}
+        <div ref={jasaRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('jasa')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Jasa Mahasiswa
+            </h2>
+            <button onClick={() => setCurrentView('jasa')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Jasa').slice(0, 6).map((product) => (
+              <ProductCard key={product.id} product={{...product, image: product.mediaUrl, price: `Rp ${(parseInt(product.price) || 0).toLocaleString('id-ID')}`}} className="product-card-home" onClick={() => handleProductClick(product)} />
+            ))}
+            {products.filter(p => p.category === 'Jasa').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: Top Up Game */}
+        <div ref={gameRef} className="scroll-mt-40 home-lazy-section">
+          <div className="flex items-start justify-between mb-6">
+            <h2 
+              onClick={() => setCurrentView('digital-center')}
+              className={`text-sm md:text-xl font-azonix font-bold uppercase tracking-wider cursor-pointer hover:text-sky-500 transition-colors ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}
+            >
+              Top Up Game
+            </h2>
+            <button onClick={() => setCurrentView('digital-center')} className="text-sky-600 text-sm font-bold hover:underline">Lihat Semua</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {products.filter(p => p.category === 'Game').slice(0, 6).map((product) => (
+              <div 
+                key={product.id}
+                onClick={() => handleGameSelect({ ...product, fields: product.inputFields })}
+                className={`rounded-xl border p-3 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-sky-500' : 'bg-white border-gray-100 hover:border-sky-200'}`}
+              >
+                <div className={`w-full aspect-square rounded-lg overflow-hidden ${isDarkMode ? 'bg-slate-700' : 'bg-gray-100'}`}>
+                  <img src={product.mediaUrl || 'https://via.placeholder.com/150'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                </div>
+                <div className="text-center w-full">
+                  <p className={`text-sm font-bold line-clamp-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
+                  <div className={`font-black text-sm md:text-base mt-1 ${isDarkMode ? 'text-[#FFD662]' : 'text-sky-600'}`}>
+                    <span className="text-xs font-medium mr-0.5">Rp</span>
+                    <span>{parseInt(product.price).toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {products.filter(p => p.category === 'Game').length === 0 && (
+                <p className={`col-span-full text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Produk belum tersedia</p>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* FOOTER */}
+      <footer className="text-white pt-16 pb-8 mt-auto border-t border-slate-800 relative bg-slate-900 overflow-hidden">
+        {/* Background Image Layer (Saturated) */}
+        {footerBg && (
+            <div 
+                className="absolute inset-0 bg-cover bg-center z-0"
+                style={{ 
+                    backgroundImage: `url(${footerBg})`,
+                    filter: 'saturate(1.5) contrast(1.1)' // Boost warna biar seger
+                }}
+            ></div>
+        )}
+        
+        {/* Gradient Overlay (Premium Look) */}
+        {footerBg && (
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/80 to-transparent z-0"></div>
+        )}
+
+        <div className="max-w-7xl mx-auto px-4 relative z-10" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+            {/* Kolom 1: Brand */}
+            <div>
+              <h3 className="text-2xl font-bold mb-4 flex items-center gap-2 font-azonix tracking-wider text-white drop-shadow-lg">
+                SobatNiaga
+              </h3>
+              <p className="text-slate-200 text-sm leading-relaxed font-medium">
+                SobatNiaga - Solusi Top Up Game, Voucher, dan Fashion Terlengkap & Terpercaya di Indonesia.
+              </p>
+            </div>
+
+            {/* Kolom 2: Layanan */}
+            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
+              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Layanan Kami</h4>
+              <ul className="space-y-3 text-sm text-slate-200 font-medium">
+                <li><button onClick={() => { startTransition(() => setCurrentView('digital-center')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Top Up Game</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('topup')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pulsa & Data</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('fashion')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Fashion Pria & Wanita</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('food')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Makan Hemat</button></li>
+              </ul>
+            </div>
+
+            {/* Kolom 3: Informasi */}
+            <div className="border-b border-slate-800 md:border-none pb-4 md:pb-0">
+              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Informasi</h4>
+              <ul className="space-y-3 text-sm text-slate-200 font-medium">
+                <li><button onClick={() => { startTransition(() => setCurrentView('about')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Tentang Kami</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('terms')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Syarat & Ketentuan</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('privacy')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Kebijakan Privasi</button></li>
+                <li><button onClick={() => { startTransition(() => setCurrentView('help')); window.scrollTo(0,0); }} className="hover:text-sky-300 transition-colors text-left">Pusat Bantuan</button></li>
+              </ul>
+            </div>
+
+            {/* Kolom 4: Sosmed */}
+            <div className="pb-4 md:pb-0">
+              <h4 className="font-bold text-lg mb-4 text-sky-400 drop-shadow-md">Ikuti Kami</h4>
+              <div className="flex gap-4">
+                <a href="https://www.instagram.com/sobatniaga_offic?igsh=cWJrcTNkaXN2dGRx" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-pink-600 hover:border-pink-600 transition-all shadow-lg">
+                  <Instagram size={20} />
+                </a>
+                <a href="https://wa.me/6289517587498" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-green-600 hover:border-green-600 transition-all shadow-lg">
+                  <MessageCircle size={20} />
+                </a>
+                <a href="#" className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-red-600 hover:border-red-600 transition-all shadow-lg">
+                  <Mail size={20} />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-white/10 pt-8 text-center">
+            <p className="text-slate-300 text-sm font-medium">© 2026 SobatNiaga. All Rights Reserved.</p>
+          </div>
+        </div>
+      </footer>
+        </>
+      );
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
+      {/* Global Header (Sticky) */}
+      <nav className={`sticky top-0 z-[100] backdrop-blur-md transition-all duration-300 border-b ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white/50 border-gray-200/30'}`}>
+        <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-8">
+          {/* Left: Brand or Back Button */}
+          <div className="flex-shrink-0 flex items-center gap-2 md:gap-3">
+            <h1 className="text-lg md:text-2xl font-bold text-sky-600 tracking-tight cursor-pointer" onClick={() => startTransition(() => setCurrentView('home'))}>
+              SobatNiaga
+            </h1>
+          </div>
+
+          {/* Center: Search Bar (Hidden on mobile if needed, or simplified) */}
+          <form 
+            className="flex-1 relative" 
+            ref={searchRef}
+            onSubmit={(e) => {
+              e.preventDefault(); // Penahan agar tidak reload!
+              if (searchQuery.trim() !== '') {
+                startTransition(() => {
+                  setActiveSearchQuery(searchQuery.trim());
+                  setPreviousView(currentView);
+                  setCurrentView('search-results');
+                  setShowSuggestions(false);
+                });
+                if (e.target.querySelector('input')) e.target.querySelector('input').blur();
+              }
+            }}
+          >
+            <div className="absolute inset-y-0 left-0 pl-2 md:pl-3 flex items-center pointer-events-none">
+              <Search size={16} className="text-gray-400 md:w-[18px] md:h-[18px]" />
+            </div>
+            <input
+              type="text"
+              enterKeyHint="search" // Ganti tombol Enter di HP jadi ikon Search
+              className="block w-full pl-8 md:pl-10 pr-2 md:pr-3 py-1.5 md:py-2 border rounded-full text-xs md:text-sm focus:ring-2 focus:ring-sky-500 transition-all theme-card theme-text placeholder:text-gray-400"
+              placeholder="Cari di SobatNiaga..."
+              value={searchQuery}
+              onChange={handleSearchInput}
+              onFocus={(e) => {
+                if (window.innerWidth < 768) {
+                  e.target.blur(); // Cegah keyboard muncul di halaman home
+                  startTransition(() => { setCurrentView('search-page'); });
+                } else if (searchQuery.trim().length > 0) {
+                  setShowSuggestions(true);
+                }
+              }}
+            />
+            
+            {/* Auto-Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 rounded-xl shadow-lg border z-50 overflow-hidden theme-card">
+                {suggestions.map((product) => (
+                  <div
+                    key={product.id}
+                    onClick={() => handleSuggestionClick(product.name)}
+                    className="px-4 py-3 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-slate-700 last:border-0"
+                  >
+                    <Search size={14} className="text-gray-400" />
+                    <span className="text-sm theme-text line-clamp-1 font-medium">{product.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </form>
+
+          {/* Right: Icons */}
+          <div className="flex items-center gap-1.5 md:gap-3 theme-text">
+            {!user ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => openLogin('register')}
+                  className="rounded-full border border-sky-500 px-2.5 py-1.5 text-[11px] font-bold text-sky-600 transition-colors hover:bg-sky-50 md:px-4 md:text-sm"
+                >
+                  Daftar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openLogin('login')}
+                  className="rounded-full bg-sky-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-sky-700 md:px-4 md:text-sm"
+                >
+                  Login
+                </button>
+              </div>
+            ) : (
+            <>
+            {/* Notifikasi Dropdown */}
+            <div className="relative">
+              <button 
+                onClick={() => {
+                  setIsNotificationOpen(!isNotificationOpen);
+                  setIsProfileOpen(false);
+                }}
+                className="hover:text-sky-600 relative flex items-center p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+              >
+                <Bell size={20} className="md:w-[22px] md:h-[22px]" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white animate-in zoom-in">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationOpen && (
+                <div ref={notificationRef} className="absolute right-0 mt-2 w-60 md:w-80 rounded-xl shadow-lg border z-50 overflow-hidden theme-card origin-top-right">
+                  <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-white">
+                    <h3 className="font-bold theme-text text-sm">Notifikasi</h3>
+                    <div className="flex gap-2">
+                      <button onClick={handleMarkAllRead} className="text-xs text-sky-600 font-medium hover:underline">Baca Semua</button>
+                      <button onClick={handleClearAllNotifications} className="text-xs text-red-500 font-medium hover:underline"><Trash2 size={12}/></button>
+                    </div>
+                  </div>
+                  
+                  <div className="max-h-[400px] overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-gray-400 text-sm">Belum ada notifikasi</div>
+                    ) : (
+                      notifications.map((notif) => {
+                        const style = getNotifStyle(notif.type);
+                        return (
+                        <div 
+                          key={notif.id} 
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`px-4 py-3 flex gap-3 border-b hover:opacity-90 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/10' : 'theme-card'}`}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${style.color}`}>
+                            {style.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <h4 className={`text-sm ${notif.status === 'unread' ? 'font-bold theme-text' : 'font-medium theme-text-muted'}`}>{notif.title}</h4>
+                              {notif.status === 'unread' && <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5"></div>}
+                            </div>
+                            <p className="text-xs theme-text-muted line-clamp-2 mt-0.5 leading-relaxed">{notif.message}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">{getTimeAgo(notif.createdAt)}</p>
+                          </div>
+                        </div>
+                      )})
+                    )}
+                  </div>
+
+                  <button className="w-full py-3 text-center text-sm font-bold text-sky-600 hover:bg-opacity-10 hover:bg-sky-500 transition-colors border-t theme-card">
+                    Lihat Semua Notifikasi
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Cart Icon with Badge */}
+            <button 
+              onClick={openCart}
+              className="hover:text-sky-600 relative p-1.5 md:p-2 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+            >
+              <ShoppingCart size={20} className="md:w-[22px] md:h-[22px]" />
+              {cartCount > 0 && (
+                <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+            
+            {/* Profil Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="hover:text-sky-600 flex items-center focus:outline-none p-0.5 md:p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-all"
+              >
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="Profile" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-gray-200 object-cover" />
+                ) : (
+                  <User size={20} className="md:w-[22px] md:h-[22px]" />
+                )}
+              </button>
+
+              {isProfileOpen && (
+                <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 rounded-xl shadow-lg border py-2 z-50 theme-card">
+                  <div className="px-4 py-2 border-b border-gray-100 mb-1 ">
+                    <p className="text-sm font-bold theme-text">Halo, {user.displayName || 'User'}!</p>
+                  </div>
+                  <button onClick={() => startTransition(() => { setCurrentView('profile'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Profil Saya</button>
+                  <button onClick={() => startTransition(() => { setCurrentView('history'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Pesanan Saya</button>
+                  {user?.email === 'pushmate.id@gmail.com' && ( // Admin Dashboard
+                    <button onClick={() => startTransition(() => { setCurrentView('admin-dashboard'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Admin Dashboard</button>
+                  )}
+                  <button onClick={() => startTransition(() => { setCurrentView('address'); setIsProfileOpen(false); })} className="block w-full text-left px-4 py-2 text-sm theme-text hover:text-sky-600">Alamat Lokasi</button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  <button onClick={() => signOut(auth)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Log Out</button>
+                </div>
+              )}
+            </div>
+            </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* MAIN CONTENT AREA - INI YANG TADI ILANG BRO! */}
+      <main className="flex-1">
+        <Suspense fallback={<div className="flex flex-col items-center justify-center py-20 opacity-50"><Loader2 size={40} className="animate-spin text-sky-500 mb-2" /><p className="text-sm">Memuat...</p></div>}>
+          {renderContent()}
+        </Suspense>
+      </main>
+
+      {selectedProductId && (
+        <Suspense fallback={null}>
+          <ProductDetail
+            product={products.find((item) => String(item.id) === selectedProductId) || null}
+            productId={selectedProductId}
+            isModal
+            onBack={() => setSelectedProductId(null)}
+            onRequireLogin={openLogin}
+            onGoToCart={() => {
+              setSelectedProductId(null);
+              openCart();
+            }}
+            onVisitStore={(sellerId) => {
+              setSelectedProductId(null);
+              handleVisitStore(sellerId);
+            }}
+            onChatWithProduct={(product) => {
+              setSelectedProductId(null);
+              handleChatWithProduct(product);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* Modal Top Up Game (Global) */}
+      {selectedGame && TopUpModal && (
+        <TopUpModal 
+          game={selectedGame} 
+          user={user} 
+          onClose={() => setSelectedGame(null)} />
+      )}
+
+      {/* Customer Service Chat Widget */}
+      {currentView !== 'chat' && !isDesktopChatOpen && (
+        <DraggableChatWidget
+            onClick={() => {
+              if (!requireLogin()) return;
+              if (window.innerWidth >= 768) setIsDesktopChatOpen(true);
+              else startTransition(() => setCurrentView('chat'));
+            }}
+            icon={chatIcon}
+        />
+      )}
+
+      {/* Desktop Chat Popup */}
+      {isDesktopChatOpen && (
+        <div ref={desktopChatRef} className="hidden md:flex fixed bottom-5 right-5 z-[1100] w-[320px] h-[450px] bg-white dark:bg-slate-900 rounded-none shadow-2xl border border-gray-200 dark:border-slate-700 flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in">
+            <ChatLayout 
+                isMobile={false} 
+                onClose={() => setIsDesktopChatOpen(false)} 
+                user={user}
+                isDarkMode={isDarkMode} 
+                chatTab={chatTab} 
+                setChatTab={setChatTab}
+                chatSellerId={chatSellerId}
+                setChatSellerId={setChatSellerId}
+                isChatMenuOpen={isChatMenuOpen} 
+                setIsChatMenuOpen={setIsChatMenuOpen} 
+                playCustomNotificationSound={playCustomNotificationSound}
+                onViewProfile={(id) => {
+                  startTransition(() => {
+                    setSelectedUserProfileId(id);
+                    setCurrentView('user-public-profile');
+                    setIsChatMenuOpen(false);
+                  });
+                }}
+              pendingProduct={pendingProduct}
+              setPendingProduct={setPendingProduct}
+              onOpenInstantMenu={() => setIsInstantMenuOpen(true)}
+              onOpenProductDetail={(productId) => handleProductClick({ id: productId })}
+            />
+
+            {/* Desktop Quick Menu Overlay */}
+            {isInstantMenuOpen && chatTab === 'admin' && (
+                <div className="absolute inset-0 z-[10] flex flex-col justify-end animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/20" onClick={() => setIsInstantMenuOpen(false)}></div>
+                    <div className={`relative w-full rounded-t-2xl p-4 shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-800 border-t border-slate-700' : 'bg-white border-t border-gray-100'}`}>
+                        <div className="w-10 h-1 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-4"></div>
+                        
+                        <div className="mb-4">
+                            <h3 className={`text-sm font-black mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Pesan Instan</h3>
+                            <p className={`text-[10px] leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                                Hai <span className="font-bold text-sky-500">{user?.displayName || 'Sobat'}</span>, ada kendala apa?
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            {chatbotMenu.map((option, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => handleChatBotClick(option)}
+                                    className={`w-full text-left p-2.5 rounded-xl border font-bold text-[10px] transition-all active:scale-[0.98] flex items-center justify-between group ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-sky-50 hover:border-sky-100'}`}
+                                >
+                                    <span className="truncate pr-2">{option.label}</span>
+                                    <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                                </button>
+                            ))}
+                        </div>
+                        <button 
+                            onClick={() => setIsInstantMenuOpen(false)}
+                            className="w-full mt-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"
+                        >
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+      )}
+
+      {/* --- BOTTOM NAVIGATION BAR (MOBILE ONLY) --- */}
+      {!['cart', 'payment', 'niagago', 'chat', 'admin-dashboard'].includes(currentView) && (
+      <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t pb-safe transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
+        <div className="flex justify-around items-center h-16">
+          <button onClick={() => startTransition(() => setCurrentView('home'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'home' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <HomeIcon size={24} strokeWidth={currentView === 'home' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Home</span>
+          </button>
+
+          <button onClick={() => startTransition(() => setCurrentView('niaga-video'))} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'niaga-video' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            <PlayCircle size={24} strokeWidth={currentView === 'niaga-video' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Video</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              if (!requireLogin()) return;
+              startTransition(() => {
+                setChatSellerId(null); // Reset room aktif pas klik dari bawah
+                setChatTab('admin');
+                setCurrentView('chat');
+              });
+            }}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'chat' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}
+          >
+            <MessageCircle size={24} />
+            <span className="text-[10px] font-medium">Chat</span>
+          </button>
+
+          <button onClick={() => user ? startTransition(() => setCurrentView('account-menu')) : openLogin('login')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${currentView === 'account-menu' ? 'text-sky-600' : (isDarkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+            {user?.photoURL ? <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full object-cover" /> : <User size={24} strokeWidth={currentView === 'account-menu' ? 2.5 : 2} />}
+            <span className="text-[10px] font-medium">{user ? 'Profil' : 'Login'}</span>
+          </button>
+        </div>
+      </div>
+      )}
+    </div>
+  );
+};
+
+// --- DRAGGABLE CHAT WIDGET ---
+const DraggableChatWidget = ({ onClick, icon }) => {
+  const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 160 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef(null);
+  const offset = useRef({ x: 0, y: 0 });
+  const isMouseDown = useRef(false); // Track mouse state
+
+  const handleStart = (clientX, clientY) => {
+    isMouseDown.current = true;
+    if (dragRef.current) {
+        const rect = dragRef.current.getBoundingClientRect();
+        offset.current = { x: clientX - rect.left, y: clientY - rect.top };
+    }
+  };
+
+  const handleMove = (clientX, clientY) => {
+    if (!isMouseDown.current) return;
+    setIsDragging(true);
+    setPosition({
+        x: clientX - offset.current.x,
+        y: clientY - offset.current.y
+    });
+  };
+
+  const handleEnd = () => {
+    isMouseDown.current = false;
+    // Delay reset biar onClick ke-trigger duluan (kalau cuma klik) atau ke-block (kalau abis drag)
+    setTimeout(() => setIsDragging(false), 100);
+  };
+
+  // Global Event Listeners untuk Mouse (Desktop)
+  useEffect(() => {
+    const onMouseMove = (e) => {
+        if (isMouseDown.current) {
+            e.preventDefault(); // Prevent text selection
+            handleMove(e.clientX, e.clientY);
+        }
+    };
+    const onMouseUp = () => {
+        if (isMouseDown.current) {
+            handleEnd();
+        }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  return (
+    <div
+        ref={dragRef}
+        style={{ left: position.x, top: position.y, touchAction: 'none' }}
+        className="hidden md:block fixed z-[1100] cursor-move"
+        onTouchStart={(e) => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchEnd={handleEnd}
+        onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
+        onClick={() => { if (!isDragging) onClick(); }}
+    >
+        <div className="w-14 h-14 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg hover:bg-sky-700 transition-colors border-2 border-white overflow-hidden">
+            {icon ? <img src={icon} className="w-full h-full object-cover" alt="Chat" /> : <MessageCircle size={28} />}
+        </div>
+    </div>
+  );
+};
+export default Home;

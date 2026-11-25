@@ -5,7 +5,7 @@ import {
 import { onValue, push, ref, serverTimestamp, set, update } from 'firebase/database';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, storage } from '../config/firebase';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, getDownloadURL } from 'firebase/storage';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 import { useTheme } from '../context/ThemeContext';
 
@@ -177,34 +177,14 @@ const NiagaGoChat = ({ orderId, currentUser, partner, canSend, onClose }) => {
       if (!isAllowedToSend) throw new Error('Chat hanya dapat digunakan selama pesanan aktif.');
       const messageRef = push(ref(db, `${roomPath}/messages`));
 
-      // Optimasi unggahan: Upload langsung dengan Cloudinary atau Firebase Storage
-      let uploadedUrl = '';
-      try {
-        uploadedUrl = await uploadToCloudinary(file, 'sobatniaga/reviews', 'image');
-      } catch (cloudErr) {
-        console.debug('Cloudinary chat upload fallback to Firebase Storage:', cloudErr);
-      }
-
-      let imagePath = '';
-      if (!uploadedUrl) {
-        imagePath = `${roomPath}/${currentUser.uid}/${messageRef.key}`;
-        const snap = await uploadBytes(storageRef(storage, imagePath), file, {
-          contentType: file.type,
-          customMetadata: { orderId, senderId: currentUser.uid }
-        });
-        try {
-          uploadedUrl = await getDownloadURL(snap.ref);
-        } catch (dlErr) {
-          console.debug('Direct getDownloadURL error:', dlErr);
-        }
-      }
+      // All new chat images go through malware scanning and WebP conversion.
+      const uploadedUrl = await uploadToCloudinary(file, 'sobatniaga/reviews', 'image');
 
       await set(messageRef, {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || currentUser.username || 'Pengguna NiagaGo',
         type: 'image',
-        ...(imagePath ? { imagePath } : {}),
-        ...(uploadedUrl ? { imageUrl: uploadedUrl } : {}),
+        imageUrl: uploadedUrl,
         createdAt: serverTimestamp(),
         status: 'sent',
         ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {})

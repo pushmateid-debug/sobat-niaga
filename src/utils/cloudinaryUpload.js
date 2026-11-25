@@ -8,6 +8,26 @@ export const uploadToCloudinary = async (file, folder, resourceType) => {
 
   const resolvedResourceType = resourceType || (file.type.startsWith('video/') ? 'video' : 'image');
   const token = await user.getIdToken();
+
+  if (resolvedResourceType === 'image') {
+    const formData = new FormData();
+    formData.append('file', file, file.name || 'image');
+    formData.append('folder', folder);
+    const uploadResponse = await fetch('/api/image-upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    const uploadData = await uploadResponse.json().catch(() => ({}));
+    if (!uploadResponse.ok) {
+      throw new Error(uploadData.error || 'Tidak dapat mengunggah gambar.');
+    }
+    if (!uploadData.secure_url || uploadData.format !== 'webp') {
+      throw new Error('Server tidak mengembalikan gambar WebP yang valid.');
+    }
+    return uploadData.secure_url;
+  }
+
   const signatureResponse = await fetch('/api/cloudinary-signature', {
     method: 'POST',
     headers: {
